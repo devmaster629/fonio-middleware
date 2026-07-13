@@ -1,0 +1,37 @@
+import {
+  ExternalPaymentSource,
+  PaymentMatchDecision,
+} from '@prisma/client';
+
+export interface NormalizedExternalPayment {
+  source: ExternalPaymentSource;
+  externalId: string;
+  amount: number;
+  currency: string;
+  occurredAt: Date;
+  payerName?: string;
+  payerEmail?: string;
+  reference?: string;
+  rawPayload: Record<string, unknown>;
+}
+
+export interface PaymentMatchCandidate {
+  reservationId: string;
+  hostawayId: number;
+  guestName: string | null;
+  listingName: string;
+  arrivalDate: string;
+  departureDate: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface PaymentMatchResult {
+  decision: PaymentMatchDecision;
+  candidates: PaymentMatchCandidate[];
+  best?: PaymentMatchCandidate;
+  reason: string;
+}
+
+export const PAYMENT_AUTO_MATCH_MIN_SCORE = 85;
+export const PAYMENT_AMBIGUITY_SCORE_GAP = 10;

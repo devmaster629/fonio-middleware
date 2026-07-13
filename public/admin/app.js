@@ -173,6 +173,7 @@ function refreshActiveTab() {
     conversations: loadConversations,
     rules: loadRules,
     requests: loadRequests,
+    payments: loadPayments,
     logs: loadLogs,
     fonioActivity: loadFonioActivity,
     fonio: loadFonio,
@@ -1295,6 +1296,85 @@ async function loadRequests() {
         loadRequests();
       } catch (ex) {
         notify.error(t('requests.retryFail', { message: ex.message }));
+      }
+    });
+  });
+}
+
+async function loadPayments() {
+  const payments = await api('/payments/review-queue');
+  ensureTableToolbar('#payments-toolbar', 'payments', loadPayments);
+  const data = paginateClient(payments, 'payments', (p) => [
+    p.createdAt,
+    p.source,
+    p.status,
+    p.payerName,
+    p.reference,
+    p.matchedReservation?.listing?.name,
+  ].join(' '));
+  const rows = data.items.map((p) => {
+    const reservation = p.matchedReservation;
+    const reservationLabel = reservation
+      ? `#${reservation.hostawayId} — ${reservation.listing?.name || ''}`
+      : '–';
+    const candidates = Array.isArray(p.matchCandidates) ? p.matchCandidates : [];
+    const assignOptions = candidates.map((c) =>
+      `<option value="${c.hostawayId}">#${c.hostawayId} ${c.listingName || ''} (${c.score})</option>`,
+    ).join('');
+    return `
+    <tr>
+      <td>${formatDateTime(p.createdAt)}</td>
+      <td>${p.source}</td>
+      <td>${p.amount.toFixed(2)} ${p.currency}</td>
+      <td>${p.payerName || '–'}<br><span class="field-hint">${p.reference || ''}</span></td>
+      <td><span class="badge manual">${p.matchDecision || p.status}</span></td>
+      <td>${reservationLabel}</td>
+      <td>
+        <select class="payment-assign-select" data-payment-id="${p.id}">
+          <option value="">${t('payments.pickReservation')}</option>
+          ${assignOptions}
+          ${reservation ? `<option value="${reservation.hostawayId}" selected>#${reservation.hostawayId}</option>` : ''}
+        </select>
+        <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
+        <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+      </td>
+    </tr>`;
+  }).join('');
+  $('#payments-table').innerHTML = `
+    <table><thead><tr>
+      <th>${t('payments.time')}</th><th>${t('payments.source')}</th><th>${t('payments.amount')}</th>
+      <th>${t('payments.payer')}</th><th>${t('payments.match')}</th><th>${t('payments.reservation')}</th><th>${t('payments.actions')}</th>
+    </tr></thead>
+    <tbody>${rows || `<tr><td colspan="7">${t('payments.none')}</td></tr>`}</tbody></table>`;
+  renderTableInfo('#payments-info', data, data.maxTotal);
+  renderPagination('#payments-pagination', data, 'payments', loadPayments);
+
+  $$('.payment-confirm-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const paymentId = btn.dataset.paymentId;
+      const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
+      const reservationHostawayId = select?.value ? Number(select.value) : undefined;
+      try {
+        await api(`/payments/${paymentId}/confirm`, {
+          method: 'POST',
+          body: JSON.stringify({ reservationHostawayId }),
+        });
+        notify.success(t('payments.confirmOk'));
+        loadPayments();
+      } catch (ex) {
+        notify.error(ex.message);
+      }
+    });
+  });
+
+  $$('.payment-skip-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api(`/payments/${btn.dataset.paymentId}/skip`, { method: 'POST', body: '{}' });
+        notify.success(t('payments.skipOk'));
+        loadPayments();
+      } catch (ex) {
+        notify.error(ex.message);
       }
     });
   });

@@ -60,6 +60,30 @@ enum LogLevel {
   SECURITY
 }
 
+enum ExternalPaymentSource {
+  QONTO
+  PAYPAL
+  MANUAL
+}
+
+enum ExternalPaymentStatus {
+  RECEIVED
+  PENDING_REVIEW
+  AUTO_APPLIED
+  MANUALLY_APPLIED
+  SKIPPED
+  FAILED
+}
+
+enum PaymentMatchDecision {
+  UNAMBIGUOUS
+  AMBIGUOUS
+  NO_MATCH
+  BULK_PAYMENT
+  REFUND
+  PARTIAL_UNCLEAR
+}
+
 model AdminUser {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -148,6 +172,7 @@ model Reservation {
   paymentBaselinedAt DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
+  externalPayments   ExternalPayment[]
   lastSyncedAt       DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
@@ -169,6 +194,38 @@ model NotifiedGuestCharge {
   notifiedAt        DateTime    @default(now())
 
   @@index([reservationId])
+}
+
+model ExternalPayment {
+  id                     String                 @id @default(uuid())
+  source                 ExternalPaymentSource
+  externalId             String
+  amount                 Float
+  currency               String                 @default("EUR")
+  occurredAt             DateTime
+  payerName              String?
+  payerEmail             String?
+  reference              String?
+  rawPayload             Json
+  status                 ExternalPaymentStatus  @default(RECEIVED)
+  matchDecision          PaymentMatchDecision?
+  matchScore             Float?
+  matchReason            String?
+  matchCandidates        Json?
+  matchedReservationId   String?
+  matchedReservation     Reservation?           @relation(fields: [matchedReservationId], references: [id])
+  hostawayChargeId       Int?
+  reviewedBy             String?
+  reviewedAt             DateTime?
+  reviewNote             String?
+  error                  String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  @@unique([source, externalId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([matchedReservationId])
 }
 
 model VerificationConfig {

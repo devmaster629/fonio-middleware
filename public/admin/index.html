@@ -47,6 +47,7 @@
         <button data-tab="conversations" class="nav-btn" data-i18n="nav.conversations">Conversations</button>
         <button data-tab="rules" class="nav-btn" data-i18n="nav.rules">Rules</button>
         <button data-tab="requests" class="nav-btn" data-i18n="nav.requests">Guest requests</button>
+        <button data-tab="payments" class="nav-btn" data-i18n="nav.payments">Payments</button>
         <button data-tab="logs" class="nav-btn" data-i18n="nav.logs">Audit log</button>
         <button data-tab="fonioActivity" class="nav-btn" data-i18n="nav.fonioActivity">fonio Activity</button>
         <button data-tab="fonio" class="nav-btn" data-i18n="nav.fonio">fonio Setup</button>
@@ -252,6 +253,17 @@
         <div class="table-wrap" id="requests-table"></div>
         <div id="requests-info" class="table-info"></div>
         <div id="requests-pagination" class="table-pagination"></div>
+      </section>
+
+      <section id="tab-payments" class="tab hidden">
+        <header class="page-header">
+          <h2 data-i18n="payments.title">Payment reconciliation</h2>
+        </header>
+        <p class="field-hint" data-i18n="payments.hint">Imported Qonto/PayPal payments. Unambiguous matches are applied automatically; unclear ones appear here for one-click review.</p>
+        <div id="payments-toolbar" class="table-toolbar"></div>
+        <div class="table-wrap" id="payments-table"></div>
+        <div id="payments-info" class="table-info"></div>
+        <div id="payments-pagination" class="table-pagination"></div>
       </section>
 
       <section id="tab-logs" class="tab hidden">
