@@ -23,6 +23,7 @@ import {
   SkipPaymentReviewDto,
 } from './dto/payment.dto';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
+import { QontoPollService } from './qonto-poll.service';
 
 @ApiTags('admin-payments')
 @ApiBearerAuth()
@@ -32,6 +33,7 @@ export class PaymentAdminController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reconciliation: PaymentReconciliationService,
+    private readonly qontoPoll: QontoPollService,
   ) {}
 
   @Get('review-queue')
@@ -92,6 +94,13 @@ export class PaymentAdminController {
     });
     if (!payment) throw new NotFoundException('Payment not found');
     return payment;
+  }
+
+  @Post('qonto-poll')
+  @Roles(AdminRole.ADMIN)
+  @ApiOperation({ summary: 'Manually poll recent Qonto credit transactions' })
+  async pollQonto() {
+    return this.qontoPoll.pollOnce();
   }
 
   @Post('ingest-manual')

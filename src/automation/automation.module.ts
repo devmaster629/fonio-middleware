@@ -5,6 +5,9 @@ import { PaymentApplyService } from './payment-apply.service';
 import { PaymentIngestService } from './payment-ingest.service';
 import { PaymentMatcherService } from './payment-matcher.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
+import { QontoClient } from './qonto.client';
+import { QontoPollScheduler } from './qonto-poll.scheduler';
+import { QontoPollService } from './qonto-poll.service';
 
 @Module({
   imports: [HostawayModule],
@@ -14,12 +17,16 @@ import { PaymentReconciliationService } from './payment-reconciliation.service';
     PaymentIngestService,
     PaymentReconciliationService,
     PaymentApplyService,
+    QontoClient,
+    QontoPollService,
+    QontoPollScheduler,
   ],
   exports: [
     PaymentIngestService,
     PaymentReconciliationService,
     PaymentMatcherService,
     PaymentApplyService,
+    QontoPollService,
   ],
 })
 export class AutomationModule {}

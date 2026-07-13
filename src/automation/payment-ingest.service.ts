@@ -5,20 +5,19 @@ import { NormalizedExternalPayment } from './automation.types';
 @Injectable()
 export class PaymentIngestService {
   normalizeQontoPayload(payload: Record<string, unknown>): NormalizedExternalPayment | null {
-    const transaction = (payload.transaction ?? payload) as Record<string, unknown>;
-    const externalId = String(transaction.id ?? transaction.transaction_id ?? '');
+    const data = (payload.data ?? payload) as Record<string, unknown>;
+    const transaction = (data.transaction ??
+      payload.transaction ??
+      data ??
+      payload) as Record<string, unknown>;
+    const externalId = String(
+      transaction.transaction_id ?? transaction.id ?? '',
+    );
     if (!externalId) return null;
 
-    const amountRaw = Number(
-      transaction.amount ??
-        transaction.settled_balance ??
-        transaction.amount_cents ??
-        0,
-    );
-    const amount =
-      Math.abs(amountRaw) > 1000 && Number.isInteger(amountRaw)
-        ? amountRaw / 100
-        : Math.abs(amountRaw);
+    // Qonto amounts are always positive; side decides credit/debit.
+    const amount = Math.abs(Number(transaction.amount ?? 0));
+    if (!Number.isFinite(amount) || amount <= 0) return null;
 
     const reference = [
       transaction.reference,
@@ -28,7 +27,7 @@ export class PaymentIngestService {
     ]
       .filter(Boolean)
       .map(String)
-      .join(' ');
+      .join(' | ');
 
     return {
       source: ExternalPaymentSource.QONTO,
@@ -38,11 +37,13 @@ export class PaymentIngestService {
       occurredAt: new Date(
         String(transaction.settled_at ?? transaction.emitted_at ?? Date.now()),
       ),
-      payerName: this.pickString(transaction, [
-        'counterparty_name',
-        'label',
-        'debtor_name',
-      ]),
+      payerName:
+        this.pickString(transaction, [
+          'clean_counterparty_name',
+          'counterparty_name',
+          'label',
+          'debtor_name',
+        ]) ?? undefined,
       payerEmail: this.pickString(transaction, ['counterparty_email']),
       reference: reference || undefined,
       rawPayload: payload,
