@@ -20,6 +20,7 @@ const tableState = {
   conversations: { page: 1, pageSize: 10, search: '' },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  payments: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   webhooks: { page: 1, pageSize: 10, search: '' },
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
@@ -1302,9 +1303,11 @@ async function loadRequests() {
 }
 
 async function loadPayments() {
-  const payments = await api('/payments/review-queue');
-  ensureTableToolbar('#payments-toolbar', 'payments', loadPayments);
-  const data = paginateClient(payments, 'payments', (p) => [
+  try {
+    const response = await api('/payments/review-queue');
+    const paymentList = Array.isArray(response) ? response : (response.items || []);
+    ensureTableToolbar('#payments-toolbar', 'payments', loadPayments);
+    const data = paginateClient(paymentList, 'payments', (p) => [
     p.createdAt,
     p.source,
     p.status,
@@ -1378,6 +1381,10 @@ async function loadPayments() {
       }
     });
   });
+  } catch (ex) {
+    notify.error(ex.message);
+    $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+  }
 }
 
 $('#inbox-backfill-btn')?.addEventListener('click', async () => {

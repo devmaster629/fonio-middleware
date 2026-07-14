@@ -10,6 +10,9 @@ const VPS_USER = process.env.VPS_USER ?? 'root';
 const VPS_PASS = process.env.VPS_PASSWORD;
 const APP_DIR = process.env.DEPLOY_APP_DIR ?? '/root/fonio-middleware';
 const DOMAIN = process.env.DOMAIN ?? 'vermietung.brainions.digital';
+const REPO_URL =
+  process.env.DEPLOY_REPO_URL ??
+  'https://github.com/devmaster629/fonio-middleware.git';
 
 if (!VPS_PASS) {
   console.error('ERROR: Set VPS_PASSWORD environment variable');
@@ -55,7 +58,7 @@ conn
 
       await exec(
         conn,
-        `cd "${APP_DIR}" && git fetch origin && git pull origin master`,
+        `cd "${APP_DIR}" && git remote set-url origin "${REPO_URL}" && git fetch origin && git pull origin master`,
         300_000,
       );
 

@@ -17,7 +17,7 @@ const VPS_USER = process.env.VPS_USER ?? 'root';
 const VPS_PASS = process.env.VPS_PASSWORD;
 const REPO_URL =
   process.env.DEPLOY_REPO_URL ??
-  'https://github.com/mastertomas/fonio-middleware.git';
+  'https://github.com/devmaster629/fonio-middleware.git';
 const APP_DIR = process.env.DEPLOY_APP_DIR ?? '/root/fonio-middleware';
 const DOMAIN = 'vermietung.brainions.digital';
 

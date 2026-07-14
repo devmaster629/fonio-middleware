@@ -8,6 +8,7 @@ import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { QontoClient } from './qonto.client';
 import { QontoPollScheduler } from './qonto-poll.scheduler';
 import { QontoPollService } from './qonto-poll.service';
+import { PayPalClient } from './paypal.client';
 
 @Module({
   imports: [HostawayModule],
@@ -20,6 +21,7 @@ import { QontoPollService } from './qonto-poll.service';
     QontoClient,
     QontoPollService,
     QontoPollScheduler,
+    PayPalClient,
   ],
   exports: [
     PaymentIngestService,
@@ -27,6 +29,7 @@ import { QontoPollService } from './qonto-poll.service';
     PaymentMatcherService,
     PaymentApplyService,
     QontoPollService,
+    PayPalClient,
   ],
 })
 export class AutomationModule {}

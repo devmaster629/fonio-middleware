@@ -71,6 +71,8 @@ cp .env /tmp/fonio-env.backup
 # remove tracked files carefully: extract over tree
 tar -xzf /tmp/fonio-deploy.tgz -C "${APP_DIR}"
 cp /tmp/fonio-env.backup .env
+sed -i 's/\\r$//' scripts/docker-entrypoint.sh
+chmod +x scripts/docker-entrypoint.sh
 rm -f /tmp/fonio-deploy.tgz /tmp/fonio-env.backup
 git status || true
 echo HEAD_LOCAL_DEPLOYED`,
