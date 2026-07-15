@@ -449,6 +449,10 @@ export class HostawaySyncService implements OnModuleInit {
         remote.guestFirstName?.trim() ||
         remote.guestName?.trim().split(/\s+/)[0] ||
         null,
+      totalPrice:
+        typeof remote.totalPrice === 'number' && Number.isFinite(remote.totalPrice)
+          ? remote.totalPrice
+          : null,
       lastSyncedAt: new Date(),
     };
 

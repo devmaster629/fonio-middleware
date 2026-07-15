@@ -122,7 +122,7 @@ export class PaymentMatcherService {
         arrivalDate: { lte: lookahead },
         status: { notIn: ['cancelled', 'declined', 'expired'] },
       },
-      include: { listing: true },
+      include: { listing: true, notifiedCharges: true },
       take: 500,
       orderBy: { arrivalDate: 'asc' },
     });
@@ -136,7 +136,9 @@ export class PaymentMatcherService {
       guestEmail: string | null;
       arrivalDate: Date;
       departureDate: Date;
+      totalPrice: number | null;
       listing: { name: string; aliases: string[] };
+      notifiedCharges: { amount: number }[];
     },
     payment: NormalizedExternalPayment,
     referenceText: string,
@@ -196,6 +198,12 @@ export class PaymentMatcherService {
       reasons.push('Payment amount aligns with reference');
     }
 
+    const balanceScore = this.scoreBalanceDue(payment.amount, reservation);
+    if (balanceScore.score > 0) {
+      score += balanceScore.score;
+      reasons.push(balanceScore.reason);
+    }
+
     return {
       reservationId: reservation.id,
       hostawayId: reservation.hostawayId,
@@ -206,6 +214,53 @@ export class PaymentMatcherService {
       score,
       reasons,
     };
+  }
+
+  /**
+   * Compare the payment amount against the reservation total and its
+   * outstanding balance (total minus paid charges we already recorded).
+   */
+  private scoreBalanceDue(
+    amount: number,
+    reservation: {
+      totalPrice: number | null;
+      notifiedCharges: { amount: number }[];
+    },
+  ): { score: number; reason: string } {
+    const total = reservation.totalPrice;
+    if (!total || total <= 0) return { score: 0, reason: '' };
+
+    const paid = reservation.notifiedCharges.reduce(
+      (sum, charge) => sum + (charge.amount > 0 ? charge.amount : 0),
+      0,
+    );
+    const balanceDue = Math.max(0, total - paid);
+
+    if (balanceDue > 0 && this.amountsMatch(amount, balanceDue)) {
+      return {
+        score: 25,
+        reason: `Amount equals outstanding balance (${balanceDue.toFixed(2)})`,
+      };
+    }
+    if (this.amountsMatch(amount, total)) {
+      return {
+        score: 20,
+        reason: `Amount equals reservation total (${total.toFixed(2)})`,
+      };
+    }
+    // Common deposit patterns: half or 30% of the total price
+    if (this.amountsMatch(amount, total * 0.5) || this.amountsMatch(amount, total * 0.3)) {
+      return {
+        score: 10,
+        reason: 'Amount matches a typical deposit share of the total',
+      };
+    }
+    return { score: 0, reason: '' };
+  }
+
+  private amountsMatch(a: number, b: number): boolean {
+    const tolerance = Math.max(0.01, b * 0.005);
+    return Math.abs(a - b) <= tolerance;
   }
 
   private scoreAmount(amount: number, referenceText: string): number {

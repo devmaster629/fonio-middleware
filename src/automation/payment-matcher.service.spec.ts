@@ -86,4 +86,46 @@ describe('PaymentMatcherService', () => {
     expect(['AMBIGUOUS', 'PARTIAL_UNCLEAR']).toContain(result.decision);
     expect((result.candidates?.length ?? 0)).toBeGreaterThan(1);
   });
+
+  it('boosts score when amount equals outstanding balance', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-1',
+        hostawayId: 62144308,
+        guestName: 'Max Mustermann',
+        guestEmail: 'max@example.com',
+        arrivalDate: new Date('2026-08-08'),
+        departureDate: new Date('2026-08-10'),
+        totalPrice: 1000,
+        notifiedCharges: [{ amount: 300 }],
+        listing: { name: 'Wiesenblick', aliases: [] },
+      },
+      {
+        id: 'res-2',
+        hostawayId: 62571674,
+        guestName: 'Max Mustermann',
+        guestEmail: 'other@example.com',
+        arrivalDate: new Date('2026-09-01'),
+        departureDate: new Date('2026-09-05'),
+        totalPrice: 2500,
+        notifiedCharges: [],
+        listing: { name: 'Bergdomizil', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-3',
+      amount: 700,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Max Mustermann',
+      reference: 'Restzahlung',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.best?.hostawayId).toBe(62144308);
+    expect(result.best?.reasons.join(' ')).toContain('outstanding balance');
+  });
 });

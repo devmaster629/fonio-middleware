@@ -168,6 +168,7 @@ model Reservation {
   emailHash          String?
   guestNameMasked    String?
   guestFirstNameHint String?
+  totalPrice         Float?
   hostawayConversationId Int?
   paymentBaselinedAt DateTime?
   guestRequests      GuestRequest[]

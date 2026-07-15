@@ -56,6 +56,7 @@ export interface HostawayReservation {
   guestLastName?: string | null;
   guestEmail: string | null;
   phone: string | null;
+  totalPrice?: number | null;
 }
 
 export interface HostawayConversation {

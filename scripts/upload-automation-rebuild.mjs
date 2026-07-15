@@ -11,7 +11,7 @@ const ARCHIVE = join(process.cwd(), 'automation-upload.tgz');
 if (!VPS_PASS) process.exit(1);
 
 execSync(
-  'tar -czf automation-upload.tgz src/automation src/webhooks/qonto-webhook.controller.ts src/webhooks/paypal-webhook.controller.ts src/webhooks/webhooks.module.ts src/app.module.ts .env.example',
+  'tar -czf automation-upload.tgz src/automation src/hostaway/hostaway.types.ts src/hostaway/hostaway-sync.service.ts src/webhooks/qonto-webhook.controller.ts src/webhooks/paypal-webhook.controller.ts src/webhooks/webhooks.module.ts src/app.module.ts prisma/schema.prisma prisma/migrations public/admin/app.js public/admin/index.html public/admin/i18n.js .env.example',
   { stdio: 'inherit' },
 );
 

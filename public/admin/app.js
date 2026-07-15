@@ -21,6 +21,7 @@ const tableState = {
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   payments: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  paymentsHistory: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   webhooks: { page: 1, pageSize: 10, search: '' },
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
@@ -1302,7 +1303,68 @@ async function loadRequests() {
   });
 }
 
+let paymentsView = 'queue';
+
+$$('#payments-view-toggle [data-payments-view]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    paymentsView = btn.dataset.paymentsView;
+    $$('#payments-view-toggle [data-payments-view]').forEach((b) => {
+      b.classList.toggle('primary', b === btn);
+      b.classList.toggle('ghost', b !== btn);
+    });
+    loadPayments();
+  });
+});
+
+function paymentStatusBadge(status) {
+  const cls =
+    status === 'AUTO_APPLIED' || status === 'MANUALLY_APPLIED'
+      ? 'live'
+      : status === 'FAILED'
+        ? 'manual'
+        : status === 'PENDING_REVIEW'
+          ? 'manual'
+          : 'auto';
+  const label = t(`payments.status.${status}`) || status;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+const reservationSearchCache = new Map();
+
+function bindReservationSearchInputs() {
+  $$('.payment-assign-manual').forEach((input) => {
+    input.addEventListener('input', () => {
+      const q = input.value.trim();
+      const listId = input.getAttribute('list');
+      const datalist = listId ? document.getElementById(listId) : null;
+      if (!datalist || q.length < 2 || /^#?\d+$/.test(q)) return;
+      clearTimeout(searchTimers[`res-search-${listId}`]);
+      searchTimers[`res-search-${listId}`] = setTimeout(async () => {
+        try {
+          let items = reservationSearchCache.get(q);
+          if (!items) {
+            const res = await api(`/reservations?search=${encodeURIComponent(q)}&pageSize=20`);
+            items = res.items || [];
+            reservationSearchCache.set(q, items);
+          }
+          datalist.innerHTML = items.map((r) =>
+            `<option value="#${r.hostawayId} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} (${formatDate(r.arrivalDate)})"></option>`,
+          ).join('');
+        } catch {
+          /* search is best-effort */
+        }
+      }, 300);
+    });
+  });
+}
+
+function parseReservationIdInput(value) {
+  const match = String(value || '').match(/#?(\d{5,10})/);
+  return match ? Number(match[1]) : undefined;
+}
+
 async function loadPayments() {
+  if (paymentsView === 'history') return loadPaymentsHistory();
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
@@ -1321,9 +1383,21 @@ async function loadPayments() {
       ? `#${reservation.hostawayId} — ${reservation.listing?.name || ''}`
       : '–';
     const candidates = Array.isArray(p.matchCandidates) ? p.matchCandidates : [];
-    const assignOptions = candidates.map((c) =>
-      `<option value="${c.hostawayId}">#${c.hostawayId} ${c.listingName || ''} (${c.score})</option>`,
-    ).join('');
+    const seenIds = new Set();
+    const assignOptions = [];
+    for (const c of candidates) {
+      const id = Number(c.hostawayId);
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+      assignOptions.push(
+        `<option value="${id}">#${id} ${esc(c.listingName || '')} (${c.score})</option>`,
+      );
+    }
+    if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
+      assignOptions.push(
+        `<option value="${reservation.hostawayId}" selected>#${reservation.hostawayId} ${esc(reservation.listing?.name || '')}</option>`,
+      );
+    }
     return `
     <tr>
       <td>${formatDateTime(p.createdAt)}</td>
@@ -1332,12 +1406,16 @@ async function loadPayments() {
       <td>${p.payerName || '–'}<br><span class="field-hint">${p.reference || ''}</span></td>
       <td><span class="badge manual">${p.matchDecision || p.status}</span></td>
       <td>${reservationLabel}</td>
-      <td>
+      <td class="payment-actions-cell">
         <select class="payment-assign-select" data-payment-id="${p.id}">
           <option value="">${t('payments.pickReservation')}</option>
-          ${assignOptions}
-          ${reservation ? `<option value="${reservation.hostawayId}" selected>#${reservation.hostawayId}</option>` : ''}
+          ${assignOptions.join('')}
         </select>
+        <input type="text" class="payment-assign-manual" data-payment-id="${p.id}"
+          list="payment-res-list-${p.id}" autocomplete="off"
+          placeholder="${t('payments.manualReservationId')}"
+          title="${t('payments.manualReservationHint')}" />
+        <datalist id="payment-res-list-${p.id}"></datalist>
         <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
         <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
       </td>
@@ -1351,12 +1429,16 @@ async function loadPayments() {
     <tbody>${rows || `<tr><td colspan="7">${t('payments.none')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
+  bindReservationSearchInputs();
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const paymentId = btn.dataset.paymentId;
       const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
-      const reservationHostawayId = select?.value ? Number(select.value) : undefined;
+      const manual = $(`.payment-assign-manual[data-payment-id="${paymentId}"]`);
+      const fromSelect = select?.value ? Number(select.value) : undefined;
+      const fromManual = parseReservationIdInput(manual?.value);
+      const reservationHostawayId = fromManual || fromSelect || undefined;
       try {
         await api(`/payments/${paymentId}/confirm`, {
           method: 'POST',
@@ -1381,6 +1463,66 @@ async function loadPayments() {
       }
     });
   });
+  } catch (ex) {
+    notify.error(ex.message);
+    $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+  }
+}
+
+async function loadPaymentsHistory() {
+  try {
+    const response = await api('/payments?pageSize=100');
+    const paymentList = Array.isArray(response) ? response : (response.items || []);
+    ensureTableToolbar('#payments-toolbar', 'paymentsHistory', loadPayments);
+    const data = paginateClient(paymentList, 'paymentsHistory', (p) => [
+      p.createdAt,
+      p.source,
+      p.status,
+      p.payerName,
+      p.reference,
+      p.reviewedBy,
+      p.matchedReservation?.listing?.name,
+      p.matchedReservation?.hostawayId,
+    ].join(' '));
+    const rows = data.items.map((p) => {
+      const reservation = p.matchedReservation;
+      const reservationLabel = reservation
+        ? `#${reservation.hostawayId} — ${esc(reservation.listing?.name || '')}`
+        : '–';
+      const retryBtn = p.status === 'FAILED' || p.status === 'RECEIVED'
+        ? `<button type="button" class="btn ghost btn-sm payment-retry-btn" data-payment-id="${p.id}">${t('payments.retry')}</button>`
+        : '';
+      return `
+      <tr>
+        <td>${formatDateTime(p.createdAt)}</td>
+        <td>${p.source}</td>
+        <td>${p.amount.toFixed(2)} ${p.currency}</td>
+        <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
+        <td>${paymentStatusBadge(p.status)}${p.error ? `<br><span class="field-hint">${esc(p.error)}</span>` : ''}</td>
+        <td>${reservationLabel}</td>
+        <td>${esc(p.reviewedBy || '–')} ${retryBtn}</td>
+      </tr>`;
+    }).join('');
+    $('#payments-table').innerHTML = `
+      <table><thead><tr>
+        <th>${t('payments.time')}</th><th>${t('payments.source')}</th><th>${t('payments.amount')}</th>
+        <th>${t('payments.payer')}</th><th>${t('payments.status')}</th><th>${t('payments.reservation')}</th><th>${t('payments.reviewedBy')}</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="7">${t('payments.historyNone')}</td></tr>`}</tbody></table>`;
+    renderTableInfo('#payments-info', data, data.maxTotal);
+    renderPagination('#payments-pagination', data, 'paymentsHistory', loadPayments);
+
+    $$('.payment-retry-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await api(`/payments/${btn.dataset.paymentId}/retry`, { method: 'POST', body: '{}' });
+          notify.success(t('payments.retryOk'));
+          loadPayments();
+        } catch (ex) {
+          notify.error(ex.message);
+        }
+      });
+    });
   } catch (ex) {
     notify.error(ex.message);
     $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
