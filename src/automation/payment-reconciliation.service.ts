@@ -126,18 +126,14 @@ export class PaymentReconciliationService {
       }
     }
 
-    const reviewDecisions = new Set<PaymentMatchDecision>([
-      PaymentMatchDecision.AMBIGUOUS,
-      PaymentMatchDecision.NO_MATCH,
+    const skipDecisions = new Set<PaymentMatchDecision>([
       PaymentMatchDecision.BULK_PAYMENT,
-      PaymentMatchDecision.PARTIAL_UNCLEAR,
+      PaymentMatchDecision.REFUND,
+      PaymentMatchDecision.PLATFORM_PAYOUT,
     ]);
 
-    const status = reviewDecisions.has(match.decision)
-      ? match.decision === PaymentMatchDecision.BULK_PAYMENT ||
-        match.decision === PaymentMatchDecision.REFUND
-        ? ExternalPaymentStatus.SKIPPED
-        : ExternalPaymentStatus.PENDING_REVIEW
+    const status = skipDecisions.has(match.decision)
+      ? ExternalPaymentStatus.SKIPPED
       : ExternalPaymentStatus.PENDING_REVIEW;
 
     const updated = await this.prisma.externalPayment.update({

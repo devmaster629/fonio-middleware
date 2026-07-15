@@ -82,6 +82,7 @@ enum PaymentMatchDecision {
   BULK_PAYMENT
   REFUND
   PARTIAL_UNCLEAR
+  PLATFORM_PAYOUT
 }
 
 model AdminUser {

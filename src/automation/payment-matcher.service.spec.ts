@@ -128,4 +128,21 @@ describe('PaymentMatcherService', () => {
     expect(result.best?.hostawayId).toBe(62144308);
     expect(result.best?.reasons.join(' ')).toContain('outstanding balance');
   });
+
+  it('auto-skips Airbnb platform payouts', async () => {
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-4',
+      amount: 613.05,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'AIRBNB PAYMENTS LUXEMBOURG S.A.',
+      reference: 'Airbnb | income',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('PLATFORM_PAYOUT');
+    expect(prisma.reservation.findMany).not.toHaveBeenCalled();
+  });
 });

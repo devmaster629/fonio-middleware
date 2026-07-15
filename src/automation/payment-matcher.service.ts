@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PaymentMatchDecision } from '@prisma/client';
 import { hashValue } from '../common/utils/crypto.util';
 import { listingNameMatches } from '../common/utils/listing-name-match.util';
@@ -13,9 +14,21 @@ import {
 
 @Injectable()
 export class PaymentMatcherService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config?: ConfigService,
+  ) {}
 
   async match(payment: NormalizedExternalPayment): Promise<PaymentMatchResult> {
+    const payoutSender = this.detectPlatformPayout(payment);
+    if (payoutSender) {
+      return {
+        decision: PaymentMatchDecision.PLATFORM_PAYOUT,
+        candidates: [],
+        reason: `Channel payout from "${payoutSender}" — guest already paid via the platform`,
+      };
+    }
+
     if (payment.amount <= 0) {
       return {
         decision: PaymentMatchDecision.REFUND,
@@ -214,6 +227,26 @@ export class PaymentMatcherService {
       score,
       reasons,
     };
+  }
+
+  /**
+   * Channel payouts (Airbnb, optionally Booking.com) are aggregated transfers
+   * from the platform itself — the guest already paid there, so applying them
+   * as guest payments would double-count. Detection is by payer name only, so
+   * direct guest payments are never affected.
+   */
+  private detectPlatformPayout(payment: NormalizedExternalPayment): string | null {
+    const payer = (payment.payerName ?? '').toLowerCase();
+    if (!payer) return null;
+    const configured = this.config?.get<string>('PAYMENT_PLATFORM_PAYOUT_SENDERS');
+    const patterns = (configured ?? 'airbnb')
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter(Boolean);
+    for (const pattern of patterns) {
+      if (payer.includes(pattern)) return payment.payerName ?? pattern;
+    }
+    return null;
   }
 
   /**
