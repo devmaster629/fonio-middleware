@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HostawayModule } from '../hostaway/hostaway.module';
 import { PaymentAdminController } from './payment-admin.controller';
+import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentIngestService } from './payment-ingest.service';
 import { PaymentMatcherService } from './payment-matcher.service';
@@ -17,6 +18,7 @@ import { PayPalClient } from './paypal.client';
     PaymentMatcherService,
     PaymentIngestService,
     PaymentReconciliationService,
+    PaymentAlertService,
     PaymentApplyService,
     QontoClient,
     QontoPollService,
@@ -27,6 +29,7 @@ import { PayPalClient } from './paypal.client';
     PaymentIngestService,
     PaymentReconciliationService,
     PaymentMatcherService,
+    PaymentAlertService,
     PaymentApplyService,
     QontoPollService,
     PayPalClient,

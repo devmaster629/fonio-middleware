@@ -3,6 +3,7 @@ import { ExternalPaymentSource } from '@prisma/client';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
 import { PaymentInboxService } from '../hostaway/payment-inbox.service';
+import { PaymentAlertService } from './payment-alert.service';
 
 @Injectable()
 export class PaymentApplyService {
@@ -12,6 +13,7 @@ export class PaymentApplyService {
     private readonly hostaway: HostawayClient,
     private readonly inbox: GuestRequestInboxService,
     private readonly paymentInbox: PaymentInboxService,
+    private readonly alerts: PaymentAlertService,
   ) {}
 
   async applyToReservation(params: {
@@ -21,6 +23,8 @@ export class PaymentApplyService {
     source: ExternalPaymentSource;
     reference?: string;
     occurredAt?: Date;
+    appliedMode?: 'automatic' | 'manual';
+    reviewedBy?: string;
   }): Promise<{ chargeId: number; inboxMessageId?: number }> {
     const paymentMethod =
       params.source === ExternalPaymentSource.PAYPAL
@@ -71,6 +75,18 @@ export class PaymentApplyService {
     this.logger.log(
       `Applied external payment to reservation ${params.reservationHostawayId} (charge ${charge.id})`,
     );
+
+    await this.alerts.notifyApplied({
+      reservationHostawayId: params.reservationHostawayId,
+      amount: params.amount,
+      currency: params.currency,
+      source: params.source,
+      reference: params.reference,
+      occurredAt: params.occurredAt,
+      appliedMode: params.appliedMode ?? 'automatic',
+      reviewedBy: params.reviewedBy,
+      chargeId: charge.id,
+    });
 
     return {
       chargeId: charge.id,

@@ -91,6 +91,7 @@ export class PaymentReconciliationService {
           source: payment.source,
           reference: payment.reference ?? undefined,
           occurredAt: payment.occurredAt,
+          appliedMode: 'automatic',
         });
 
         const updated = await this.prisma.externalPayment.update({
@@ -192,6 +193,8 @@ export class PaymentReconciliationService {
       source: payment.source,
       reference: payment.reference ?? undefined,
       occurredAt: payment.occurredAt,
+      appliedMode: 'manual',
+      reviewedBy: reviewerEmail,
     });
 
     return this.prisma.externalPayment.update({
