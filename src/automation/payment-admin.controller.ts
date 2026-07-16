@@ -49,7 +49,7 @@ export class PaymentAdminController {
         where,
         include: {
           matchedReservation: {
-            include: { listing: true },
+            include: { listing: true, notifiedCharges: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -57,7 +57,68 @@ export class PaymentAdminController {
         take: pageSize,
       }),
     ]);
-    return paginated(items, total, page, pageSize);
+
+    // Enrich stored match candidates with live booking amount / dates so
+    // reviewers can verify suggestions without re-running the matcher.
+    const candidateIds = new Set<number>();
+    for (const item of items) {
+      const candidates = Array.isArray(item.matchCandidates)
+        ? (item.matchCandidates as Array<{ hostawayId?: number }>)
+        : [];
+      for (const c of candidates) {
+        if (c?.hostawayId) candidateIds.add(Number(c.hostawayId));
+      }
+      if (item.matchedReservation?.hostawayId) {
+        candidateIds.add(item.matchedReservation.hostawayId);
+      }
+    }
+    const liveReservations =
+      candidateIds.size === 0
+        ? []
+        : await this.prisma.reservation.findMany({
+            where: { hostawayId: { in: [...candidateIds] } },
+            include: { listing: true, notifiedCharges: true },
+          });
+    const byHostawayId = new Map(liveReservations.map((r) => [r.hostawayId, r]));
+
+    const enriched = items.map((item) => {
+      const candidates = Array.isArray(item.matchCandidates)
+        ? (item.matchCandidates as Array<Record<string, unknown>>)
+        : [];
+      const matchCandidates = candidates.map((c) => {
+        const id = Number(c.hostawayId);
+        const live = Number.isFinite(id) ? byHostawayId.get(id) : undefined;
+        if (!live) return c;
+        const totalPrice =
+          live.totalPrice != null && Number.isFinite(live.totalPrice)
+            ? live.totalPrice
+            : null;
+        const paid = live.notifiedCharges.reduce(
+          (sum, charge) => sum + (Number(charge.amount) || 0),
+          0,
+        );
+        const balanceDue =
+          totalPrice != null
+            ? Math.max(0, Math.round((totalPrice - paid) * 100) / 100)
+            : null;
+        return {
+          ...c,
+          guestName: c.guestName ?? live.guestName,
+          listingName: c.listingName ?? live.listing.name,
+          arrivalDate:
+            (c.arrivalDate as string) ||
+            live.arrivalDate.toISOString().slice(0, 10),
+          departureDate:
+            (c.departureDate as string) ||
+            live.departureDate.toISOString().slice(0, 10),
+          totalPrice: c.totalPrice ?? totalPrice,
+          balanceDue: c.balanceDue ?? balanceDue,
+        };
+      });
+      return { ...item, matchCandidates };
+    });
+
+    return paginated(enriched, total, page, pageSize);
   }
 
   @Get()

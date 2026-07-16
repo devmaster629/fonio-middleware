@@ -1316,6 +1316,61 @@ function paymentStatusBadge(status) {
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
+function formatMoney(amount, currency = 'EUR') {
+  if (amount == null || !Number.isFinite(Number(amount))) return '–';
+  return `${Number(amount).toFixed(2)} ${currency}`;
+}
+
+function formatStayDates(arrival, departure) {
+  if (!arrival && !departure) return '';
+  return `${formatDate(arrival)}${departure ? ` → ${formatDate(departure)}` : ''}`;
+}
+
+/** Compact label for dropdown / search options */
+function formatReservationOption(c, currency = 'EUR') {
+  const id = c.hostawayId ?? c.id;
+  const guest = c.guestName || '';
+  const listing = c.listingName || c.listing?.name || '';
+  const dates = formatStayDates(c.arrivalDate, c.departureDate);
+  const total = c.totalPrice != null ? formatMoney(c.totalPrice, currency) : '';
+  const balance = c.balanceDue != null ? formatMoney(c.balanceDue, currency) : '';
+  const score = c.score != null ? `score ${c.score}` : '';
+  return [
+    `#${id}`,
+    guest,
+    listing,
+    dates,
+    total ? `total ${total}` : '',
+    balance && balance !== total ? `due ${balance}` : '',
+    score,
+  ].filter(Boolean).join(' — ');
+}
+
+function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
+  const src = reservation || candidate;
+  if (!src) return '–';
+  const hostawayId = reservation?.hostawayId ?? candidate?.hostawayId;
+  const guest = reservation?.guestName ?? candidate?.guestName;
+  const listing = reservation?.listing?.name ?? candidate?.listingName;
+  const arrival = reservation?.arrivalDate ?? candidate?.arrivalDate;
+  const departure = reservation?.departureDate ?? candidate?.departureDate;
+  const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
+  const balanceDue = candidate?.balanceDue;
+  const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
+
+  return `<div class="payment-suggestion">
+    <div class="payment-suggestion-title">#${hostawayId}${guest ? ` — ${esc(guest)}` : ''}</div>
+    <div class="field-hint">${esc(listing || '–')}</div>
+    <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
+    <div class="field-hint">${t('payments.bookingAmount')}: ${esc(formatMoney(totalPrice, currency))}${
+      balanceDue != null
+        ? ` · ${t('payments.balanceDue')}: ${esc(formatMoney(balanceDue, currency))}`
+        : ''
+    }</div>
+    ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${esc(reasons.join('; '))}</div>` : ''}
+  </div>`;
+}
+
 const reservationSearchCache = new Map();
 
 function bindReservationSearchInputs() {
@@ -1334,9 +1389,11 @@ function bindReservationSearchInputs() {
             items = res.items || [];
             reservationSearchCache.set(q, items);
           }
-          datalist.innerHTML = items.map((r) =>
-            `<option value="#${r.hostawayId} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} (${formatDate(r.arrivalDate)})"></option>`,
-          ).join('');
+          datalist.innerHTML = items.map((r) => {
+            const total = r.totalPrice != null ? ` · ${formatMoney(r.totalPrice)}` : '';
+            const dates = formatStayDates(r.arrivalDate, r.departureDate);
+            return `<option value="#${r.hostawayId} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} — ${esc(dates)}${esc(total)}"></option>`;
+          }).join('');
         } catch {
           /* search is best-effort */
         }
@@ -1366,33 +1423,47 @@ async function loadPayments() {
   ].join(' '));
   const rows = data.items.map((p) => {
     const reservation = p.matchedReservation;
-    const reservationLabel = reservation
-      ? `#${reservation.hostawayId} — ${reservation.listing?.name || ''}`
-      : '–';
     const candidates = Array.isArray(p.matchCandidates) ? p.matchCandidates : [];
+    const bestCandidate =
+      candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
+      candidates[0];
     const seenIds = new Set();
     const assignOptions = [];
     for (const c of candidates) {
       const id = Number(c.hostawayId);
       if (!id || seenIds.has(id)) continue;
       seenIds.add(id);
+      const selected = reservation?.hostawayId && Number(reservation.hostawayId) === id ? ' selected' : '';
       assignOptions.push(
-        `<option value="${id}">#${id} ${esc(c.listingName || '')} (${c.score})</option>`,
+        `<option value="${id}"${selected}>${esc(formatReservationOption(c, p.currency))}</option>`,
       );
     }
     if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
       assignOptions.push(
-        `<option value="${reservation.hostawayId}" selected>#${reservation.hostawayId} ${esc(reservation.listing?.name || '')}</option>`,
+        `<option value="${reservation.hostawayId}" selected>${esc(formatReservationOption({
+          hostawayId: reservation.hostawayId,
+          guestName: reservation.guestName,
+          listingName: reservation.listing?.name,
+          arrivalDate: reservation.arrivalDate,
+          departureDate: reservation.departureDate,
+          totalPrice: reservation.totalPrice,
+        }, p.currency))}</option>`,
       );
     }
+    const whyNotAuto = p.matchReason
+      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${esc(p.matchReason)}</div>`
+      : '';
     return `
     <tr>
       <td>${formatDateTime(p.createdAt)}</td>
       <td>${p.source}</td>
       <td>${p.amount.toFixed(2)} ${p.currency}</td>
-      <td>${p.payerName || '–'}<br><span class="field-hint">${p.reference || ''}</span></td>
-      <td><span class="badge manual">${p.matchDecision || p.status}</span></td>
-      <td>${reservationLabel}</td>
+      <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
+      <td>
+        <span class="badge manual">${esc(p.matchDecision || p.status)}</span>
+        ${whyNotAuto}
+      </td>
+      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency)}</td>
       <td class="payment-actions-cell">
         <select class="payment-assign-select" data-payment-id="${p.id}">
           <option value="">${t('payments.pickReservation')}</option>

@@ -22,6 +22,10 @@ export interface PaymentMatchCandidate {
   listingName: string;
   arrivalDate: string;
   departureDate: string;
+  /** Reservation total (booking amount), if known */
+  totalPrice: number | null;
+  /** Outstanding balance after notified charges, if known */
+  balanceDue: number | null;
   score: number;
   reasons: string[];
 }

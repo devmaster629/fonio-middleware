@@ -21,6 +21,8 @@ describe('PaymentMatcherService', () => {
         arrivalDate: new Date('2026-08-08'),
         departureDate: new Date('2026-08-10'),
         listing: { name: 'Wiesenblick', aliases: [] },
+        totalPrice: 250,
+        notifiedCharges: [],
       },
       {
         id: 'res-2',
@@ -30,6 +32,8 @@ describe('PaymentMatcherService', () => {
         arrivalDate: new Date('2026-09-01'),
         departureDate: new Date('2026-09-05'),
         listing: { name: 'Bergdomizil', aliases: [] },
+        totalPrice: 500,
+        notifiedCharges: [],
       },
     ]);
 
@@ -47,6 +51,8 @@ describe('PaymentMatcherService', () => {
     const result = await service.match(payment);
     expect(result.decision).toBe('UNAMBIGUOUS');
     expect(result.best?.hostawayId).toBe(62144308);
+    expect(result.best?.totalPrice).toBe(250);
+    expect(result.best?.arrivalDate).toBe('2026-08-08');
   });
 
   it('sends ambiguous payments to review', async () => {
@@ -59,6 +65,8 @@ describe('PaymentMatcherService', () => {
         arrivalDate: new Date('2026-08-08'),
         departureDate: new Date('2026-08-10'),
         listing: { name: 'Wiesenblick', aliases: [] },
+        totalPrice: 250,
+        notifiedCharges: [],
       },
       {
         id: 'res-2',
@@ -68,6 +76,8 @@ describe('PaymentMatcherService', () => {
         arrivalDate: new Date('2026-08-12'),
         departureDate: new Date('2026-08-14'),
         listing: { name: 'Wiesenblick 2', aliases: [] },
+        totalPrice: 250,
+        notifiedCharges: [],
       },
     ]);
 

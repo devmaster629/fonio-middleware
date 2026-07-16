@@ -217,6 +217,17 @@ export class PaymentMatcherService {
       reasons.push(balanceScore.reason);
     }
 
+    const totalPrice =
+      reservation.totalPrice != null && Number.isFinite(reservation.totalPrice)
+        ? reservation.totalPrice
+        : null;
+    const paid = (reservation.notifiedCharges ?? []).reduce(
+      (sum, charge) => sum + (Number(charge.amount) || 0),
+      0,
+    );
+    const balanceDue =
+      totalPrice != null ? Math.max(0, Math.round((totalPrice - paid) * 100) / 100) : null;
+
     return {
       reservationId: reservation.id,
       hostawayId: reservation.hostawayId,
@@ -224,6 +235,8 @@ export class PaymentMatcherService {
       listingName: reservation.listing.name,
       arrivalDate: reservation.arrivalDate.toISOString().slice(0, 10),
       departureDate: reservation.departureDate.toISOString().slice(0, 10),
+      totalPrice,
+      balanceDue,
       score,
       reasons,
     };
