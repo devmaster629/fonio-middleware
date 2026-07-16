@@ -1303,19 +1303,6 @@ async function loadRequests() {
   });
 }
 
-let paymentsView = 'queue';
-
-$$('#payments-view-toggle [data-payments-view]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    paymentsView = btn.dataset.paymentsView;
-    $$('#payments-view-toggle [data-payments-view]').forEach((b) => {
-      b.classList.toggle('primary', b === btn);
-      b.classList.toggle('ghost', b !== btn);
-    });
-    loadPayments();
-  });
-});
-
 function paymentStatusBadge(status) {
   const cls =
     status === 'AUTO_APPLIED' || status === 'MANUALLY_APPLIED'
@@ -1364,7 +1351,7 @@ function parseReservationIdInput(value) {
 }
 
 async function loadPayments() {
-  if (paymentsView === 'history') return loadPaymentsHistory();
+  loadPaymentsHistory();
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
@@ -1473,7 +1460,7 @@ async function loadPaymentsHistory() {
   try {
     const response = await api('/payments?pageSize=100');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
-    ensureTableToolbar('#payments-toolbar', 'paymentsHistory', loadPayments);
+    ensureTableToolbar('#payments-history-toolbar', 'paymentsHistory', loadPaymentsHistory);
     const data = paginateClient(paymentList, 'paymentsHistory', (p) => [
       p.createdAt,
       p.source,
@@ -1503,14 +1490,14 @@ async function loadPaymentsHistory() {
         <td>${esc(p.reviewedBy || '–')} ${retryBtn}</td>
       </tr>`;
     }).join('');
-    $('#payments-table').innerHTML = `
+    $('#payments-history-table').innerHTML = `
       <table><thead><tr>
         <th>${t('payments.time')}</th><th>${t('payments.source')}</th><th>${t('payments.amount')}</th>
         <th>${t('payments.payer')}</th><th>${t('payments.status')}</th><th>${t('payments.reservation')}</th><th>${t('payments.reviewedBy')}</th>
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="7">${t('payments.historyNone')}</td></tr>`}</tbody></table>`;
-    renderTableInfo('#payments-info', data, data.maxTotal);
-    renderPagination('#payments-pagination', data, 'paymentsHistory', loadPayments);
+    renderTableInfo('#payments-history-info', data, data.maxTotal);
+    renderPagination('#payments-history-pagination', data, 'paymentsHistory', loadPaymentsHistory);
 
     $$('.payment-retry-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1525,7 +1512,7 @@ async function loadPaymentsHistory() {
     });
   } catch (ex) {
     notify.error(ex.message);
-    $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+    $('#payments-history-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
   }
 }
 
