@@ -100,10 +100,7 @@ function canEdit() {
     hasPermission('RULES_EDIT') ||
     hasPermission('PAYMENTS_REVIEW') ||
     hasPermission('SYNC_SETTINGS_EDIT') ||
-    hasPermission('REQUESTS_MANAGE') ||
-    adminRole === 'EDITOR' ||
-    adminRole === 'ADMIN' ||
-    adminRole === 'SUPER_ADMIN'
+    hasPermission('REQUESTS_MANAGE')
   );
 }
 
@@ -111,14 +108,21 @@ function canAdmin() {
   return (
     hasPermission('RULES_DELETE') ||
     hasPermission('WEBHOOKS_MANAGE') ||
-    hasPermission('PAYMENTS_ADMIN') ||
-    adminRole === 'ADMIN' ||
-    adminRole === 'SUPER_ADMIN'
+    hasPermission('PAYMENTS_ADMIN')
   );
 }
 
 function canSuperAdmin() {
   return adminRole === 'SUPER_ADMIN' || hasPermission('USERS_MANAGE');
+}
+
+function setControlsDisabled(root, disabled, { exceptIds = [] } = {}) {
+  if (!root) return;
+  root.querySelectorAll('input, select, textarea, button').forEach((el) => {
+    if (exceptIds.includes(el.id)) return;
+    el.toggleAttribute('disabled', disabled);
+  });
+  root.classList.toggle('is-readonly', disabled);
 }
 
 function formatRoleLabel(role) {
@@ -141,31 +145,68 @@ const NAV_PERMISSIONS = {
 };
 
 function applyRoleUi() {
-  const readOnly = !canEdit();
+  const canSyncRun = hasPermission('SYNC_RUN');
+  const canSyncSettings = hasPermission('SYNC_SETTINGS_EDIT');
+  const canLogSettings = hasPermission('LOG_SETTINGS_EDIT');
+  const canRulesEdit = hasPermission('RULES_EDIT');
+  const canRulesDelete = hasPermission('RULES_DELETE');
+  const canConversationsManage = hasPermission('CONVERSATIONS_MANAGE');
+  const canPaymentsReview = hasPermission('PAYMENTS_REVIEW');
+  const canListingsEdit = hasPermission('LISTINGS_EDIT');
+  const canRequestsManage = hasPermission('REQUESTS_MANAGE');
+
   const syncBtn = $('#sync-btn');
-  syncBtn?.toggleAttribute('disabled', !hasPermission('SYNC_RUN'));
+  syncBtn?.toggleAttribute('disabled', !canSyncRun);
   if (syncBtn) {
-    syncBtn.title = hasPermission('SYNC_RUN') ? '' : t('dashboard.syncReadonly');
+    syncBtn.title = canSyncRun ? '' : t('dashboard.syncReadonly');
   }
-  $('#sync-settings-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', !hasPermission('SYNC_SETTINGS_EDIT'));
+  setControlsDisabled($('#sync-settings-form'), !canSyncSettings);
+  $('#sync-settings-readonly-hint')?.classList.toggle('hidden', canSyncSettings);
+
+  setControlsDisabled($('#log-settings-form'), !canLogSettings);
+  $('#log-purge-now-btn')?.toggleAttribute('disabled', !canLogSettings);
+  $('#log-settings-readonly-hint')?.classList.toggle('hidden', canLogSettings);
+
+  setControlsDisabled($('#rule-form'), !canRulesEdit, {
+    exceptIds: canRulesDelete && editingRuleId ? ['rule-delete-btn'] : [],
   });
-  $('#sync-settings-readonly-hint')?.classList.toggle('hidden', hasPermission('SYNC_SETTINGS_EDIT'));
-  $('#log-settings-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', !hasPermission('LOG_SETTINGS_EDIT'));
+  $('#rule-new-btn')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#rule-new-btn')?.classList.toggle('hidden', !canRulesEdit);
+  $('#rule-delete-btn')?.classList.toggle('hidden', !canRulesDelete || !editingRuleId);
+
+  const verificationForm = $('#verification-form');
+  if (verificationForm) {
+    verificationForm.querySelectorAll('input, button, select').forEach((el) => {
+      if (el.name === 'verification-field' && el.value === 'stayDates') {
+        el.toggleAttribute('disabled', true);
+        return;
+      }
+      el.toggleAttribute('disabled', !canRulesEdit);
+    });
+    verificationForm.classList.toggle('is-readonly', !canRulesEdit);
+  }
+  $('#verification-readonly-hint')?.classList.toggle('hidden', canRulesEdit);
+
+  $('#inbox-backfill-btn')?.toggleAttribute('disabled', !canConversationsManage);
+  $('#inbox-backfill-btn')?.classList.toggle('hidden', !canConversationsManage);
+
+  $$('.listing-aliases-edit').forEach((btn) => {
+    btn.classList.toggle('hidden', !canListingsEdit);
   });
-  $('#log-purge-now-btn')?.toggleAttribute('disabled', !hasPermission('LOG_SETTINGS_EDIT'));
-  $('#log-settings-readonly-hint')?.classList.toggle('hidden', hasPermission('LOG_SETTINGS_EDIT'));
+  $$('.payment-confirm-btn, .payment-skip-btn, .payment-assign-select, .payment-assign-manual, .payment-retry-btn').forEach((el) => {
+    el.toggleAttribute('disabled', !canPaymentsReview);
+    if (el.matches('button')) el.classList.toggle('hidden', !canPaymentsReview);
+  });
+  $$('.retry-forward-btn').forEach((btn) => {
+    btn.classList.toggle('hidden', !canRequestsManage);
+    btn.toggleAttribute('disabled', !canRequestsManage);
+  });
+  $$('[data-refresh-conv]').forEach((btn) => {
+    btn.classList.toggle('hidden', !canConversationsManage);
+    btn.toggleAttribute('disabled', !canConversationsManage);
+  });
+
   updateAdminSession();
-  $('#rule-form')?.querySelectorAll('input, select, button').forEach((el) => {
-    if (el.id === 'rule-delete-btn') el.classList.toggle('hidden', !hasPermission('RULES_DELETE') || !editingRuleId);
-    else el.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
-  });
-  $('#rule-new-btn')?.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
-  $('#verification-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
-  });
-  $('#inbox-backfill-btn')?.toggleAttribute('disabled', !hasPermission('CONVERSATIONS_MANAGE'));
 
   $$('.nav-btn').forEach((btn) => {
     const tab = btn.dataset.tab;
@@ -769,12 +810,16 @@ $('#sync-btn').addEventListener('click', async () => {
     el.innerHTML = `<p class="error">${t('dashboard.syncError', { message: ex.message })}</p>`;
     notify.error(t('dashboard.syncError', { message: ex.message }));
   } finally {
-    $('#sync-btn').disabled = false;
+    $('#sync-btn').disabled = !hasPermission('SYNC_RUN');
   }
 });
 
 $('#rule-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!hasPermission('RULES_EDIT')) {
+    notify.error(t('perms.featureLocked'));
+    return;
+  }
   const payload = {
     requestType: $('#rule-type').value,
     mode: $('#rule-mode').value,
@@ -801,7 +846,7 @@ $('#rule-form').addEventListener('submit', async (e) => {
 $('#rule-new-btn').addEventListener('click', resetRuleForm);
 
 $('#rule-delete-btn').addEventListener('click', async () => {
-  if (!editingRuleId) return;
+  if (!editingRuleId || !hasPermission('RULES_DELETE')) return;
   const ok = await notify.confirm(t('rules.deleteConfirm'), {
     title: t('rules.deleteTitle'),
     okLabel: t('rules.delete'),
@@ -823,10 +868,12 @@ function updateRuleFormUI() {
   const submit = $('#rule-submit-btn');
   if (title) title.textContent = editingRuleId ? t('rules.editRule') : t('rules.newRule');
   if (submit) submit.textContent = editingRuleId ? t('rules.updateRule') : t('rules.addRule');
-  $('#rule-delete-btn')?.classList.toggle('hidden', !editingRuleId);
+  $('#rule-delete-btn')?.classList.toggle('hidden', !editingRuleId || !hasPermission('RULES_DELETE'));
+  applyRoleUi();
 }
 
 function resetRuleForm() {
+  if (!hasPermission('RULES_EDIT')) return;
   editingRuleId = null;
   $('#rule-id').value = '';
   $('#rule-type').value = 'ADD_GUEST';
@@ -872,6 +919,7 @@ function highlightSelectedRule(ruleId) {
 function bindRuleRowClicks() {
   $$('#rules-table tbody tr[data-rule-id]').forEach((row) => {
     row.addEventListener('click', () => {
+      if (!hasPermission('RULES_EDIT')) return;
       const rule = cachedRules.find((r) => r.id === row.dataset.ruleId);
       if (rule) loadRuleIntoForm(rule);
     });
@@ -936,6 +984,7 @@ async function loadDashboard() {
     <tbody>${whRows || `<tr><td colspan="3">${t('dashboard.webhookEmpty')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#webhooks-info', webhookData, webhookData.maxTotal);
   renderPagination('#webhooks-pagination', webhookData, 'webhooks', loadDashboard);
+  applyRoleUi();
 }
 
 async function loadListings() {
@@ -946,7 +995,7 @@ async function loadListings() {
     const aliasText = (l.aliases && l.aliases.length)
       ? esc(l.aliases.join(', '))
       : `<span class="muted">${t('listings.aliasesEmpty')}</span>`;
-    const editBtn = canEdit()
+    const editBtn = hasPermission('LISTINGS_EDIT')
       ? `<button type="button" class="btn ghost btn-sm listing-aliases-edit" data-id="${esc(l.id)}">${t('listings.aliasesEdit')}</button>`
       : '';
     return `
@@ -981,6 +1030,7 @@ async function loadListings() {
   });
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
+  applyRoleUi();
 }
 
 function parseAliasesInput(raw) {
@@ -1010,7 +1060,7 @@ $('#listing-aliases-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'listing-aliases-modal') closeListingAliasesModal();
 });
 $('#listing-aliases-save')?.addEventListener('click', async () => {
-  if (!editingListingAliases || !canEdit()) return;
+  if (!editingListingAliases || !hasPermission('LISTINGS_EDIT')) return;
   try {
     const aliases = parseAliasesInput($('#listing-aliases-input').value);
     await api(`/listings/${editingListingAliases.id}/aliases`, {
@@ -1085,6 +1135,7 @@ async function loadReservations() {
 async function loadConversations() {
   ensureTableToolbar('#conversations-toolbar', 'conversations', loadConversations);
   const data = await api(`/reservations?${tableQuery('conversations')}`);
+  const canManageConversations = hasPermission('CONVERSATIONS_MANAGE');
   const rows = data.items.map((r) => `
     <tr>
       <td>${r.hostawayId}</td>
@@ -1094,7 +1145,9 @@ async function loadConversations() {
       <td>${r.lastSyncedAt ? formatDateTime(r.lastSyncedAt) : '–'}</td>
       <td>
         <button type="button" class="btn ghost btn-sm" data-view-conv="${r.hostawayId}">${t('conversations.view')}</button>
-        <button type="button" class="btn ghost btn-sm" data-refresh-conv="${r.hostawayId}">${t('conversations.refresh')}</button>
+        ${canManageConversations
+          ? `<button type="button" class="btn ghost btn-sm" data-refresh-conv="${r.hostawayId}">${t('conversations.refresh')}</button>`
+          : ''}
       </td>
     </tr>
   `).join('');
@@ -1106,6 +1159,7 @@ async function loadConversations() {
   renderTableInfo('#conversations-info', data);
   renderPagination('#conversations-pagination', data, 'conversations', loadConversations);
   bindConversationButtons();
+  applyRoleUi();
 }
 
 function bindConversationButtons() {
@@ -1183,6 +1237,7 @@ function renderVerificationForm(config, fieldMeta) {
   const container = $('#verification-field-checkboxes');
   if (!container) return;
   const selected = new Set(normalizeVerificationFields(config?.requiredFields));
+  const canRulesEdit = hasPermission('RULES_EDIT');
   $('#verification-config-id').value = config?.id ?? '';
   $('#verification-min-match').value = config?.minMatchCount ?? 3;
   $('#verification-min-match').max = VERIFICATION_FIELDS.length;
@@ -1193,11 +1248,12 @@ function renderVerificationForm(config, fieldMeta) {
   container.innerHTML = VERIFICATION_FIELDS.map((field) => {
     const locked = field === 'stayDates';
     const checked = locked || selected.has(field);
+    const disabled = locked || !canRulesEdit;
     const label = t(`verification.field.${field}`);
     const hint = fieldMeta?.descriptions?.[field] ?? '';
     return `
       <label class="checkbox-row verification-field-row${locked ? ' locked' : ''}">
-        <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+        <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
         <span>
           <strong>${label}</strong>
           ${locked ? `<em class="field-hint">(${t('verification.field.stayDatesLocked')})</em>` : ''}
@@ -1246,6 +1302,10 @@ function getVerificationFormData() {
 
 $('#verification-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!hasPermission('RULES_EDIT')) {
+    notify.error(t('perms.featureLocked'));
+    return;
+  }
   const id = $('#verification-config-id').value;
   if (!id) {
     notify.error(t('rules.noConfig'));
@@ -1310,6 +1370,7 @@ async function loadRules() {
     renderRuleConditionsPanel();
   }
   bindRuleRowClicks();
+  applyRoleUi();
 }
 
 async function loadRequests() {
@@ -1326,7 +1387,9 @@ async function loadRequests() {
     const inboxCell = r.status === 'FORWARDED'
       ? (r.forwardedToHostaway
         ? t('requests.inboxYes')
-        : `<button type="button" class="btn ghost btn-sm retry-forward-btn" data-request-id="${r.id}">${t('requests.retry')}</button> <span class="field-hint">${t('requests.inboxPending')}</span>`)
+        : (hasPermission('REQUESTS_MANAGE')
+          ? `<button type="button" class="btn ghost btn-sm retry-forward-btn" data-request-id="${r.id}">${t('requests.retry')}</button> <span class="field-hint">${t('requests.inboxPending')}</span>`
+          : `<span class="field-hint">${t('requests.inboxPending')}</span>`))
       : t('requests.inboxNa');
     return `
     <tr>
@@ -1347,6 +1410,7 @@ async function loadRequests() {
   renderPagination('#requests-pagination', data, 'requests', loadRequests);
   $$('.retry-forward-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (!hasPermission('REQUESTS_MANAGE')) return;
       try {
         const result = await api(`/guest-requests/${btn.dataset.requestId}/retry-forward`, { method: 'POST' });
         if (result.forwarded) notify.success(t('requests.retryOk'));
@@ -1357,6 +1421,7 @@ async function loadRequests() {
       }
     });
   });
+  applyRoleUi();
 }
 
 function paymentStatusBadge(status) {
@@ -1632,18 +1697,9 @@ async function loadPayments() {
     const whyNotAuto = whyText
       ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${renderExpandableText(whyText, 80)}</div>`
       : '';
-    return `
-    <tr>
-      <td>${formatDateTime(p.createdAt)}</td>
-      <td>${p.source}</td>
-      <td>${p.amount.toFixed(2)} ${p.currency}</td>
-      <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
-      <td>
-        <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
-        ${whyNotAuto}
-      </td>
-      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency)}</td>
-      <td class="payment-actions-cell">
+    const canReview = hasPermission('PAYMENTS_REVIEW');
+    const actionsCell = canReview
+      ? `<td class="payment-actions-cell">
         <select class="payment-assign-select" data-payment-id="${p.id}">
           <option value="">${t('payments.pickReservation')}</option>
           ${assignOptions.join('')}
@@ -1655,7 +1711,20 @@ async function loadPayments() {
         <datalist id="payment-res-list-${p.id}"></datalist>
         <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
         <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+      </td>`
+      : `<td class="payment-actions-cell is-readonly"><span class="muted feature-locked-hint">${t('perms.featureLocked')}</span></td>`;
+    return `
+    <tr>
+      <td>${formatDateTime(p.createdAt)}</td>
+      <td>${p.source}</td>
+      <td>${p.amount.toFixed(2)} ${p.currency}</td>
+      <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
+      <td>
+        <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
+        ${whyNotAuto}
       </td>
+      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency)}</td>
+      ${actionsCell}
     </tr>`;
   }).join('');
   $('#payments-table').innerHTML = `
@@ -1671,6 +1740,7 @@ async function loadPayments() {
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (!hasPermission('PAYMENTS_REVIEW')) return;
       const paymentId = btn.dataset.paymentId;
       const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
       const manual = $(`.payment-assign-manual[data-payment-id="${paymentId}"]`);
@@ -1692,6 +1762,7 @@ async function loadPayments() {
 
   $$('.payment-skip-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (!hasPermission('PAYMENTS_REVIEW')) return;
       try {
         await api(`/payments/${btn.dataset.paymentId}/skip`, { method: 'POST', body: '{}' });
         notify.success(t('payments.skipOk'));
@@ -1701,6 +1772,7 @@ async function loadPayments() {
       }
     });
   });
+  applyRoleUi();
   } catch (ex) {
     notify.error(ex.message);
     $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
@@ -1727,7 +1799,7 @@ async function loadPaymentsHistory() {
       const reservationLabel = reservation
         ? `#${reservation.hostawayId} — ${esc(reservation.listing?.name || '')}`
         : '–';
-      const retryBtn = p.status === 'FAILED' || p.status === 'RECEIVED'
+      const retryBtn = (p.status === 'FAILED' || p.status === 'RECEIVED') && hasPermission('PAYMENTS_REVIEW')
         ? `<button type="button" class="btn ghost btn-sm payment-retry-btn" data-payment-id="${p.id}">${t('payments.retry')}</button>`
         : '';
       return `
@@ -1752,6 +1824,7 @@ async function loadPaymentsHistory() {
 
     $$('.payment-retry-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
+        if (!hasPermission('PAYMENTS_REVIEW')) return;
         try {
           await api(`/payments/${btn.dataset.paymentId}/retry`, { method: 'POST', body: '{}' });
           notify.success(t('payments.retryOk'));
@@ -1768,6 +1841,7 @@ async function loadPaymentsHistory() {
 }
 
 $('#inbox-backfill-btn')?.addEventListener('click', async () => {
+  if (!hasPermission('CONVERSATIONS_MANAGE')) return;
   const btn = $('#inbox-backfill-btn');
   btn.disabled = true;
   try {
@@ -1781,7 +1855,7 @@ $('#inbox-backfill-btn')?.addEventListener('click', async () => {
   } catch (ex) {
     notify.error(ex.message);
   } finally {
-    btn.disabled = false;
+    btn.disabled = !hasPermission('CONVERSATIONS_MANAGE');
   }
 });
 
@@ -1807,6 +1881,7 @@ async function loadLogSettings() {
   } catch {
     /* keep defaults */
   }
+  applyRoleUi();
 }
 
 function syncLogRetentionInputs() {
@@ -1819,7 +1894,7 @@ function syncLogRetentionInputs() {
     const cb = $(cbSel);
     const input = $(inputSel);
     if (!cb || !input) return;
-    input.toggleAttribute('disabled', !cb.checked || !canEdit());
+    input.toggleAttribute('disabled', !cb.checked || !hasPermission('LOG_SETTINGS_EDIT'));
   });
 }
 
@@ -1894,7 +1969,7 @@ $('#log-settings-form')?.addEventListener('submit', async (e) => {
 });
 
 $('#log-purge-now-btn')?.addEventListener('click', async () => {
-  if (!canEdit()) return;
+  if (!hasPermission('LOG_SETTINGS_EDIT')) return;
   try {
     const result = await api('/log-settings/purge-expired', { method: 'POST' });
     notify.success(t('logs.purgeDone', { count: result.deleted ?? 0 }));

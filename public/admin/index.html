@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260717g" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260717h" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -142,6 +142,7 @@
         <div class="card verification-card">
           <h3 data-i18n="verification.title">Guest verification</h3>
           <p class="field-hint" data-i18n="verification.hint">Required before fonio shares booking details or processes changes. This is separate from approval rules below.</p>
+          <p id="verification-readonly-hint" class="field-hint hidden" data-i18n="perms.featureLocked">This feature is read-only for your role.</p>
           <form id="verification-form" class="verification-form">
             <input type="hidden" id="verification-config-id" value="" />
             <fieldset class="verification-fields">
@@ -463,8 +464,8 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260717g"></script>
+  <script src="/admin/i18n.js?v=20260717h"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260717g"></script>
+  <script src="/admin/app.js?v=20260717h"></script>
 </body>
 </html>

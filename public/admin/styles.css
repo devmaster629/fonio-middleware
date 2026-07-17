@@ -1136,6 +1136,15 @@ body.modal-open {
   font-weight: 600;
 }
 
+form.is-readonly,
+.payment-actions-cell.is-readonly {
+  opacity: 0.72;
+}
+
+form.is-readonly .btn.primary {
+  pointer-events: none;
+}
+
 .perm-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
