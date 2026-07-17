@@ -10,12 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AdminRole, ExternalPaymentStatus } from '@prisma/client';
+import { AdminPermission, ExternalPaymentStatus } from '@prisma/client';
 import { Request } from 'express';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import { PaginationQueryDto, paginated } from '../common/dto/pagination-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ConfirmPaymentReviewDto,
@@ -28,7 +28,7 @@ import { QontoPollService } from './qonto-poll.service';
 @ApiTags('admin-payments')
 @ApiBearerAuth()
 @Controller('api/v1/admin/payments')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PaymentAdminController {
   constructor(
     private readonly prisma: PrismaService,
@@ -37,7 +37,7 @@ export class PaymentAdminController {
   ) {}
 
   @Get('review-queue')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
   @ApiOperation({ summary: 'List payments waiting for manual review' })
   async listReviewQueue(@Query() query: PaginationQueryDto) {
     const page = query.page ?? 1;
@@ -122,7 +122,7 @@ export class PaymentAdminController {
   }
 
   @Get()
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
   @ApiOperation({ summary: 'List all imported external payments' })
   async listPayments(@Query() query: PaginationQueryDto) {
     const page = query.page ?? 1;
@@ -144,7 +144,7 @@ export class PaymentAdminController {
   }
 
   @Get(':id')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
   @ApiOperation({ summary: 'Get one external payment with match details' })
   async getPayment(@Param('id') id: string) {
     const payment = await this.prisma.externalPayment.findUnique({
@@ -158,14 +158,14 @@ export class PaymentAdminController {
   }
 
   @Post('qonto-poll')
-  @Roles(AdminRole.ADMIN)
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
   @ApiOperation({ summary: 'Manually poll recent Qonto credit transactions' })
   async pollQonto() {
     return this.qontoPoll.pollOnce();
   }
 
   @Post('ingest-manual')
-  @Roles(AdminRole.ADMIN)
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
   @ApiOperation({
     summary: 'Manually ingest a payment for testing (without Qonto/PayPal)',
   })
@@ -184,7 +184,7 @@ export class PaymentAdminController {
   }
 
   @Post(':id/confirm')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_REVIEW)
   @ApiOperation({ summary: 'Confirm a review-queue payment and apply to Hostaway' })
   async confirmReview(
     @Param('id') id: string,
@@ -200,7 +200,7 @@ export class PaymentAdminController {
   }
 
   @Post(':id/skip')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_REVIEW)
   @ApiOperation({ summary: 'Skip a review-queue payment' })
   async skipReview(
     @Param('id') id: string,
@@ -211,7 +211,7 @@ export class PaymentAdminController {
   }
 
   @Post(':id/retry')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.PAYMENTS_REVIEW)
   @ApiOperation({ summary: 'Re-run matching for a payment' })
   async retry(@Param('id') id: string) {
     return this.reconciliation.reconcile(id);

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { HostawayModule } from '../hostaway/hostaway.module';
 import { PaymentAdminController } from './payment-admin.controller';
 import { PaymentAlertService } from './payment-alert.service';
@@ -24,6 +25,7 @@ import { PayPalClient } from './paypal.client';
     QontoPollService,
     QontoPollScheduler,
     PayPalClient,
+    PermissionsGuard,
   ],
   exports: [
     PaymentIngestService,

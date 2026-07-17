@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
+import type { AdminRequestUser } from './jwt.strategy';
 
 @ApiTags('admin-auth')
 @Controller('api/v1/admin/auth')
@@ -19,8 +20,10 @@ export class AdminAuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Current admin session (role for dashboard UI)' })
-  me(@Req() req: Request & { user: { id: string; email: string; role: string } }) {
+  @ApiOperation({
+    summary: 'Current admin session (role + effective permissions for UI)',
+  })
+  me(@Req() req: Request & { user: AdminRequestUser }) {
     return req.user;
   }
 }

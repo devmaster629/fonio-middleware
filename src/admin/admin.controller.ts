@@ -14,15 +14,16 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import { AdminRole, ApprovalMode, Prisma, RequestType } from '@prisma/client';
+import { AdminPermission, AdminRole, ApprovalMode, Prisma, RequestType } from '@prisma/client';
 import { Request } from 'express';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   paginated,
   PaginationQueryDto,
 } from '../common/dto/pagination-query.dto';
 import { SortablePaginationQueryDto } from '../common/dto/sortable-pagination-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { maskReservationForViewer } from '../common/utils/pii.util';
 import { FonioCallContextService } from '../fonio/fonio-call-context.service';
@@ -51,7 +52,7 @@ import { AdminAuditInterceptor } from '../logging/admin-audit.interceptor';
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('api/v1/admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @UseInterceptors(AdminAuditInterceptor)
 export class AdminController {
   constructor(
@@ -70,6 +71,7 @@ export class AdminController {
   ) {}
 
   @Get('listings')
+  @Permissions(AdminPermission.LISTINGS_VIEW)
   @ApiOperation({ summary: 'List synced listings (paginated)' })
   async listListings(@Query() query: SortablePaginationQueryDto) {
     const page = query.page ?? 1;
@@ -90,7 +92,7 @@ export class AdminController {
   }
 
   @Patch('listings/:id/aliases')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.LISTINGS_EDIT)
   @ApiOperation({
     summary: 'Set guest-facing property name aliases for verification matching',
   })
@@ -115,6 +117,7 @@ export class AdminController {
   }
 
   @Get('listing-groups')
+  @Permissions(AdminPermission.GROUPS_VIEW)
   @ApiOperation({ summary: 'List parent/child listing groups (paginated)' })
   async listGroups(@Query() query: SortablePaginationQueryDto) {
     const page = query.page ?? 1;
@@ -135,6 +138,7 @@ export class AdminController {
   }
 
   @Get('sync/status')
+  @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'Last sync job status and auto-sync settings' })
   async syncStatus() {
     const [last, settings, listingCount, reservationCount] = await Promise.all([
@@ -148,19 +152,21 @@ export class AdminController {
   }
 
   @Get('sync/settings')
+  @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'Auto-sync settings' })
   getSyncSettings() {
     return this.syncSettings.getOrCreate();
   }
 
   @Patch('sync/settings')
-  @Roles(AdminRole.EDITOR, AdminRole.ADMIN)
+  @Permissions(AdminPermission.SYNC_SETTINGS_EDIT)
   @ApiOperation({ summary: 'Update auto-sync settings' })
   updateSyncSettings(@Body() dto: UpdateSyncSettingsDto) {
     return this.syncSettings.update(dto);
   }
 
   @Get('sync/webhook-activity')
+  @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'Recent Hostaway webhook-triggered sync activity' })
   listWebhookActivity() {
     return this.prisma.syncJob.findMany({
@@ -171,10 +177,14 @@ export class AdminController {
   }
 
   @Get('reservations')
-  @ApiOperation({ summary: 'Synced reservations (VIEWER: masked contact data)' })
+  @Permissions(AdminPermission.RESERVATIONS_VIEW)
+  @ApiOperation({ summary: 'Synced reservations (masked without PII permission)' })
   async listReservations(
     @Query() query: SortablePaginationQueryDto,
-    @Req() req: Request & { user: { role: AdminRole } },
+    @Req()
+    req: Request & {
+      user: { role: AdminRole; permissions?: AdminPermission[] };
+    },
   ) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
@@ -192,29 +202,33 @@ export class AdminController {
         },
       }),
     ]);
-    const sanitized =
-      req.user.role === AdminRole.VIEWER
-        ? items.map((r) => maskReservationForViewer(r))
-        : items;
+    const canSeePii =
+      req.user.role === AdminRole.SUPER_ADMIN ||
+      (req.user.permissions ?? []).includes(
+        AdminPermission.RESERVATIONS_VIEW_PII,
+      );
+    const sanitized = canSeePii
+      ? items
+      : items.map((r) => maskReservationForViewer(r));
     return paginated(sanitized, total, page, pageSize);
   }
 
   @Get('reservations/:hostawayId/conversation')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.CONVERSATIONS_VIEW)
   @ApiOperation({ summary: 'Refresh and preview Hostaway conversation for a reservation' })
   getReservationConversation(@Param('hostawayId') hostawayId: string) {
     return this.sync.refreshReservationConversation(Number(hostawayId));
   }
 
   @Post('reservations/:hostawayId/refresh-conversation')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.CONVERSATIONS_MANAGE)
   @ApiOperation({ summary: 'Re-fetch conversation ID from Hostaway' })
   refreshConversation(@Param('hostawayId') hostawayId: string) {
     return this.sync.refreshReservationConversation(Number(hostawayId));
   }
 
   @Post('sync')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.SYNC_RUN)
   @ApiOperation({ summary: 'Trigger Hostaway full sync (runs in background)' })
   triggerSync() {
     if (this.sync.isSyncInProgress()) {
@@ -228,13 +242,14 @@ export class AdminController {
   }
 
   @Get('sync/hostaway-webhooks')
+  @Permissions(AdminPermission.WEBHOOKS_MANAGE)
   @ApiOperation({ summary: 'List unified webhooks registered in Hostaway (via Public API)' })
   listHostawayWebhooks() {
     return this.hostaway.listUnifiedWebhooks();
   }
 
   @Post('sync/register-webhook')
-  @Roles(AdminRole.ADMIN)
+  @Permissions(AdminPermission.WEBHOOKS_MANAGE)
   @ApiOperation({
     summary: 'Register production webhook URL in Hostaway via Public API (no dashboard login)',
   })
@@ -278,12 +293,14 @@ export class AdminController {
   }
 
   @Get('rules/condition-fields')
+  @Permissions(AdminPermission.RULES_VIEW)
   @ApiOperation({ summary: 'Condition field schema per request type (for admin UI)' })
   getRuleConditionFields() {
     return getConditionFieldSchema();
   }
 
   @Get('rules')
+  @Permissions(AdminPermission.RULES_VIEW)
   @ApiOperation({ summary: 'List approval rules' })
   listRules() {
     return this.prisma.approvalRule.findMany({
@@ -293,7 +310,7 @@ export class AdminController {
   }
 
   @Post('rules')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.RULES_EDIT)
   @ApiOperation({ summary: 'Create approval rule' })
   createRule(@Body() dto: CreateApprovalRuleDto) {
     const mode =
@@ -318,7 +335,7 @@ export class AdminController {
   }
 
   @Patch('rules/:id')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.RULES_EDIT)
   @ApiOperation({ summary: 'Update approval rule' })
   async updateRule(@Param('id') id: string, @Body() dto: UpdateApprovalRuleDto) {
     const existing = await this.prisma.approvalRule.findUnique({ where: { id } });
@@ -367,7 +384,7 @@ export class AdminController {
   }
 
   @Delete('rules/:id')
-  @Roles(AdminRole.ADMIN)
+  @Permissions(AdminPermission.RULES_DELETE)
   @ApiOperation({ summary: 'Delete approval rule' })
   async deleteRule(@Param('id') id: string) {
     await this.prisma.approvalRule.delete({ where: { id } });
@@ -375,6 +392,7 @@ export class AdminController {
   }
 
   @Get('verification-config')
+  @Permissions(AdminPermission.RULES_VIEW)
   @ApiOperation({ summary: 'Get default guest verification config (fonio)' })
   async getVerificationConfig() {
     const [config, prompt] = await Promise.all([
@@ -396,6 +414,7 @@ export class AdminController {
   }
 
   @Get('verification-config/fields')
+  @Permissions(AdminPermission.RULES_VIEW)
   @ApiOperation({ summary: 'Allowed verification field names' })
   getVerificationFieldOptions() {
     return {
@@ -414,7 +433,7 @@ export class AdminController {
   }
 
   @Patch('verification-config/:id')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.RULES_EDIT)
   @ApiOperation({ summary: 'Update guest verification rules (not approval rules)' })
   async updateVerificationConfig(
     @Param('id') id: string,
@@ -442,6 +461,7 @@ export class AdminController {
   }
 
   @Get('guest-requests')
+  @Permissions(AdminPermission.REQUESTS_VIEW)
   @ApiOperation({ summary: 'List recent guest requests' })
   listGuestRequests() {
     return this.prisma.guestRequest.findMany({
@@ -458,14 +478,14 @@ export class AdminController {
   }
 
   @Post('guest-requests/:id/retry-forward')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.REQUESTS_MANAGE)
   @ApiOperation({ summary: 'Retry sending a guest request to Hostaway inbox' })
   retryGuestRequestForward(@Param('id') id: string) {
     return this.guestInbox.retryForward(id);
   }
 
   @Post('sync/conversations-backfill')
-  @Roles(AdminRole.EDITOR)
+  @Permissions(AdminPermission.CONVERSATIONS_MANAGE)
   @ApiOperation({
     summary: 'Link Hostaway conversations to reservations and retry pending inbox forwards',
   })
@@ -476,19 +496,21 @@ export class AdminController {
   }
 
   @Get('log-settings')
+  @Permissions(AdminPermission.LOGS_VIEW)
   @ApiOperation({ summary: 'GDPR log retention settings' })
   getLogSettings() {
     return this.logSettings.getOrCreate();
   }
 
   @Patch('log-settings')
-  @Roles(AdminRole.EDITOR, AdminRole.ADMIN)
+  @Permissions(AdminPermission.LOG_SETTINGS_EDIT)
   @ApiOperation({ summary: 'Update GDPR log retention settings' })
   updateLogSettings(@Body() dto: UpdateLogSettingsDto) {
     return this.logSettings.update(dto);
   }
 
   @Get('log-settings/status')
+  @Permissions(AdminPermission.LOGS_VIEW)
   @ApiOperation({ summary: 'Log retention status and sample expiry dates' })
   getLogSettingsStatus() {
     return this.logSettings.getStatus((meta) =>
@@ -497,7 +519,7 @@ export class AdminController {
   }
 
   @Post('log-settings/purge-expired')
-  @Roles(AdminRole.EDITOR, AdminRole.ADMIN)
+  @Permissions(AdminPermission.LOG_SETTINGS_EDIT)
   @ApiOperation({
     summary: 'Permanently delete expired log rows from the database',
   })
@@ -507,6 +529,7 @@ export class AdminController {
   }
 
   @Get('logs')
+  @Permissions(AdminPermission.LOGS_VIEW)
   @ApiOperation({ summary: 'Recent API audit logs (non-PII metadata)' })
   listLogs(@Query('source') source?: string) {
     return this.prisma.apiLog.findMany({
@@ -517,6 +540,7 @@ export class AdminController {
   }
 
   @Get('fonio-activity')
+  @Permissions(AdminPermission.FONIO_ACTIVITY_VIEW)
   @ApiOperation({ summary: 'Recent fonio call activity with metadata for troubleshooting' })
   listFonioActivity(
     @Query('action') action?: string,
@@ -544,6 +568,7 @@ export class AdminController {
   }
 
   @Get('fonio-setup')
+  @Permissions(AdminPermission.FONIO_SETUP_VIEW)
   @ApiOperation({ summary: 'fonio integration URLs for dashboard (production only)' })
   getFonioSetup() {
     const urls = this.fonioSetup.getSetupUrls();

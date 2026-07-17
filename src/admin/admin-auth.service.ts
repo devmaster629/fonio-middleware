@@ -9,6 +9,7 @@ import { LogLevel } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { AuditLogService } from '../logging/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PermissionsService } from './permissions.service';
 
 @Injectable()
 export class AdminAuthService {
@@ -21,6 +22,7 @@ export class AdminAuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditLogService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   async login(email: string, password: string, ip?: string) {
@@ -56,7 +58,12 @@ export class AdminAuthService {
 
     return {
       accessToken,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        permissions: await this.permissions.getPermissionsForRole(user.role),
+      },
     };
   }
 

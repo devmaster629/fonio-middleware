@@ -2,14 +2,17 @@ import { AdminRole } from '@prisma/client';
 import {
   IsBoolean,
   IsEmail,
-  IsEnum,
   IsIn,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
 
-const MANAGED_ADMIN_ROLES = [AdminRole.ADMIN, AdminRole.SUPER_ADMIN] as const;
+const MANAGED_ADMIN_ROLES = [
+  AdminRole.BACK_OFFICE,
+  AdminRole.ADMIN,
+  AdminRole.SUPER_ADMIN,
+] as const;
 
 export class CreateAdminUserDto {
   @IsEmail()

@@ -48,8 +48,38 @@ enum ApprovalMode {
 enum AdminRole {
   VIEWER
   EDITOR
+  BACK_OFFICE
   ADMIN
   SUPER_ADMIN
+}
+
+/// Capability keys used by PermissionsGuard and the role-checkbox UI.
+enum AdminPermission {
+  DASHBOARD_VIEW
+  LISTINGS_VIEW
+  LISTINGS_EDIT
+  GROUPS_VIEW
+  RESERVATIONS_VIEW
+  RESERVATIONS_VIEW_PII
+  CONVERSATIONS_VIEW
+  CONVERSATIONS_MANAGE
+  RULES_VIEW
+  RULES_EDIT
+  RULES_DELETE
+  REQUESTS_VIEW
+  REQUESTS_MANAGE
+  PAYMENTS_VIEW
+  PAYMENTS_REVIEW
+  PAYMENTS_ADMIN
+  LOGS_VIEW
+  LOG_SETTINGS_EDIT
+  FONIO_ACTIVITY_VIEW
+  FONIO_SETUP_VIEW
+  USERS_MANAGE
+  SYNC_RUN
+  SYNC_SETTINGS_EDIT
+  WEBHOOKS_MANAGE
+  ROLE_PERMISSIONS_MANAGE
 }
 
 enum LogLevel {
@@ -93,6 +123,16 @@ model AdminUser {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+model RolePermission {
+  id         String          @id @default(uuid())
+  role       AdminRole
+  permission AdminPermission
+  createdAt  DateTime        @default(now())
+
+  @@unique([role, permission])
+  @@index([role])
 }
 
 model ListingGroup {

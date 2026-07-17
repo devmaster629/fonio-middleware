@@ -9,7 +9,10 @@ import { AdminAuthController } from './admin-auth.controller';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminController } from './admin.controller';
 import { AdminUsersController } from './admin-users.controller';
+import { RolePermissionsController } from './role-permissions.controller';
 import { AdminUsersService } from './admin-users.service';
+import { PermissionsService } from './permissions.service';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtStrategy } from './jwt.strategy';
 
@@ -28,7 +31,20 @@ import { JwtStrategy } from './jwt.strategy';
       }),
     }),
   ],
-  controllers: [AdminAuthController, AdminController, AdminUsersController],
-  providers: [AdminAuthService, AdminUsersService, JwtStrategy, RolesGuard],
+  controllers: [
+    AdminAuthController,
+    AdminController,
+    AdminUsersController,
+    RolePermissionsController,
+  ],
+  providers: [
+    AdminAuthService,
+    AdminUsersService,
+    PermissionsService,
+    JwtStrategy,
+    RolesGuard,
+    PermissionsGuard,
+  ],
+  exports: [PermissionsService],
 })
 export class AdminModule {}

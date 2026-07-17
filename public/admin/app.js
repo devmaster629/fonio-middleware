@@ -3,6 +3,12 @@ const AUTH = '/api/v1/admin/auth';
 
 let token = localStorage.getItem('adminToken') || '';
 let adminRole = localStorage.getItem('adminRole') || '';
+let adminPermissions = [];
+try {
+  adminPermissions = JSON.parse(localStorage.getItem('adminPermissions') || '[]');
+} catch {
+  adminPermissions = [];
+}
 let activeTab = 'dashboard';
 let cachedRules = [];
 let cachedListings = [];
@@ -65,7 +71,9 @@ async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = Array.isArray(data.message) ? data.message.join(', ') : (data.message || `HTTP ${res.status}`);
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -73,61 +81,105 @@ async function api(path, options = {}) {
 function logout() {
   token = '';
   adminRole = '';
+  adminPermissions = [];
   localStorage.removeItem('adminToken');
   localStorage.removeItem('adminRole');
+  localStorage.removeItem('adminPermissions');
   $('#app-screen').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
 }
 
+function hasPermission(key) {
+  if (adminRole === 'SUPER_ADMIN') return true;
+  return Array.isArray(adminPermissions) && adminPermissions.includes(key);
+}
+
 function canEdit() {
-  return adminRole === 'EDITOR' || adminRole === 'ADMIN' || adminRole === 'SUPER_ADMIN';
+  return (
+    hasPermission('LISTINGS_EDIT') ||
+    hasPermission('RULES_EDIT') ||
+    hasPermission('PAYMENTS_REVIEW') ||
+    hasPermission('SYNC_SETTINGS_EDIT') ||
+    hasPermission('REQUESTS_MANAGE') ||
+    adminRole === 'EDITOR' ||
+    adminRole === 'ADMIN' ||
+    adminRole === 'SUPER_ADMIN'
+  );
 }
 
 function canAdmin() {
-  return adminRole === 'ADMIN' || adminRole === 'SUPER_ADMIN';
+  return (
+    hasPermission('RULES_DELETE') ||
+    hasPermission('WEBHOOKS_MANAGE') ||
+    hasPermission('PAYMENTS_ADMIN') ||
+    adminRole === 'ADMIN' ||
+    adminRole === 'SUPER_ADMIN'
+  );
 }
 
 function canSuperAdmin() {
-  return adminRole === 'SUPER_ADMIN';
+  return adminRole === 'SUPER_ADMIN' || hasPermission('USERS_MANAGE');
 }
 
 function formatRoleLabel(role) {
   return t(`role.${role}`) || role;
 }
 
+const NAV_PERMISSIONS = {
+  dashboard: 'DASHBOARD_VIEW',
+  listings: 'LISTINGS_VIEW',
+  groups: 'GROUPS_VIEW',
+  reservations: 'RESERVATIONS_VIEW',
+  conversations: 'CONVERSATIONS_VIEW',
+  rules: 'RULES_VIEW',
+  requests: 'REQUESTS_VIEW',
+  payments: 'PAYMENTS_VIEW',
+  logs: 'LOGS_VIEW',
+  fonioActivity: 'FONIO_ACTIVITY_VIEW',
+  fonio: 'FONIO_SETUP_VIEW',
+  users: 'USERS_MANAGE',
+};
+
 function applyRoleUi() {
   const readOnly = !canEdit();
   const syncBtn = $('#sync-btn');
-  syncBtn?.toggleAttribute('disabled', readOnly);
+  syncBtn?.toggleAttribute('disabled', !hasPermission('SYNC_RUN'));
   if (syncBtn) {
-    syncBtn.title = readOnly ? t('dashboard.syncReadonly') : '';
+    syncBtn.title = hasPermission('SYNC_RUN') ? '' : t('dashboard.syncReadonly');
   }
   $('#sync-settings-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', readOnly);
+    el.toggleAttribute('disabled', !hasPermission('SYNC_SETTINGS_EDIT'));
   });
-  $('#sync-settings-readonly-hint')?.classList.toggle('hidden', canEdit());
+  $('#sync-settings-readonly-hint')?.classList.toggle('hidden', hasPermission('SYNC_SETTINGS_EDIT'));
   $('#log-settings-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', readOnly);
+    el.toggleAttribute('disabled', !hasPermission('LOG_SETTINGS_EDIT'));
   });
-  $('#log-purge-now-btn')?.toggleAttribute('disabled', readOnly);
-  $('#log-settings-readonly-hint')?.classList.toggle('hidden', canEdit());
+  $('#log-purge-now-btn')?.toggleAttribute('disabled', !hasPermission('LOG_SETTINGS_EDIT'));
+  $('#log-settings-readonly-hint')?.classList.toggle('hidden', hasPermission('LOG_SETTINGS_EDIT'));
   updateAdminSession();
   $('#rule-form')?.querySelectorAll('input, select, button').forEach((el) => {
-    if (el.id === 'rule-delete-btn') el.classList.toggle('hidden', !canAdmin() || !editingRuleId);
-    else el.toggleAttribute('disabled', readOnly);
+    if (el.id === 'rule-delete-btn') el.classList.toggle('hidden', !hasPermission('RULES_DELETE') || !editingRuleId);
+    else el.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
   });
-  $('#rule-new-btn')?.toggleAttribute('disabled', readOnly);
+  $('#rule-new-btn')?.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
   $('#verification-form')?.querySelectorAll('input, button').forEach((el) => {
-    el.toggleAttribute('disabled', readOnly);
+    el.toggleAttribute('disabled', !hasPermission('RULES_EDIT'));
   });
-  $('#inbox-backfill-btn')?.toggleAttribute('disabled', readOnly);
-  $('#nav-users')?.classList.toggle('hidden', !canSuperAdmin());
-  if (!canSuperAdmin() && activeTab === 'users') {
-    activeTab = 'dashboard';
-    $$('.nav-btn').forEach((b) => b.classList.remove('active'));
-    $('.nav-btn[data-tab="dashboard"]')?.classList.add('active');
+  $('#inbox-backfill-btn')?.toggleAttribute('disabled', !hasPermission('CONVERSATIONS_MANAGE'));
+
+  $$('.nav-btn').forEach((btn) => {
+    const tab = btn.dataset.tab;
+    const perm = NAV_PERMISSIONS[tab];
+    const allowed = !perm || hasPermission(perm);
+    btn.classList.toggle('hidden', !allowed);
+  });
+
+  if (!hasPermission(NAV_PERMISSIONS[activeTab] || 'DASHBOARD_VIEW')) {
+    const first = [...$$('.nav-btn')].find((b) => !b.classList.contains('hidden'));
+    activeTab = first?.dataset.tab || 'dashboard';
+    $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === activeTab));
     $$('.tab').forEach((tab) => tab.classList.add('hidden'));
-    $('#tab-dashboard')?.classList.remove('hidden');
+    $(`#tab-${activeTab}`)?.classList.remove('hidden');
   }
 }
 
@@ -150,7 +202,9 @@ async function restoreSession() {
     }
     const data = await res.json();
     adminRole = data.role || '';
+    adminPermissions = Array.isArray(data.permissions) ? data.permissions : [];
     localStorage.setItem('adminRole', adminRole);
+    localStorage.setItem('adminPermissions', JSON.stringify(adminPermissions));
     return true;
   } catch {
     logout();
@@ -642,8 +696,10 @@ $('#login-form').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message);
     token = data.accessToken;
     adminRole = data.user?.role ?? '';
+    adminPermissions = Array.isArray(data.user?.permissions) ? data.user.permissions : [];
     localStorage.setItem('adminToken', token);
     localStorage.setItem('adminRole', adminRole);
+    localStorage.setItem('adminPermissions', JSON.stringify(adminPermissions));
     if (!adminRole) await restoreSession();
     showApp();
   } catch (ex) {
@@ -2211,7 +2267,7 @@ function resetUserForm() {
   $('#user-email').removeAttribute('readonly');
   $('#user-password').value = '';
   $('#user-password').required = true;
-  $('#user-role').value = 'ADMIN';
+  $('#user-role').value = 'BACK_OFFICE';
   $('#user-active').checked = true;
   $('#user-form-title').textContent = t('users.addUser');
   $('#user-submit-btn').textContent = t('users.addUser');
@@ -2227,7 +2283,9 @@ function loadUserIntoForm(user) {
   $('#user-email').setAttribute('readonly', 'readonly');
   $('#user-password').value = '';
   $('#user-password').required = false;
-  $('#user-role').value = ['ADMIN', 'SUPER_ADMIN'].includes(user.role) ? user.role : 'ADMIN';
+  $('#user-role').value = ['BACK_OFFICE', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)
+    ? user.role
+    : 'BACK_OFFICE';
   $('#user-active').checked = user.isActive;
   $('#user-form-title').textContent = t('users.editUser');
   $('#user-submit-btn').textContent = t('users.save');
@@ -2285,7 +2343,58 @@ async function loadUsers() {
     else resetUserForm();
   }
   bindUserRowClicks();
+  await loadRolePermissionsMatrix();
 }
+
+let cachedPermMatrix = null;
+
+async function loadRolePermissionsMatrix() {
+  if (!hasPermission('ROLE_PERMISSIONS_MANAGE') && adminRole !== 'SUPER_ADMIN') {
+    $('#role-permissions-card')?.classList.add('hidden');
+    return;
+  }
+  $('#role-permissions-card')?.classList.remove('hidden');
+  try {
+    cachedPermMatrix = await api('/role-permissions');
+    renderRolePermissionCheckboxes();
+  } catch (ex) {
+    notify.error(ex.message);
+  }
+}
+
+function renderRolePermissionCheckboxes() {
+  const wrap = $('#perm-checkboxes');
+  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+  if (!wrap || !cachedPermMatrix) return;
+  const selected = new Set(cachedPermMatrix.matrix?.[role] || []);
+  const catalog = cachedPermMatrix.catalog || [];
+  wrap.innerHTML = catalog.map((item) => `
+    <label>
+      <input type="checkbox" data-perm-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''} />
+      <span>${esc(t(item.labelKey) || item.key)}</span>
+    </label>
+  `).join('');
+}
+
+$('#perm-role-select')?.addEventListener('change', () => renderRolePermissionCheckboxes());
+
+$('#perm-save-btn')?.addEventListener('click', async () => {
+  const role = $('#perm-role-select')?.value;
+  if (!role) return;
+  const permissions = [...$$('#perm-checkboxes input[data-perm-key]:checked')].map(
+    (el) => el.dataset.permKey,
+  );
+  try {
+    await api('/role-permissions', {
+      method: 'PUT',
+      body: JSON.stringify({ role, permissions }),
+    });
+    notify.success(t('perms.saved'));
+    await loadRolePermissionsMatrix();
+  } catch (ex) {
+    notify.error(ex.message);
+  }
+});
 
 $('#user-new-btn')?.addEventListener('click', () => resetUserForm());
 

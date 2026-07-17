@@ -19,7 +19,11 @@ const PUBLIC_USER_SELECT = {
   updatedAt: true,
 } as const;
 
-const MANAGED_ROLES = new Set<AdminRole>([AdminRole.ADMIN, AdminRole.SUPER_ADMIN]);
+const MANAGED_ROLES = new Set<AdminRole>([
+  AdminRole.BACK_OFFICE,
+  AdminRole.ADMIN,
+  AdminRole.SUPER_ADMIN,
+]);
 
 @Injectable()
 export class AdminUsersService {
@@ -150,7 +154,9 @@ export class AdminUsersService {
 
   private assertManagedRole(role: AdminRole) {
     if (!MANAGED_ROLES.has(role)) {
-      throw new BadRequestException('Role must be ADMIN or SUPER_ADMIN');
+      throw new BadRequestException(
+        'Role must be BACK_OFFICE, ADMIN or SUPER_ADMIN',
+      );
     }
   }
 }

@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { AdminRole } from '@prisma/client';
+import { PermissionsService } from '../admin/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { normalizeVerificationConfigFields } from '../fonio/verification-fields';
@@ -12,10 +13,12 @@ export class BootstrapService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly rules: RulesService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   async onModuleInit() {
     await this.seedAdmin();
+    await this.permissions.seedDefaultsIfEmpty();
     await this.seedVerificationConfig();
     await this.rules.seedDefaults();
   }
