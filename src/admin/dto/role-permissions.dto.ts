@@ -2,8 +2,6 @@ import { AdminPermission, AdminRole } from '@prisma/client';
 import { ArrayUnique, IsArray, IsEnum, IsIn } from 'class-validator';
 
 const CONFIGURABLE_ROLES = [
-  AdminRole.VIEWER,
-  AdminRole.EDITOR,
   AdminRole.BACK_OFFICE,
   AdminRole.ADMIN,
 ] as const;

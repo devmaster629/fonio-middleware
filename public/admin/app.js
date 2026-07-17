@@ -2283,7 +2283,7 @@ function loadUserIntoForm(user) {
   $('#user-email').setAttribute('readonly', 'readonly');
   $('#user-password').value = '';
   $('#user-password').required = false;
-  $('#user-role').value = ['BACK_OFFICE', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)
+  $('#user-role').value = ['BACK_OFFICE', 'ADMIN'].includes(user.role)
     ? user.role
     : 'BACK_OFFICE';
   $('#user-active').checked = user.isActive;
@@ -2305,7 +2305,7 @@ function bindUserRowClicks() {
     row.addEventListener('click', () => {
       const id = row.dataset.userId;
       const user = cachedUsers.find((u) => u.id === id);
-      if (user) loadUserIntoForm(user);
+      if (user && user.role !== 'SUPER_ADMIN') loadUserIntoForm(user);
     });
   });
 }
@@ -2368,12 +2368,25 @@ function renderRolePermissionCheckboxes() {
   if (!wrap || !cachedPermMatrix) return;
   const selected = new Set(cachedPermMatrix.matrix?.[role] || []);
   const catalog = cachedPermMatrix.catalog || [];
-  wrap.innerHTML = catalog.map((item) => `
-    <label>
-      <input type="checkbox" data-perm-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''} />
-      <span>${esc(t(item.labelKey) || item.key)}</span>
-    </label>
-  `).join('');
+  const renderGroup = (group, titleKey) => {
+    const items = catalog.filter((item) => item.group === group);
+    return `
+      <section class="perm-section">
+        <h4 class="perm-section-title">${esc(t(titleKey))}</h4>
+        <div class="perm-options">
+          ${items.map((item) => `
+            <label class="perm-option">
+              <input type="checkbox" data-perm-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''} />
+              <span>${esc(t(item.labelKey) || item.key)}</span>
+            </label>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  };
+  wrap.innerHTML =
+    renderGroup('pages', 'perms.pages') +
+    renderGroup('actions', 'perms.actions');
 }
 
 $('#perm-role-select')?.addEventListener('change', () => renderRolePermissionCheckboxes());

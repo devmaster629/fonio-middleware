@@ -15,13 +15,15 @@ const WEBHOOK_URL = 'https://vermietung.brainions.digital/webhooks/hostaway';
 
 const CONFIG = {
   paymentAlertsEnabled: 'true',
-  paymentAlertTo: 'vermietung@brainions.de',
+  // Override with PAYMENT_ALERT_TO_OVERRIDE for temporary testing; default is the client address.
+  paymentAlertTo: process.env.PAYMENT_ALERT_TO_OVERRIDE || 'vermietung@brainions.de',
   paymentAlertFrom: 'technik@ichweissdas.net',
   smtpHost: 'send.one.com',
   smtpPort: '587',
   smtpSecure: 'false',
   smtpUser: 'technik@ichweissdas.net',
-  webhookAlertEmail: 'technik@brainions.de',
+  // Override with WEBHOOK_ALERT_EMAIL_OVERRIDE for temporary testing; default is the client address.
+  webhookAlertEmail: process.env.WEBHOOK_ALERT_EMAIL_OVERRIDE || 'technik@brainions.de',
 };
 
 if (!VPS_PASS || !SMTP_PASS) {

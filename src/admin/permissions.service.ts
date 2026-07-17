@@ -52,17 +52,14 @@ export class PermissionsService {
   }
 
   async listRoleMatrix() {
-    const roles = Object.values(AdminRole).filter(
-      (r) => r !== AdminRole.SUPER_ADMIN,
-    );
+    const roles = [AdminRole.BACK_OFFICE, AdminRole.ADMIN];
     const matrix: Record<string, AdminPermission[]> = {};
     for (const role of roles) {
       matrix[role] = await this.getPermissionsForRole(role);
     }
-    matrix[AdminRole.SUPER_ADMIN] = Object.values(AdminPermission);
     return {
       catalog: this.catalog(),
-      roles: Object.values(AdminRole),
+      roles,
       matrix,
     };
   }
