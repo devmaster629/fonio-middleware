@@ -1334,7 +1334,6 @@ function formatReservationOption(c, currency = 'EUR') {
   const dates = formatStayDates(c.arrivalDate, c.departureDate);
   const total = c.totalPrice != null ? formatMoney(c.totalPrice, currency) : '';
   const balance = c.balanceDue != null ? formatMoney(c.balanceDue, currency) : '';
-  const score = c.score != null ? `score ${c.score}` : '';
   return [
     `#${id}`,
     guest,
@@ -1342,8 +1341,131 @@ function formatReservationOption(c, currency = 'EUR') {
     dates,
     total ? `total ${total}` : '',
     balance && balance !== total ? `due ${balance}` : '',
-    score,
   ].filter(Boolean).join(' — ');
+}
+
+function paymentDecisionLabel(decision) {
+  if (!decision) return '–';
+  const key = `payments.decision.${decision}`;
+  const label = t(key);
+  return label === key ? decision : label;
+}
+
+/**
+ * Build a reviewer-friendly explanation without internal match scores.
+ * Works for already-stored queue items too (recomputes from candidates).
+ */
+function explainWhyNotAutoMatched(payment) {
+  const decision = payment.matchDecision || '';
+  const candidates = Array.isArray(payment.matchCandidates) ? payment.matchCandidates : [];
+  const reservation = payment.matchedReservation;
+  const best =
+    candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
+    candidates[0];
+  const second = candidates.find((c) => Number(c.hostawayId) !== Number(best?.hostawayId));
+  const reasons = Array.isArray(best?.reasons) ? best.reasons : [];
+  const reasonText = reasons.join(' ').toLowerCase();
+  const amountLabel = formatMoney(payment.amount, payment.currency || 'EUR');
+
+  const missing = [];
+  if (!/reservation #\d+/.test(reasonText)) {
+    missing.push(t('payments.missing.reservationNumber'));
+  }
+  if (!reasonText.includes('email')) {
+    missing.push(t('payments.missing.guestEmail'));
+  }
+  const amountOk =
+    reasonText.includes('outstanding balance') ||
+    reasonText.includes('reservation total') ||
+    reasonText.includes('deposit share') ||
+    reasonText.includes('payment amount aligns');
+  if (!amountOk) {
+    if (best?.balanceDue != null && best?.totalPrice != null) {
+      missing.push(
+        t('payments.missing.amountBoth', {
+          amount: amountLabel,
+          total: formatMoney(best.totalPrice, payment.currency || 'EUR'),
+          due: formatMoney(best.balanceDue, payment.currency || 'EUR'),
+        }),
+      );
+    } else if (best?.totalPrice != null) {
+      missing.push(
+        t('payments.missing.amountTotal', {
+          amount: amountLabel,
+          total: formatMoney(best.totalPrice, payment.currency || 'EUR'),
+        }),
+      );
+    } else {
+      missing.push(t('payments.missing.amountUnknown', { amount: amountLabel }));
+    }
+  }
+  if (!reasonText.includes('listing name')) {
+    missing.push(t('payments.missing.listing'));
+  }
+  if (!reasonText.includes('stay dates')) {
+    missing.push(t('payments.missing.dates'));
+  }
+
+  if (decision === 'AMBIGUOUS' && best && second) {
+    return t('payments.why.ambiguous', {
+      a: `#${best.hostawayId}${best.guestName ? ` (${best.guestName})` : ''}`,
+      b: `#${second.hostawayId}${second.guestName ? ` (${second.guestName})` : ''}`,
+    });
+  }
+
+  if (decision === 'NO_MATCH') {
+    return t('payments.why.noMatch');
+  }
+
+  // Prefer a freshly built plain-language explanation over old "score 40" text.
+  const stored = String(payment.matchReason || '');
+  const looksLikeScoreJargon =
+    /score|threshold|confidence too low|auto-apply/i.test(stored);
+  if (stored && !looksLikeScoreJargon) return stored;
+
+  const found = reasons.length
+    ? t('payments.why.matchedOn', { signals: reasons.join('; ') })
+    : t('payments.why.weakMatch');
+  const missingText = missing.length
+    ? ` ${t('payments.why.missingBecause', { missing: missing.join('; ') })}`
+    : ` ${t('payments.why.needsConfirmation')}`;
+  return `${found}${missingText}`;
+}
+
+let expandableSeq = 0;
+
+/**
+ * Render text collapsed to `shortLen` chars with a "more / less" toggle.
+ * Falls back to plain text when it already fits.
+ */
+function renderExpandableText(text, shortLen = 90) {
+  const full = String(text || '').trim();
+  if (!full) return '';
+  if (full.length <= shortLen) return esc(full);
+  const cut = full.slice(0, shortLen);
+  const short = cut.slice(0, Math.max(cut.lastIndexOf(' '), 40));
+  const id = `exp-${++expandableSeq}`;
+  return `<span class="expandable" data-exp-id="${id}">` +
+    `<span class="expandable-short">${esc(short)}… ` +
+    `<a href="#" class="expandable-toggle" data-exp-target="${id}" data-exp-action="more">${t('ui.more')}</a></span>` +
+    `<span class="expandable-full hidden">${esc(full)} ` +
+    `<a href="#" class="expandable-toggle" data-exp-target="${id}" data-exp-action="less">${t('ui.less')}</a></span>` +
+    `</span>`;
+}
+
+function bindExpandableToggles(rootSelector) {
+  const root = $(rootSelector);
+  if (!root || root.dataset.expBound) return;
+  root.dataset.expBound = '1';
+  root.addEventListener('click', (event) => {
+    const link = event.target.closest('.expandable-toggle');
+    if (!link) return;
+    event.preventDefault();
+    const wrap = link.closest('.expandable');
+    if (!wrap) return;
+    wrap.querySelector('.expandable-short')?.classList.toggle('hidden');
+    wrap.querySelector('.expandable-full')?.classList.toggle('hidden');
+  });
 }
 
 function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
@@ -1367,7 +1489,7 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
         ? ` · ${t('payments.balanceDue')}: ${esc(formatMoney(balanceDue, currency))}`
         : ''
     }</div>
-    ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${esc(reasons.join('; '))}</div>` : ''}
+    ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${renderExpandableText(reasons.join('; '), 60)}</div>` : ''}
   </div>`;
 }
 
@@ -1450,8 +1572,9 @@ async function loadPayments() {
         }, p.currency))}</option>`,
       );
     }
-    const whyNotAuto = p.matchReason
-      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${esc(p.matchReason)}</div>`
+    const whyText = explainWhyNotAutoMatched(p);
+    const whyNotAuto = whyText
+      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${renderExpandableText(whyText, 80)}</div>`
       : '';
     return `
     <tr>
@@ -1460,7 +1583,7 @@ async function loadPayments() {
       <td>${p.amount.toFixed(2)} ${p.currency}</td>
       <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
       <td>
-        <span class="badge manual">${esc(p.matchDecision || p.status)}</span>
+        <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
         ${whyNotAuto}
       </td>
       <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency)}</td>
@@ -1488,6 +1611,7 @@ async function loadPayments() {
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
   bindReservationSearchInputs();
+  bindExpandableToggles('#payments-table');
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {

@@ -95,6 +95,41 @@ describe('PaymentMatcherService', () => {
     const result = await service.match(payment);
     expect(['AMBIGUOUS', 'PARTIAL_UNCLEAR']).toContain(result.decision);
     expect((result.candidates?.length ?? 0)).toBeGreaterThan(1);
+    expect(result.reason).not.toMatch(/score|threshold/i);
+    expect(result.reason.length).toBeGreaterThan(20);
+  });
+
+  it('explains partial matches in plain language without scores', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-1',
+        hostawayId: 35902633,
+        guestName: 'Peter Walther',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2026-07-01'),
+        departureDate: new Date('2026-07-31'),
+        totalPrice: 5390,
+        notifiedCharges: [],
+        listing: { name: '43 Sand-Style', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-partial',
+      amount: 550,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'PETER WALTHER',
+      reference: 'PETER WALTHER Juli teil 2',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('PARTIAL_UNCLEAR');
+    expect(result.reason).toMatch(/Matched on:/i);
+    expect(result.reason).toMatch(/payment amount/i);
+    expect(result.reason).not.toMatch(/score|threshold/i);
   });
 
   it('boosts score when amount equals outstanding balance', async () => {

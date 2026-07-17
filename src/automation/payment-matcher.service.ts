@@ -60,7 +60,8 @@ export class PaymentMatcherService {
       return {
         decision: PaymentMatchDecision.NO_MATCH,
         candidates: [],
-        reason: 'No reservation matched the payment signals',
+        reason:
+          'No booking could be matched from the payer name, reference text, amount, or reservation number',
       };
     }
 
@@ -77,7 +78,7 @@ export class PaymentMatcherService {
         decision: PaymentMatchDecision.AMBIGUOUS,
         candidates: candidates.slice(0, 5),
         best,
-        reason: `Multiple close matches (${best.hostawayId} vs ${second.hostawayId})`,
+        reason: this.explainAmbiguous(best, second, payment),
       };
     }
 
@@ -93,7 +94,8 @@ export class PaymentMatcherService {
         decision: PaymentMatchDecision.AMBIGUOUS,
         candidates: candidates.slice(0, 5),
         best,
-        reason: 'Multiple reservation numbers found in payment reference',
+        reason:
+          `The bank reference contains more than one reservation number (#${best.hostawayId} and #${second.hostawayId}). Please choose the correct booking.`,
       };
     }
 
@@ -102,7 +104,7 @@ export class PaymentMatcherService {
         decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
         candidates: candidates.slice(0, 5),
         best,
-        reason: `Best match score ${best.score} is below auto-apply threshold`,
+        reason: this.explainPartialMatch(best, payment),
       };
     }
 
@@ -111,7 +113,7 @@ export class PaymentMatcherService {
         decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
         candidates: candidates.slice(0, 5),
         best,
-        reason: 'Match confidence too low for automatic processing',
+        reason: this.explainPartialMatch(best, payment),
       };
     }
 
@@ -121,6 +123,93 @@ export class PaymentMatcherService {
       best,
       reason: best.reasons.join('; '),
     };
+  }
+
+  /**
+   * Plain-language explanation for reviewers (no internal scores).
+   */
+  private explainPartialMatch(
+    best: PaymentMatchCandidate,
+    payment: NormalizedExternalPayment,
+  ): string {
+    const found = best.reasons.length
+      ? `Matched on: ${best.reasons.join('; ')}`
+      : 'Only a weak match was found';
+    const missing = this.missingAutoApplySignals(best, payment);
+    const missingText = missing.length
+      ? ` Not enough for automatic booking because: ${missing.join('; ')}`
+      : ' Additional confirmation is still required before booking this payment automatically';
+    return `${found}.${missingText}.`;
+  }
+
+  private explainAmbiguous(
+    best: PaymentMatchCandidate,
+    second: PaymentMatchCandidate,
+    payment: NormalizedExternalPayment,
+  ): string {
+    const bestBits = best.reasons.length ? best.reasons.join(', ') : 'name similarity';
+    const secondBits = second.reasons.length
+      ? second.reasons.join(', ')
+      : 'name similarity';
+    const amountNote =
+      best.balanceDue != null &&
+      !this.amountsMatch(payment.amount, best.balanceDue) &&
+      !(best.totalPrice != null && this.amountsMatch(payment.amount, best.totalPrice))
+        ? ` The payment amount (${payment.amount.toFixed(2)} ${payment.currency}) also does not uniquely match a booking total or outstanding balance.`
+        : '';
+    return (
+      `Several bookings look similarly likely: #${best.hostawayId}` +
+      `${best.guestName ? ` (${best.guestName})` : ''} vs #${second.hostawayId}` +
+      `${second.guestName ? ` (${second.guestName})` : ''}.` +
+      ` First suggestion matched on ${bestBits}; second on ${secondBits}.` +
+      `${amountNote} Please choose the correct reservation.`
+    );
+  }
+
+  private missingAutoApplySignals(
+    best: PaymentMatchCandidate,
+    payment: NormalizedExternalPayment,
+  ): string[] {
+    const reasons = best.reasons.join(' ').toLowerCase();
+    const missing: string[] = [];
+
+    if (!/reservation #\d+/.test(reasons)) {
+      missing.push('no reservation number in the bank reference');
+    }
+    if (!reasons.includes('email')) {
+      missing.push('no matching guest email');
+    }
+
+    const amountMatches =
+      reasons.includes('outstanding balance') ||
+      reasons.includes('reservation total') ||
+      reasons.includes('deposit share') ||
+      reasons.includes('payment amount aligns');
+    if (!amountMatches) {
+      const amountLabel = `${payment.amount.toFixed(2)} ${payment.currency}`;
+      if (best.balanceDue != null && best.totalPrice != null) {
+        missing.push(
+          `payment amount (${amountLabel}) does not match the booking total (${best.totalPrice.toFixed(2)}) or outstanding balance (${best.balanceDue.toFixed(2)})`,
+        );
+      } else if (best.totalPrice != null) {
+        missing.push(
+          `payment amount (${amountLabel}) does not match the booking total (${best.totalPrice.toFixed(2)})`,
+        );
+      } else {
+        missing.push(
+          `payment amount (${amountLabel}) could not be confirmed against the booking total`,
+        );
+      }
+    }
+
+    if (!reasons.includes('listing name')) {
+      missing.push('listing/property name not found in the reference');
+    }
+    if (!reasons.includes('stay dates')) {
+      missing.push('stay dates not found in the reference');
+    }
+
+    return missing;
   }
 
   private async loadCandidateReservations() {
