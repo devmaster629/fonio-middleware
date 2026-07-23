@@ -1731,49 +1731,54 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
         ? Math.max(0, Math.round((totalPrice - alreadyPaid - amount) * 100) / 100)
         : null;
 
-  const lines = [];
-  if (totalPrice != null) {
-    lines.push(`${t('payments.bookingAmount')}: <strong>${esc(formatMoney(totalPrice, currency))}</strong>`);
-  }
-  if (alreadyPaid != null) {
-    lines.push(`${t('payments.alreadyRecorded')}: ${esc(formatMoney(alreadyPaid, currency))}`);
-  }
-  if (balanceDue != null) {
-    lines.push(`${t('payments.balanceDue')}: ${esc(formatMoney(balanceDue, currency))}`);
-  }
-  if (amount != null) {
-    lines.push(`${t('payments.thisPayment')}: <strong>${esc(formatMoney(amount, currency))}</strong>`);
-  }
-  if (kind === 'partial' && remainingAfter != null) {
-    lines.push(
-      `${t('payments.remainingAfter')}: <strong>${esc(formatMoney(remainingAfter, currency))}</strong>`,
-    );
-  }
-
   let badge = '';
-  let note = '';
+  let hint = '';
   let boxClass = 'payment-math';
   if (kind === 'partial') {
     boxClass += ' is-partial';
     badge = `<span class="payment-kind-badge payment-partial-badge">${t('payments.partialPayment')}</span>`;
-    note = `<div class="payment-kind-note">${t('payments.partialPaymentHint')}</div>`;
+    hint = t('payments.partialPaymentHint');
   } else if (kind === 'additional') {
     boxClass += ' is-additional';
     badge = `<span class="payment-kind-badge payment-additional-badge">${t('payments.additionalPayment')}</span>`;
-    note = `<div class="payment-kind-note">${
-      isOtaChannel(channelName)
-        ? t('payments.additionalPaymentOta', { channel: prettyChannel(channelName) })
-        : t('payments.additionalPaymentHint')
-    }</div>`;
+    hint = isOtaChannel(channelName)
+      ? t('payments.additionalPaymentOta', { channel: prettyChannel(channelName) })
+      : t('payments.additionalPaymentHint');
   } else if (kind === 'full') {
     boxClass += ' is-full';
     badge = `<span class="payment-kind-badge payment-full-badge">${t('payments.fullPayment')}</span>`;
   }
 
-  return `<div class="${boxClass}">
+  const cells = [];
+  if (amount != null) {
+    cells.push(
+      `<div class="payment-math-cell is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
+    );
+  }
+  if (kind === 'partial' && remainingAfter != null) {
+    cells.push(
+      `<div class="payment-math-cell is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
+    );
+  }
+  if (totalPrice != null) {
+    cells.push(
+      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.bookingAmount')}</span><span class="payment-math-v">${esc(formatMoney(totalPrice, currency))}</span></div>`,
+    );
+  }
+  if (alreadyPaid != null && alreadyPaid > 0.009) {
+    cells.push(
+      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.alreadyRecorded')}</span><span class="payment-math-v">${esc(formatMoney(alreadyPaid, currency))}</span></div>`,
+    );
+  }
+  if (balanceDue != null && !(kind === 'partial' && remainingAfter != null)) {
+    cells.push(
+      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.balanceDue')}</span><span class="payment-math-v">${esc(formatMoney(balanceDue, currency))}</span></div>`,
+    );
+  }
+
+  return `<div class="${boxClass}"${hint ? ` title="${esc(hint)}"` : ''}>
     ${badge}
-    <div class="payment-math-lines">${lines.join(' · ')}</div>
-    ${note}
+    <div class="payment-math-grid">${cells.join('')}</div>
   </div>`;
 }
 
@@ -1789,23 +1794,21 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
   const balanceDue = candidate?.balanceDue;
   const channelName = reservation?.channelName ?? candidate?.channelName ?? null;
   const hostNote = reservation?.hostNote ?? candidate?.hostNote ?? null;
-  const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
   const hostawayUrl = hostawayReservationUrl(hostawayId);
   const titleId = hostawayUrl
     ? `<a class="payment-hostaway-link" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">#${hostawayId}</a>`
     : `#${hostawayId}`;
   const channelBadge = renderChannelBadge(channelName);
+  const stay = formatStayDates(arrival, departure);
   const notesBlock = hostNote
-    ? `<div class="field-hint payment-host-note"><strong>${t('payments.hostNote')}:</strong> ${renderExpandableText(hostNote, 90)}</div>`
+    ? `<details class="payment-notes"><summary>${t('payments.hostNote')}</summary><div class="payment-notes-body">${esc(hostNote)}</div></details>`
     : '';
 
   return `<div class="payment-suggestion">
     <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}${channelBadge ? ` ${channelBadge}` : ''}</div>
-    <div class="field-hint">${esc(listing || '–')}</div>
-    <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
+    <div class="payment-suggestion-meta">${esc(listing || '–')}${stay ? ` · ${esc(stay)}` : ''}</div>
     ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
     ${notesBlock}
-    ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${renderExpandableText(reasons.join('; '), 60)}</div>` : ''}
   </div>`;
 }
 
@@ -2079,7 +2082,7 @@ async function loadPayments() {
     }
     const whyText = explainWhyNotAutoMatched(p);
     const whyNotAuto = whyText
-      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${renderExpandableText(whyText, 80)}</div>`
+      ? `<div class="payment-why-not-auto" title="${esc(whyText)}">${renderExpandableText(whyText, 72)}</div>`
       : '';
     const canReview = hasPermission('PAYMENTS_REVIEW');
     const defaultOpenId =
@@ -2087,39 +2090,48 @@ async function loadPayments() {
       bestCandidate?.hostawayId ||
       (candidates[0] && candidates[0].hostawayId);
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
+    const matchSignals = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
+    const matchSignalsHtml = matchSignals.length
+      ? `<div class="payment-match-signals" title="${esc(matchSignals.join('; '))}">${esc(matchSignals.slice(0, 2).join(' · '))}${matchSignals.length > 2 ? '…' : ''}</div>`
+      : '';
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
-        <select class="payment-assign-select" data-payment-id="${p.id}">
-          <option value="">${t('payments.pickReservation')}</option>
-          ${assignOptions.join('')}
-        </select>
-        <input type="text" class="payment-assign-manual" data-payment-id="${p.id}"
-          list="payment-res-list-${p.id}" autocomplete="off"
-          placeholder="${t('payments.manualReservationId')}"
-          title="${t('payments.manualReservationHint')}" />
-        <datalist id="payment-res-list-${p.id}"></datalist>
-        <input type="text" class="payment-note-input" data-payment-id="${p.id}"
-          autocomplete="off" maxlength="200"
-          placeholder="${t('payments.notePlaceholder')}"
-          title="${t('payments.noteHint')}"
-          value="${esc(p.reference || '')}" />
-        <div class="payment-action-btns">
-          <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
-          <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
-          ${openHostawayBtn}
+        <div class="payment-actions-stack">
+          <label class="payment-field-label">${t('payments.assignLabel')}</label>
+          <select class="payment-assign-select" data-payment-id="${p.id}">
+            <option value="">${t('payments.pickReservation')}</option>
+            ${assignOptions.join('')}
+          </select>
+          <input type="text" class="payment-assign-manual" data-payment-id="${p.id}"
+            list="payment-res-list-${p.id}" autocomplete="off"
+            placeholder="${t('payments.manualReservationId')}"
+            title="${t('payments.manualReservationHint')}" />
+          <datalist id="payment-res-list-${p.id}"></datalist>
+          <label class="payment-field-label">${t('payments.noteLabel')}</label>
+          <input type="text" class="payment-note-input" data-payment-id="${p.id}"
+            autocomplete="off" maxlength="200"
+            placeholder="${t('payments.notePlaceholder')}"
+            title="${t('payments.noteHint')}"
+            value="${esc(p.reference || '')}" />
+          <div class="payment-action-btns">
+            <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
+            <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+            ${openHostawayBtn}
+          </div>
         </div>
       </td>`
       : `<td class="payment-actions-cell is-readonly">
         ${openHostawayBtn || `<span class="muted feature-locked-hint">${t('perms.featureLocked')}</span>`}
       </td>`;
     return `
-    <tr>
-      <td>${formatDateTime(p.createdAt)}</td>
-      <td>${p.source}</td>
-      <td>${p.amount.toFixed(2)} ${p.currency}</td>
-      <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
-      <td>
+    <tr class="payment-review-row">
+      <td class="payment-time-cell">${formatDateTime(p.createdAt)}</td>
+      <td><span class="payment-source-pill">${esc(p.source)}</span></td>
+      <td class="payment-amount-cell">${esc(formatMoney(p.amount, p.currency))}</td>
+      <td class="payment-payer-cell"><div class="payment-payer-name">${esc(p.payerName || '–')}</div><div class="field-hint">${renderExpandableText(p.reference || '', 70)}</div></td>
+      <td class="payment-match-cell">
         <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
+        ${matchSignalsHtml}
         ${whyNotAuto}
       </td>
       <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
