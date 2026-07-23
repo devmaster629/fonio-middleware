@@ -1589,6 +1589,27 @@ function bindExpandableToggles(rootSelector) {
   });
 }
 
+/** Deep-link into the Hostaway dashboard reservation detail page. */
+function hostawayReservationUrl(hostawayId) {
+  const id = Number(hostawayId);
+  if (!id) return null;
+  return `https://dashboard.hostaway.com/reservations/${id}`;
+}
+
+function renderOpenInHostawayButton(hostawayId, extraClass = '') {
+  const url = hostawayReservationUrl(hostawayId);
+  if (!url) return '';
+  return `<a class="btn ghost btn-sm payment-open-hostaway ${extraClass}"
+    href="${esc(url)}" target="_blank" rel="noopener noreferrer"
+    data-hostaway-id="${idOrEmpty(hostawayId)}"
+    title="${t('payments.openInHostawayHint')}">${t('payments.openInHostaway')}</a>`;
+}
+
+function idOrEmpty(hostawayId) {
+  const id = Number(hostawayId);
+  return id || '';
+}
+
 function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
   const src = reservation || candidate;
   if (!src) return '–';
@@ -1600,9 +1621,13 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
   const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
   const balanceDue = candidate?.balanceDue;
   const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
+  const hostawayUrl = hostawayReservationUrl(hostawayId);
+  const titleId = hostawayUrl
+    ? `<a class="payment-hostaway-link" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">#${hostawayId}</a>`
+    : `#${hostawayId}`;
 
   return `<div class="payment-suggestion">
-    <div class="payment-suggestion-title">#${hostawayId}${guest ? ` — ${esc(guest)}` : ''}</div>
+    <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}</div>
     <div class="field-hint">${esc(listing || '–')}</div>
     <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
     <div class="field-hint">${t('payments.bookingAmount')}: ${esc(formatMoney(totalPrice, currency))}${
@@ -1648,6 +1673,38 @@ function bindReservationSearchInputs() {
 function parseReservationIdInput(value) {
   const match = String(value || '').match(/#?(\d{5,10})/);
   return match ? Number(match[1]) : undefined;
+}
+
+/** Keep "Open in Hostaway" pointed at the currently selected / typed reservation. */
+function bindPaymentHostawayOpeners() {
+  const syncOpener = (paymentId) => {
+    const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
+    const manual = $(`.payment-assign-manual[data-payment-id="${paymentId}"]`);
+    const cell = select?.closest('.payment-actions-cell') || manual?.closest('.payment-actions-cell');
+    const btn = cell?.querySelector('.payment-open-hostaway');
+    if (!btn) return;
+    const fromManual = parseReservationIdInput(manual?.value);
+    const fromSelect = select?.value ? Number(select.value) : undefined;
+    const hostawayId = fromManual || fromSelect || Number(btn.dataset.hostawayId) || undefined;
+    const url = hostawayReservationUrl(hostawayId);
+    if (!url) {
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('is-disabled');
+      btn.removeAttribute('href');
+      return;
+    }
+    btn.classList.remove('is-disabled');
+    btn.removeAttribute('aria-disabled');
+    btn.href = url;
+    btn.dataset.hostawayId = String(hostawayId);
+  };
+
+  $$('.payment-assign-select').forEach((select) => {
+    select.addEventListener('change', () => syncOpener(select.dataset.paymentId));
+  });
+  $$('.payment-assign-manual').forEach((input) => {
+    input.addEventListener('input', () => syncOpener(input.dataset.paymentId));
+  });
 }
 
 async function loadPayments() {
@@ -1698,6 +1755,11 @@ async function loadPayments() {
       ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${renderExpandableText(whyText, 80)}</div>`
       : '';
     const canReview = hasPermission('PAYMENTS_REVIEW');
+    const defaultOpenId =
+      reservation?.hostawayId ||
+      bestCandidate?.hostawayId ||
+      (candidates[0] && candidates[0].hostawayId);
+    const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
         <select class="payment-assign-select" data-payment-id="${p.id}">
@@ -1709,10 +1771,15 @@ async function loadPayments() {
           placeholder="${t('payments.manualReservationId')}"
           title="${t('payments.manualReservationHint')}" />
         <datalist id="payment-res-list-${p.id}"></datalist>
-        <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
-        <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+        <div class="payment-action-btns">
+          <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
+          <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+          ${openHostawayBtn}
+        </div>
       </td>`
-      : `<td class="payment-actions-cell is-readonly"><span class="muted feature-locked-hint">${t('perms.featureLocked')}</span></td>`;
+      : `<td class="payment-actions-cell is-readonly">
+        ${openHostawayBtn || `<span class="muted feature-locked-hint">${t('perms.featureLocked')}</span>`}
+      </td>`;
     return `
     <tr>
       <td>${formatDateTime(p.createdAt)}</td>
@@ -1737,6 +1804,7 @@ async function loadPayments() {
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
   bindReservationSearchInputs();
   bindExpandableToggles('#payments-table');
+  bindPaymentHostawayOpeners();
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {

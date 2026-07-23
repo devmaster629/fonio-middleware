@@ -1241,6 +1241,31 @@ form.is-readonly .btn.primary {
   margin-bottom: 0.35rem;
 }
 
+.payment-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.payment-hostaway-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.payment-hostaway-link:hover {
+  color: var(--primary);
+}
+
+a.payment-open-hostaway.is-disabled,
+a.payment-open-hostaway[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   #app-screen { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; }
