@@ -1612,31 +1612,39 @@ function idOrEmpty(hostawayId) {
   return id || '';
 }
 
-/** True when the booking came from an OTA where the base stay is paid on-platform. */
+/**
+ * True when the booking came from an OTA where the base stay is paid
+ * on-platform (so a later direct bank/PayPal payment is an extra charge).
+ * The direct "bookingengine" channel is explicitly excluded.
+ */
 function isOtaChannel(channelName) {
   const c = String(channelName || '').toLowerCase();
-  return /airbnb|booking|vrbo|expedia|homeaway|agoda/.test(c);
+  if (c.includes('bookingengine')) return false;
+  return /airbnb|bookingcom|booking\.com|vrbo|expedia|homeaway|agoda/.test(c);
 }
 
 /** Colored badge for the booking source / channel. */
 function renderChannelBadge(channelName) {
   if (!channelName) return '';
   const c = String(channelName).toLowerCase();
-  let cls = 'channel-direct';
+  let cls = 'channel-ota';
   if (c.includes('airbnb')) cls = 'channel-airbnb';
+  else if (c.includes('bookingengine')) cls = 'channel-direct';
   else if (c.includes('booking')) cls = 'channel-booking';
   else if (c.includes('vrbo') || c.includes('homeaway')) cls = 'channel-vrbo';
   else if (c.includes('expedia')) cls = 'channel-expedia';
-  else if (isOtaChannel(c)) cls = 'channel-ota';
+  else if (!isOtaChannel(c)) cls = 'channel-direct';
   return `<span class="channel-badge ${cls}" title="${t('payments.channel')}">${esc(prettyChannel(channelName))}</span>`;
 }
 
 function prettyChannel(channelName) {
   const c = String(channelName || '').toLowerCase();
   if (c.includes('airbnb')) return 'Airbnb';
-  if (c.includes('booking')) return 'Booking.com';
+  if (c.includes('bookingengine')) return t('payments.channelDirect');
+  if (c.includes('bookingcom') || c.includes('booking.com')) return 'Booking.com';
   if (c.includes('vrbo') || c.includes('homeaway')) return 'Vrbo';
   if (c.includes('expedia')) return 'Expedia';
+  if (c.includes('ical')) return 'iCal';
   if (c === 'direct' || c.includes('website') || c.includes('manual') || c.includes('partner'))
     return t('payments.channelDirect');
   return channelName;
