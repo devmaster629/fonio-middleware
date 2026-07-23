@@ -1114,8 +1114,9 @@ body.modal-open {
 }
 
 .payment-suggestion {
-  min-width: 15rem;
-  max-width: 24rem;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
 }
 
 .payment-suggestion-title {
@@ -1131,12 +1132,47 @@ body.modal-open {
   margin-bottom: 0.35rem;
 }
 
+.payments-review-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.payments-review-table .col-time { width: 9%; }
+.payments-review-table .col-source { width: 6.5%; }
+.payments-review-table .col-amount { width: 8%; }
+.payments-review-table .col-payer { width: 15%; }
+.payments-review-table .col-match { width: 13%; }
+.payments-review-table .col-reservation { width: 28%; }
+.payments-review-table .col-actions { width: 20.5%; }
+
+.payments-review-table th,
+.payments-review-table td {
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.payments-review-table th.th-center,
+.payments-review-table .payment-time-cell,
+.payments-review-table .payment-source-cell,
+.payments-review-table .payment-amount-cell,
+.payments-review-table .payment-payer-cell,
+.payments-review-table .payment-match-cell {
+  text-align: center;
+}
+
+.payments-review-table th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .payment-why-not-auto {
   margin-top: 0.3rem;
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--muted);
-  max-width: 14rem;
+  max-width: none;
 }
 
 .payment-match-signals {
@@ -1144,7 +1180,11 @@ body.modal-open {
   font-size: 0.75rem;
   line-height: 1.3;
   color: var(--muted);
-  max-width: 14rem;
+  max-width: none;
+}
+
+.payment-source-cell {
+  white-space: nowrap;
 }
 
 .payment-source-pill {
@@ -1166,13 +1206,24 @@ body.modal-open {
 
 .payment-payer-name {
   font-weight: 500;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.2rem;
+}
+
+.payment-payer-ref {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 .payment-time-cell {
-  white-space: nowrap;
+  white-space: normal;
   font-size: 0.82rem;
   color: var(--muted);
+  line-height: 1.35;
+}
+
+.payment-suggestion-cell .payment-suggestion {
+  margin-inline: auto;
 }
 
 .payment-notes {
@@ -1308,14 +1359,16 @@ form.is-readonly .btn.primary {
 }
 
 .payment-actions-cell {
-  min-width: 16rem;
-  max-width: 20rem;
+  min-width: 0;
+  max-width: none;
+  width: auto;
 }
 
 .payment-actions-stack {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  max-width: 100%;
 }
 
 .payment-field-label {

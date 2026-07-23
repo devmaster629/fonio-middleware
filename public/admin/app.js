@@ -2082,7 +2082,7 @@ async function loadPayments() {
     }
     const whyText = explainWhyNotAutoMatched(p);
     const whyNotAuto = whyText
-      ? `<div class="payment-why-not-auto" title="${esc(whyText)}">${renderExpandableText(whyText, 72)}</div>`
+      ? `<div class="payment-why-not-auto">${esc(whyText)}</div>`
       : '';
     const canReview = hasPermission('PAYMENTS_REVIEW');
     const defaultOpenId =
@@ -2092,7 +2092,7 @@ async function loadPayments() {
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
     const matchSignals = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
     const matchSignalsHtml = matchSignals.length
-      ? `<div class="payment-match-signals" title="${esc(matchSignals.join('; '))}">${esc(matchSignals.slice(0, 2).join(' · '))}${matchSignals.length > 2 ? '…' : ''}</div>`
+      ? `<div class="payment-match-signals">${esc(matchSignals.join(' · '))}</div>`
       : '';
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
@@ -2126,22 +2126,30 @@ async function loadPayments() {
     return `
     <tr class="payment-review-row">
       <td class="payment-time-cell">${formatDateTime(p.createdAt)}</td>
-      <td><span class="payment-source-pill">${esc(p.source)}</span></td>
+      <td class="payment-source-cell"><span class="payment-source-pill">${esc(p.source)}</span></td>
       <td class="payment-amount-cell">${esc(formatMoney(p.amount, p.currency))}</td>
-      <td class="payment-payer-cell"><div class="payment-payer-name">${esc(p.payerName || '–')}</div><div class="field-hint">${renderExpandableText(p.reference || '', 70)}</div></td>
+      <td class="payment-payer-cell"><div class="payment-payer-name">${esc(p.payerName || '–')}</div>${p.reference ? `<div class="payment-payer-ref">${esc(p.reference)}</div>` : ''}</td>
       <td class="payment-match-cell">
         <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
         ${matchSignalsHtml}
-        ${whyNotAuto}
+        ${matchSignalsHtml ? '' : whyNotAuto}
       </td>
-      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
+      <td class="payment-suggestion-cell">${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
       ${actionsCell}
     </tr>`;
   }).join('');
   $('#payments-table').innerHTML = `
-    <table><thead><tr>
-      <th>${t('payments.time')}</th><th>${t('payments.source')}</th><th>${t('payments.amount')}</th>
-      <th>${t('payments.payer')}</th><th>${t('payments.match')}</th><th>${t('payments.reservation')}</th><th>${t('payments.actions')}</th>
+    <table class="payments-review-table"><colgroup>
+      <col class="col-time" /><col class="col-source" /><col class="col-amount" />
+      <col class="col-payer" /><col class="col-match" /><col class="col-reservation" /><col class="col-actions" />
+    </colgroup><thead><tr>
+      <th class="th-center">${t('payments.time')}</th>
+      <th class="th-center">${t('payments.source')}</th>
+      <th class="th-center">${t('payments.amount')}</th>
+      <th class="th-center">${t('payments.payer')}</th>
+      <th class="th-center">${t('payments.match')}</th>
+      <th>${t('payments.reservation')}</th>
+      <th>${t('payments.actions')}</th>
     </tr></thead>
     <tbody>${rows || `<tr><td colspan="7">${t('payments.none')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#payments-info', data, data.maxTotal);
