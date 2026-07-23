@@ -1647,10 +1647,52 @@ function prettyChannel(channelName) {
 }
 
 /**
- * Payment breakdown so a reviewer can see, at a glance, whether this is a
- * follow-up / additional payment on an existing reservation.
+ * Classify how this bank payment relates to the booking total.
+ * - full: settles total or outstanding balance
+ * - partial: installment/deposit toward the booking (booking stays not fully paid)
+ * - additional: extra charge (OTA extras, Nachbuchung, over-balance)
  */
-function renderPaymentMath(payment, totalPrice, balanceDue, channelName) {
+function classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostNote) {
+  const amount = payment?.amount;
+  if (amount == null || amount <= 0) return null;
+
+  const amountMatchesTotal =
+    totalPrice != null && Math.abs(amount - totalPrice) < 0.5;
+  const amountMatchesBalance =
+    balanceDue != null && Math.abs(amount - balanceDue) < 0.5;
+  if (amountMatchesTotal || amountMatchesBalance) return 'full';
+
+  const noteText = String(hostNote || '').toLowerCase();
+  const notesSayExtra =
+    /nachbuchung|zusatzperson|zusätzliche|zusatzgast|extra (person|guest|night)|4\.\s*person|additional guest/.test(
+      noteText,
+    );
+  const overBalance = balanceDue != null && amount > balanceDue + 0.5;
+  const remainingAfter =
+    balanceDue != null
+      ? Math.round((balanceDue - amount) * 100) / 100
+      : totalPrice != null
+        ? Math.round((totalPrice - amount) * 100) / 100
+        : null;
+
+  // Amount clearly toward an open booking total → partial (deposit / installment)
+  const looksPartial =
+    remainingAfter != null &&
+    remainingAfter > 0.5 &&
+    !overBalance &&
+    !notesSayExtra;
+
+  if (looksPartial) return 'partial';
+  if (notesSayExtra || overBalance || isOtaChannel(channelName)) return 'additional';
+  if (totalPrice != null && amount < totalPrice) return 'partial';
+  return null;
+}
+
+/**
+ * Payment breakdown so a reviewer can see, at a glance, whether this is a
+ * full settlement, a partial/deposit payment, or an extra charge.
+ */
+function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote = null) {
   if (totalPrice == null && balanceDue == null) return '';
   const currency = payment?.currency || 'EUR';
   const amount = payment?.amount;
@@ -1658,13 +1700,13 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName) {
     totalPrice != null && balanceDue != null
       ? Math.max(0, Math.round((totalPrice - balanceDue) * 100) / 100)
       : null;
-  // Heuristic: an OTA booking, or a payment that does not match total nor balance,
-  // is almost certainly an additional/extra charge (extra person, extra night…).
-  const amountMatchesTotal = totalPrice != null && amount != null && Math.abs(amount - totalPrice) < 0.5;
-  const amountMatchesBalance = balanceDue != null && amount != null && Math.abs(amount - balanceDue) < 0.5;
-  const looksAdditional =
-    amount != null &&
-    (isOtaChannel(channelName) || (!amountMatchesTotal && !amountMatchesBalance));
+  const kind = classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostNote);
+  const remainingAfter =
+    amount != null && balanceDue != null
+      ? Math.max(0, Math.round((balanceDue - amount) * 100) / 100)
+      : amount != null && totalPrice != null && alreadyPaid != null
+        ? Math.max(0, Math.round((totalPrice - alreadyPaid - amount) * 100) / 100)
+        : null;
 
   const lines = [];
   if (totalPrice != null) {
@@ -1679,17 +1721,34 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName) {
   if (amount != null) {
     lines.push(`${t('payments.thisPayment')}: <strong>${esc(formatMoney(amount, currency))}</strong>`);
   }
+  if (kind === 'partial' && remainingAfter != null) {
+    lines.push(
+      `${t('payments.remainingAfter')}: <strong>${esc(formatMoney(remainingAfter, currency))}</strong>`,
+    );
+  }
 
-  const note = looksAdditional
-    ? `<div class="payment-additional-note">${
-        isOtaChannel(channelName)
-          ? t('payments.additionalPaymentOta', { channel: prettyChannel(channelName) })
-          : t('payments.additionalPaymentHint')
-      }</div>`
-    : '';
+  let badge = '';
+  let note = '';
+  let boxClass = 'payment-math';
+  if (kind === 'partial') {
+    boxClass += ' is-partial';
+    badge = `<span class="payment-kind-badge payment-partial-badge">${t('payments.partialPayment')}</span>`;
+    note = `<div class="payment-kind-note">${t('payments.partialPaymentHint')}</div>`;
+  } else if (kind === 'additional') {
+    boxClass += ' is-additional';
+    badge = `<span class="payment-kind-badge payment-additional-badge">${t('payments.additionalPayment')}</span>`;
+    note = `<div class="payment-kind-note">${
+      isOtaChannel(channelName)
+        ? t('payments.additionalPaymentOta', { channel: prettyChannel(channelName) })
+        : t('payments.additionalPaymentHint')
+    }</div>`;
+  } else if (kind === 'full') {
+    boxClass += ' is-full';
+    badge = `<span class="payment-kind-badge payment-full-badge">${t('payments.fullPayment')}</span>`;
+  }
 
-  return `<div class="payment-math${looksAdditional ? ' is-additional' : ''}">
-    ${looksAdditional ? `<span class="payment-additional-badge">${t('payments.additionalPayment')}</span>` : ''}
+  return `<div class="${boxClass}">
+    ${badge}
     <div class="payment-math-lines">${lines.join(' · ')}</div>
     ${note}
   </div>`;
@@ -1721,7 +1780,7 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
     <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}${channelBadge ? ` ${channelBadge}` : ''}</div>
     <div class="field-hint">${esc(listing || '–')}</div>
     <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
-    ${renderPaymentMath(payment, totalPrice, balanceDue, channelName)}
+    ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
     ${notesBlock}
     ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${renderExpandableText(reasons.join('; '), 60)}</div>` : ''}
   </div>`;
@@ -1810,48 +1869,66 @@ function formatQontoPollMeta(last) {
 
 async function loadQontoStatus() {
   const line = $('#qonto-status-line');
+  const whenEl = $('#qonto-status-when');
+  const intervalEl = $('#qonto-status-interval');
   const btn = $('#qonto-poll-btn');
   if (!line) return;
   try {
     const status = await api('/payments/qonto-status');
     const last = status.last;
     const when = formatSyncTime(last, status.inProgress);
-    let text;
+    let detail;
+    let whenText = when;
     if (!status.enabled) {
-      text = t('payments.qontoDisabled');
+      detail = t('payments.qontoDisabled');
+      whenText = '–';
     } else if (!status.configured) {
-      text = t('payments.qontoNotConfigured');
+      detail = t('payments.qontoNotConfigured');
+      whenText = '–';
     } else if (status.inProgress || last?.status === 'running') {
-      text = t('payments.qontoRunning', { when });
+      detail = t('payments.qontoRunning', { when });
+      whenText = when;
     } else if (last?.status === 'failed') {
-      text = t('payments.qontoFailed', {
+      detail = t('payments.qontoFailed', {
         when,
         error: last.error || '–',
       });
     } else if (last) {
-      text = t('payments.qontoLastOk', {
-        when,
-        meta: formatQontoPollMeta(last),
+      detail = t('payments.qontoLastOk', {
+        when: '',
+        meta: formatQontoPollMeta(last).replace(/^ — /, '') || t('payments.qontoInterval', { n: status.intervalMinutes || 5 }),
       });
     } else {
-      text = t('payments.qontoNever');
+      detail = t('payments.qontoNever');
+      whenText = '–';
     }
-    const interval = status.intervalMinutes
-      ? ` ${t('payments.qontoInterval', { n: status.intervalMinutes })}`
-      : '';
-    line.textContent = text + interval;
+    if (whenEl) whenEl.textContent = whenText;
+    line.textContent = detail;
+    if (intervalEl) {
+      intervalEl.textContent =
+        status.enabled && status.configured
+          ? t('payments.qontoInterval', { n: status.intervalMinutes || 5 })
+          : '';
+    }
     if (btn) {
-      const canPoll = hasPermission('PAYMENTS_ADMIN') && status.enabled && status.configured;
+      const canPoll =
+        (hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')) &&
+        status.enabled &&
+        status.configured;
       btn.disabled = !canPoll || status.inProgress;
-      btn.classList.toggle('hidden', !hasPermission('PAYMENTS_ADMIN'));
+      btn.classList.toggle(
+        'hidden',
+        !(hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')),
+      );
     }
   } catch (ex) {
     line.textContent = ex.message || t('payments.qontoStatusError');
+    if (whenEl) whenEl.textContent = '–';
   }
 }
 
 $('#qonto-poll-btn')?.addEventListener('click', async () => {
-  if (!hasPermission('PAYMENTS_ADMIN')) return;
+  if (!hasPermission('PAYMENTS_ADMIN') && !hasPermission('PAYMENTS_REVIEW')) return;
   const btn = $('#qonto-poll-btn');
   const result = $('#qonto-poll-result');
   if (btn) btn.disabled = true;

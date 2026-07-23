@@ -259,13 +259,25 @@
       <section id="tab-payments" class="tab hidden">
         <header class="page-header">
           <h2 data-i18n="payments.title">Payment reconciliation</h2>
-          <button type="button" id="qonto-poll-btn" class="btn primary" data-i18n="payments.qontoPollBtn">Poll Qonto now</button>
         </header>
         <p class="field-hint" data-i18n="payments.hint">Imported Qonto/PayPal payments. Unambiguous matches are applied automatically; unclear ones appear here for one-click review.</p>
-        <div class="card" id="qonto-status-card">
-          <h3 data-i18n="payments.qontoStatusTitle">Qonto sync</h3>
-          <p id="qonto-status-line" class="field-hint">–</p>
+        <div class="card qonto-status-card" id="qonto-status-card">
+          <div class="qonto-status-head">
+            <h3 data-i18n="payments.qontoStatusTitle">Bank import (Qonto)</h3>
+            <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import bank transactions now</button>
+          </div>
+          <div class="qonto-status-grid">
+            <div>
+              <div class="qonto-status-label" data-i18n="payments.qontoLastLabel">Last import</div>
+              <div id="qonto-status-when" class="qonto-status-when">–</div>
+            </div>
+            <div>
+              <div id="qonto-status-line" class="field-hint">–</div>
+              <div id="qonto-status-interval" class="field-hint"></div>
+            </div>
+          </div>
           <p id="qonto-poll-result" class="field-hint"></p>
+          <p class="field-hint" data-i18n="payments.qontoHint">When a guest says they just paid, import here instead of waiting for the next automatic run.</p>
         </div>
         <h3 data-i18n="payments.viewQueue">Review queue</h3>
         <div id="payments-toolbar" class="table-toolbar"></div>

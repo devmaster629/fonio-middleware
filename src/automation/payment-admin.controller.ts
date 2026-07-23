@@ -155,7 +155,7 @@ export class PaymentAdminController {
   }
 
   @Post('qonto-poll')
-  @Permissions(AdminPermission.PAYMENTS_ADMIN)
+  @Permissions(AdminPermission.PAYMENTS_REVIEW, AdminPermission.PAYMENTS_ADMIN)
   @ApiOperation({ summary: 'Manually poll recent Qonto credit transactions' })
   async pollQonto() {
     return this.qontoPoll.pollOnce();

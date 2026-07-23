@@ -3,6 +3,7 @@ import { ExternalPaymentSource } from '@prisma/client';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
 import { PaymentInboxService } from '../hostaway/payment-inbox.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { PaymentAlertService } from './payment-alert.service';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class PaymentApplyService {
     private readonly inbox: GuestRequestInboxService,
     private readonly paymentInbox: PaymentInboxService,
     private readonly alerts: PaymentAlertService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async applyToReservation(params: {
@@ -32,8 +34,39 @@ export class PaymentApplyService {
       params.source === ExternalPaymentSource.PAYPAL
         ? 'paypal'
         : 'bank_transfer';
-    const title =
+
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: params.reservationHostawayId },
+      include: { notifiedCharges: true },
+    });
+    const total =
+      reservation?.totalPrice != null && Number.isFinite(reservation.totalPrice)
+        ? reservation.totalPrice
+        : null;
+    const paid = (reservation?.notifiedCharges ?? []).reduce(
+      (sum, charge) => sum + (Number(charge.amount) || 0),
+      0,
+    );
+    const balanceDue =
+      total != null ? Math.max(0, Math.round((total - paid) * 100) / 100) : null;
+    // Only this payment amount is posted — Hostaway is never marked fully paid
+    // unless the amount covers the outstanding balance.
+    const isPartial =
+      balanceDue != null
+        ? params.amount + 0.5 < balanceDue
+        : total != null
+          ? params.amount + 0.5 < total
+          : false;
+
+    const sourceLabel =
       params.source === ExternalPaymentSource.PAYPAL
+        ? 'PayPal'
+        : params.source === ExternalPaymentSource.QONTO
+          ? 'Qonto'
+          : 'Zahlung';
+    const title = isPartial
+      ? `Teilzahlung (${sourceLabel})`
+      : params.source === ExternalPaymentSource.PAYPAL
         ? 'PayPal-Zahlung (automatisch)'
         : params.source === ExternalPaymentSource.QONTO
           ? 'Banküberweisung (Qonto, automatisch)'
@@ -46,7 +79,9 @@ export class PaymentApplyService {
         description:
           params.descriptionOverride?.slice(0, 500) ||
           params.reference?.slice(0, 500) ||
-          'Automatisch zugeordnet',
+          (isPartial
+            ? 'Teilzahlung — Buchung bleibt teilweise offen'
+            : 'Automatisch zugeordnet'),
         amount: params.amount,
         paymentMethod,
         status: 'paid',
@@ -78,7 +113,7 @@ export class PaymentApplyService {
     });
 
     this.logger.log(
-      `Applied external payment to reservation ${params.reservationHostawayId} (charge ${charge.id})`,
+      `Applied ${isPartial ? 'partial' : 'full'} external payment to reservation ${params.reservationHostawayId} (charge ${charge.id})`,
     );
 
     await this.alerts.notifyApplied({
