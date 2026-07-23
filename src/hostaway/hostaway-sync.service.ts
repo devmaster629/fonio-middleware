@@ -458,6 +458,9 @@ export class HostawaySyncService implements OnModuleInit {
         typeof remote.channelId === 'number' && Number.isFinite(remote.channelId)
           ? remote.channelId
           : null,
+      hostNote: remote.hostNote?.trim() || null,
+      guestNote: remote.guestNote?.trim() || null,
+      comment: remote.comment?.trim() || null,
       lastSyncedAt: new Date(),
     };
 

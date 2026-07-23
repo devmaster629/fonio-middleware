@@ -256,8 +256,9 @@ async function restoreSession() {
 function showApp() {
   $('#login-screen').classList.add('hidden');
   $('#app-screen').classList.remove('hidden');
-  refreshActiveTab();
   applyRoleUi();
+  applyTabFromUrl();
+  refreshActiveTab();
 }
 
 function refreshActiveTab() {
@@ -753,12 +754,7 @@ $('#logout-btn').addEventListener('click', logout);
 
 $$('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    activeTab = btn.dataset.tab;
-    $$('.nav-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    $$('.tab').forEach((tab) => tab.classList.add('hidden'));
-    $(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
-    refreshActiveTab();
+    activateTab(btn.dataset.tab);
   });
 });
 
@@ -1710,18 +1706,23 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
   const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
   const balanceDue = candidate?.balanceDue;
   const channelName = reservation?.channelName ?? candidate?.channelName ?? null;
+  const hostNote = reservation?.hostNote ?? candidate?.hostNote ?? null;
   const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
   const hostawayUrl = hostawayReservationUrl(hostawayId);
   const titleId = hostawayUrl
     ? `<a class="payment-hostaway-link" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">#${hostawayId}</a>`
     : `#${hostawayId}`;
   const channelBadge = renderChannelBadge(channelName);
+  const notesBlock = hostNote
+    ? `<div class="field-hint payment-host-note"><strong>${t('payments.hostNote')}:</strong> ${renderExpandableText(hostNote, 90)}</div>`
+    : '';
 
   return `<div class="payment-suggestion">
     <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}${channelBadge ? ` ${channelBadge}` : ''}</div>
     <div class="field-hint">${esc(listing || '–')}</div>
     <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
     ${renderPaymentMath(payment, totalPrice, balanceDue, channelName)}
+    ${notesBlock}
     ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${renderExpandableText(reasons.join('; '), 60)}</div>` : ''}
   </div>`;
 }
@@ -1795,8 +1796,113 @@ function bindPaymentHostawayOpeners() {
   });
 }
 
+function formatQontoPollMeta(last) {
+  if (!last?.metadata || typeof last.metadata !== 'object') return '';
+  const m = last.metadata;
+  const parts = [];
+  if (m.fetched != null) parts.push(t('payments.qontoFetched', { n: m.fetched }));
+  if (m.ingested != null) parts.push(t('payments.qontoIngested', { n: m.ingested }));
+  if (m.skippedInternal != null && m.skippedInternal > 0) {
+    parts.push(t('payments.qontoSkipped', { n: m.skippedInternal }));
+  }
+  return parts.length ? ` — ${parts.join(', ')}` : '';
+}
+
+async function loadQontoStatus() {
+  const line = $('#qonto-status-line');
+  const btn = $('#qonto-poll-btn');
+  if (!line) return;
+  try {
+    const status = await api('/payments/qonto-status');
+    const last = status.last;
+    const when = formatSyncTime(last, status.inProgress);
+    let text;
+    if (!status.enabled) {
+      text = t('payments.qontoDisabled');
+    } else if (!status.configured) {
+      text = t('payments.qontoNotConfigured');
+    } else if (status.inProgress || last?.status === 'running') {
+      text = t('payments.qontoRunning', { when });
+    } else if (last?.status === 'failed') {
+      text = t('payments.qontoFailed', {
+        when,
+        error: last.error || '–',
+      });
+    } else if (last) {
+      text = t('payments.qontoLastOk', {
+        when,
+        meta: formatQontoPollMeta(last),
+      });
+    } else {
+      text = t('payments.qontoNever');
+    }
+    const interval = status.intervalMinutes
+      ? ` ${t('payments.qontoInterval', { n: status.intervalMinutes })}`
+      : '';
+    line.textContent = text + interval;
+    if (btn) {
+      const canPoll = hasPermission('PAYMENTS_ADMIN') && status.enabled && status.configured;
+      btn.disabled = !canPoll || status.inProgress;
+      btn.classList.toggle('hidden', !hasPermission('PAYMENTS_ADMIN'));
+    }
+  } catch (ex) {
+    line.textContent = ex.message || t('payments.qontoStatusError');
+  }
+}
+
+$('#qonto-poll-btn')?.addEventListener('click', async () => {
+  if (!hasPermission('PAYMENTS_ADMIN')) return;
+  const btn = $('#qonto-poll-btn');
+  const result = $('#qonto-poll-result');
+  if (btn) btn.disabled = true;
+  if (result) result.textContent = t('payments.qontoPolling');
+  try {
+    const res = await api('/payments/qonto-poll', { method: 'POST', body: '{}' });
+    if (result) {
+      result.textContent = t('payments.qontoPollOk', {
+        fetched: res.fetched ?? 0,
+        ingested: res.ingested ?? 0,
+      });
+    }
+    notify.success(t('payments.qontoPollOkShort'));
+    loadPayments();
+  } catch (ex) {
+    if (result) result.textContent = ex.message;
+    notify.error(ex.message);
+    loadQontoStatus();
+  }
+});
+
+function activateTab(tab) {
+  if (!tab) return;
+  const btn = $(`.nav-btn[data-tab="${tab}"]`);
+  if (!btn || btn.classList.contains('hidden')) return;
+  activeTab = tab;
+  $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.tab').forEach((el) => el.classList.add('hidden'));
+  $(`#tab-${tab}`)?.classList.remove('hidden');
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
+  } catch {
+    /* ignore */
+  }
+  refreshActiveTab();
+}
+
+function applyTabFromUrl() {
+  try {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab) activateTab(tab);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function loadPayments() {
   loadPaymentsHistory();
+  loadQontoStatus();
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);

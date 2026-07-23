@@ -259,8 +259,14 @@
       <section id="tab-payments" class="tab hidden">
         <header class="page-header">
           <h2 data-i18n="payments.title">Payment reconciliation</h2>
+          <button type="button" id="qonto-poll-btn" class="btn primary" data-i18n="payments.qontoPollBtn">Poll Qonto now</button>
         </header>
         <p class="field-hint" data-i18n="payments.hint">Imported Qonto/PayPal payments. Unambiguous matches are applied automatically; unclear ones appear here for one-click review.</p>
+        <div class="card" id="qonto-status-card">
+          <h3 data-i18n="payments.qontoStatusTitle">Qonto sync</h3>
+          <p id="qonto-status-line" class="field-hint">–</p>
+          <p id="qonto-poll-result" class="field-hint"></p>
+        </div>
         <h3 data-i18n="payments.viewQueue">Review queue</h3>
         <div id="payments-toolbar" class="table-toolbar"></div>
         <div class="table-wrap" id="payments-table"></div>

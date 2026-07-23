@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NormalizedExternalPayment } from './automation.types';
+import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
 
@@ -18,6 +19,7 @@ export class PaymentReconciliationService {
     private readonly prisma: PrismaService,
     private readonly matcher: PaymentMatcherService,
     private readonly apply: PaymentApplyService,
+    private readonly alerts: PaymentAlertService,
   ) {}
 
   async ingestAndReconcile(
@@ -67,6 +69,8 @@ export class PaymentReconciliationService {
     ) {
       return { id: payment.id, status: payment.status };
     }
+
+    const wasNew = payment.status === ExternalPaymentStatus.RECEIVED;
 
     const normalized: NormalizedExternalPayment = {
       source: payment.source,
@@ -148,6 +152,27 @@ export class PaymentReconciliationService {
         matchedReservationId: match.best?.reservationId,
       },
     });
+
+    if (wasNew && status === ExternalPaymentStatus.PENDING_REVIEW) {
+      try {
+        await this.alerts.notifyNeedsReview({
+          paymentId: updated.id,
+          amount: payment.amount,
+          currency: payment.currency,
+          source: payment.source,
+          payerName: payment.payerName,
+          reference: payment.reference,
+          occurredAt: payment.occurredAt,
+          matchReason: match.reason,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'needs-review alert failed';
+        this.logger.warn(
+          `Needs-review alert failed for payment ${updated.id}: ${message}`,
+        );
+      }
+    }
 
     return { id: updated.id, status: updated.status };
   }

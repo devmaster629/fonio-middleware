@@ -190,4 +190,45 @@ describe('PaymentMatcherService', () => {
     expect(result.decision).toBe('PLATFORM_PAYOUT');
     expect(prisma.reservation.findMany).not.toHaveBeenCalled();
   });
+
+  it('matches deposits documented in host notes (amount + Restbetrag)', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-braun',
+        hostawayId: 60347269,
+        guestName: 'Robert Braun',
+        guestEmail: null,
+        arrivalDate: new Date('2026-07-27'),
+        departureDate: new Date('2026-07-31'),
+        totalPrice: 1461.5,
+        channelName: 'direct',
+        hostNote:
+          'MIT HANDTÜCHERN\n70% (960,05 €) Restbetrag vor Anreise (13.07.2026) direkt an uns per Banküberweisung zu zahlen',
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: {
+          name: '3,5 Zimmer-Wohnung Waldblick barrierefrei',
+          aliases: [],
+        },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-deposit',
+      amount: 960.05,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'ROBERT UND ELISABETH BRAUN',
+      reference: 'Robert Braun Buchungsnummer 5721249',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.best?.hostawayId).toBe(60347269);
+    expect(result.best?.reasons.join(' ')).toMatch(/notes/i);
+    expect(result.best?.reasons.join(' ')).toMatch(/deposit|installment/i);
+    expect(result.decision).toBe('UNAMBIGUOUS');
+  });
 });

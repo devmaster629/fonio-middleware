@@ -240,6 +240,9 @@ export class PaymentMatcherService {
       departureDate: Date;
       totalPrice: number | null;
       channelName: string | null;
+      hostNote: string | null;
+      guestNote: string | null;
+      comment: string | null;
       listing: { name: string; aliases: string[] };
       notifiedCharges: { amount: number }[];
     },
@@ -307,6 +310,12 @@ export class PaymentMatcherService {
       reasons.push(balanceScore.reason);
     }
 
+    const notesScore = this.scoreReservationNotes(payment.amount, reservation);
+    if (notesScore.score > 0) {
+      score += notesScore.score;
+      reasons.push(notesScore.reason);
+    }
+
     const totalPrice =
       reservation.totalPrice != null && Number.isFinite(reservation.totalPrice)
         ? reservation.totalPrice
@@ -317,6 +326,7 @@ export class PaymentMatcherService {
     );
     const balanceDue =
       totalPrice != null ? Math.max(0, Math.round((totalPrice - paid) * 100) / 100) : null;
+    const hostNote = reservation.hostNote?.trim() || null;
 
     return {
       reservationId: reservation.id,
@@ -326,6 +336,7 @@ export class PaymentMatcherService {
       arrivalDate: reservation.arrivalDate.toISOString().slice(0, 10),
       departureDate: reservation.departureDate.toISOString().slice(0, 10),
       channelName: reservation.channelName ?? null,
+      hostNote: hostNote ? hostNote.slice(0, 280) : null,
       totalPrice,
       balanceDue,
       score,
@@ -385,14 +396,77 @@ export class PaymentMatcherService {
         reason: `Amount equals reservation total (${total.toFixed(2)})`,
       };
     }
-    // Common deposit patterns: half or 30% of the total price
-    if (this.amountsMatch(amount, total * 0.5) || this.amountsMatch(amount, total * 0.3)) {
+    // Common deposit / installment patterns (30%, 50%, 70%)
+    if (
+      this.amountsMatch(amount, total * 0.7) ||
+      this.amountsMatch(amount, total * 0.5) ||
+      this.amountsMatch(amount, total * 0.3)
+    ) {
       return {
-        score: 10,
-        reason: 'Amount matches a typical deposit share of the total',
+        score: 15,
+        reason: 'Amount matches a typical deposit/installment share of the total',
       };
     }
     return { score: 0, reason: '' };
+  }
+
+  /**
+   * Score against Hostaway host/guest notes (Gastgebernotiz). Notes often
+   * document deposit amounts like "70% (960,05 €) Restbetrag …".
+   */
+  private scoreReservationNotes(
+    amount: number,
+    reservation: {
+      hostNote: string | null;
+      guestNote: string | null;
+      comment: string | null;
+    },
+  ): { score: number; reason: string } {
+    const notes = [reservation.hostNote, reservation.guestNote, reservation.comment]
+      .filter(Boolean)
+      .join('\n');
+    if (!notes.trim()) return { score: 0, reason: '' };
+
+    const notesNorm = notes
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '');
+
+    let score = 0;
+    const parts: string[] = [];
+
+    if (this.amountAppearsInText(amount, notesNorm)) {
+      score += 35;
+      parts.push('Payment amount appears in reservation notes');
+    }
+
+    if (
+      /anzahlung|restbetrag|restzahlung|teilzahlung|deposit|vor anreise|anzuzahlen|\d+\s*%/.test(
+        notesNorm,
+      )
+    ) {
+      score += 10;
+      parts.push('Reservation notes mention a deposit or remaining balance');
+    }
+
+    if (score === 0) return { score: 0, reason: '' };
+    return {
+      score: Math.min(score, 45),
+      reason: parts.join('; '),
+    };
+  }
+
+  private amountAppearsInText(amount: number, text: string): boolean {
+    const fixed = amount.toFixed(2);
+    const compact = fixed.replace(/\.00$/, '');
+    const comma = fixed.replace('.', ',');
+    const compactComma = compact.replace('.', ',');
+    return (
+      text.includes(fixed) ||
+      text.includes(compact) ||
+      text.includes(comma) ||
+      text.includes(compactComma)
+    );
   }
 
   private amountsMatch(a: number, b: number): boolean {

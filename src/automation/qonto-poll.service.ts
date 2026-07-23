@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExternalPaymentSource } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { PaymentIngestService } from './payment-ingest.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { QontoClient, QontoTransaction } from './qonto.client';
@@ -12,6 +13,7 @@ export class QontoPollService {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
     private readonly qonto: QontoClient,
     private readonly ingest: PaymentIngestService,
     private readonly reconciliation: PaymentReconciliationService,
@@ -19,6 +21,28 @@ export class QontoPollService {
 
   isEnabled(): boolean {
     return this.config.get<string>('QONTO_ENABLED') === 'true';
+  }
+
+  isConfigured(): boolean {
+    return this.qonto.isConfigured();
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  async getStatus() {
+    const last = await this.prisma.syncJob.findFirst({
+      where: { jobType: 'qonto_poll' },
+      orderBy: { startedAt: 'desc' },
+    });
+    return {
+      enabled: this.isEnabled(),
+      configured: this.isConfigured(),
+      inProgress: this.running,
+      intervalMinutes: 5,
+      last,
+    };
   }
 
   async pollOnce(): Promise<{
@@ -35,6 +59,14 @@ export class QontoPollService {
     }
 
     this.running = true;
+    const job = await this.prisma.syncJob.create({
+      data: {
+        jobType: 'qonto_poll',
+        status: 'running',
+        metadata: { phase: 'fetching' },
+      },
+    });
+
     try {
       const lookbackHours = Number(
         this.config.get('QONTO_POLL_LOOKBACK_HOURS') ?? 72,
@@ -53,7 +85,6 @@ export class QontoPollService {
         });
         if (!normalized) continue;
 
-        // Prefer stable transaction_id when present
         if (tx.transaction_id) {
           normalized.externalId = tx.transaction_id;
         }
@@ -72,10 +103,35 @@ export class QontoPollService {
         }
       }
 
+      const summary = {
+        fetched: credits.length,
+        ingested,
+        skippedInternal,
+      };
       this.logger.log(
-        `Qonto poll: fetched=${credits.length} processed=${ingested} skippedInternal=${skippedInternal}`,
+        `Qonto poll: fetched=${summary.fetched} processed=${summary.ingested} skippedInternal=${summary.skippedInternal}`,
       );
-      return { fetched: credits.length, ingested, skippedInternal };
+      await this.prisma.syncJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'completed',
+          finishedAt: new Date(),
+          metadata: summary,
+        },
+      });
+      return summary;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Qonto poll failed';
+      await this.prisma.syncJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          finishedAt: new Date(),
+          error: message,
+        },
+      });
+      throw error;
     } finally {
       this.running = false;
     }
@@ -85,8 +141,6 @@ export class QontoPollService {
     if (tx.side && tx.side !== 'credit') return true;
     if (tx.status && tx.status !== 'completed') return true;
     const reference = `${tx.reference ?? ''} ${tx.label ?? ''}`.toLowerCase();
-    // Explicit internal transfer wording only — Qonto's is_external_transaction
-    // flag is not reliable for external guest payments.
     if (
       reference.includes('interne ueberweisung') ||
       reference.includes('interne überweisung') ||

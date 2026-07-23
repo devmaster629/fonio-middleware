@@ -212,6 +212,9 @@ model Reservation {
   totalPrice         Float?
   channelName        String?
   channelId          Int?
+  hostNote           String?
+  guestNote          String?
+  comment            String?
   hostawayConversationId Int?
   paymentBaselinedAt DateTime?
   guestRequests      GuestRequest[]

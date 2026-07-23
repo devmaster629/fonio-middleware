@@ -112,6 +112,9 @@ export class PaymentAdminController {
             (c.departureDate as string) ||
             live.departureDate.toISOString().slice(0, 10),
           channelName: c.channelName ?? live.channelName ?? null,
+          hostNote:
+            (c.hostNote as string) ??
+            (live.hostNote ? live.hostNote.slice(0, 280) : null),
           totalPrice: c.totalPrice ?? totalPrice,
           balanceDue: c.balanceDue ?? balanceDue,
         };
@@ -144,6 +147,20 @@ export class PaymentAdminController {
     return paginated(items, total, page, pageSize);
   }
 
+  @Get('qonto-status')
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
+  @ApiOperation({ summary: 'Last Qonto poll status (mirrors Hostaway sync status)' })
+  async qontoStatus() {
+    return this.qontoPoll.getStatus();
+  }
+
+  @Post('qonto-poll')
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
+  @ApiOperation({ summary: 'Manually poll recent Qonto credit transactions' })
+  async pollQonto() {
+    return this.qontoPoll.pollOnce();
+  }
+
   @Get(':id')
   @Permissions(AdminPermission.PAYMENTS_VIEW)
   @ApiOperation({ summary: 'Get one external payment with match details' })
@@ -156,13 +173,6 @@ export class PaymentAdminController {
     });
     if (!payment) throw new NotFoundException('Payment not found');
     return payment;
-  }
-
-  @Post('qonto-poll')
-  @Permissions(AdminPermission.PAYMENTS_ADMIN)
-  @ApiOperation({ summary: 'Manually poll recent Qonto credit transactions' })
-  async pollQonto() {
-    return this.qontoPoll.pollOnce();
   }
 
   @Post('ingest-manual')

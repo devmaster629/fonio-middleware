@@ -1326,6 +1326,19 @@ a.payment-open-hostaway[aria-disabled="true"] {
   margin-bottom: 0.35rem;
 }
 
+.payment-host-note {
+  margin-top: 0.25rem;
+  max-width: 28rem;
+}
+
+#qonto-status-card {
+  margin-bottom: 1rem;
+}
+
+#qonto-poll-result:empty {
+  display: none;
+}
+
 @media (max-width: 768px) {
   #app-screen { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; }
