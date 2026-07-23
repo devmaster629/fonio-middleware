@@ -1894,53 +1894,41 @@ async function loadQontoStatus() {
   const line = $('#qonto-status-line');
   const whenEl = $('#qonto-status-when');
   const agoEl = $('#qonto-status-ago');
-  const intervalEl = $('#qonto-status-interval');
   const btn = $('#qonto-poll-btn');
-  if (!line) return;
+  if (!whenEl) return;
   try {
     const status = await api('/payments/qonto-status');
     const last = status.last;
     const stamp = last?.finishedAt || last?.startedAt;
     const when = formatSyncTime(last, status.inProgress);
-    let detail;
     let whenText = when;
+    let meta = '';
+
     if (!status.enabled) {
-      detail = t('payments.qontoDisabled');
       whenText = '–';
+      meta = t('payments.qontoDisabled');
     } else if (!status.configured) {
-      detail = t('payments.qontoNotConfigured');
       whenText = '–';
+      meta = t('payments.qontoNotConfigured');
     } else if (status.inProgress || last?.status === 'running') {
-      detail = t('payments.qontoRunning', { when });
-      whenText = when;
+      meta = t('payments.qontoRunningShort');
     } else if (last?.status === 'failed') {
-      detail = t('payments.qontoFailed', {
-        when,
-        error: last.error || '–',
-      });
+      meta = t('payments.qontoFailedShort', { error: last.error || '–' });
     } else if (last) {
-      detail = t('payments.qontoLastOk', {
-        when: '',
-        meta: formatQontoPollMeta(last).replace(/^ — /, '') || '',
-      });
+      const counts = formatQontoPollMeta(last).replace(/^ — /, '');
+      const ago = stamp ? formatRelativeAgo(stamp) : '';
+      meta = [ago, counts, t('payments.qontoIntervalShort', { n: status.intervalMinutes || 5 })]
+        .filter(Boolean)
+        .join(' · ');
     } else {
-      detail = t('payments.qontoNever');
       whenText = '–';
+      meta = t('payments.qontoNever');
     }
-    if (whenEl) whenEl.textContent = whenText;
-    if (agoEl) {
-      agoEl.textContent =
-        stamp && status.enabled && !status.inProgress
-          ? formatRelativeAgo(stamp)
-          : '';
-    }
-    line.textContent = detail;
-    if (intervalEl) {
-      intervalEl.textContent =
-        status.enabled && status.configured
-          ? t('payments.qontoInterval', { n: status.intervalMinutes || 5 })
-          : '';
-    }
+
+    whenEl.textContent = whenText;
+    if (agoEl) agoEl.textContent = '';
+    if (line) line.textContent = meta;
+
     if (btn) {
       const canPoll =
         (hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')) &&
@@ -1953,8 +1941,8 @@ async function loadQontoStatus() {
       );
     }
   } catch (ex) {
-    line.textContent = ex.message || t('payments.qontoStatusError');
     if (whenEl) whenEl.textContent = '–';
+    if (line) line.textContent = ex.message || t('payments.qontoStatusError');
     if (agoEl) agoEl.textContent = '';
   }
 }
@@ -1963,40 +1951,37 @@ async function loadPaypalStatus() {
   const line = $('#paypal-status-line');
   const whenEl = $('#paypal-status-when');
   const agoEl = $('#paypal-status-ago');
-  const modeEl = $('#paypal-status-mode');
-  if (!line) return;
+  if (!whenEl) return;
   try {
     const status = await api('/payments/paypal-status');
     if (!status.enabled) {
-      line.textContent = t('payments.paypalDisabled');
-      if (whenEl) whenEl.textContent = '–';
+      whenEl.textContent = '–';
+      if (line) line.textContent = t('payments.paypalDisabled');
       if (agoEl) agoEl.textContent = '';
-      if (modeEl) modeEl.textContent = '';
       return;
     }
     if (!status.configured) {
-      line.textContent = t('payments.paypalNotConfigured');
-      if (whenEl) whenEl.textContent = '–';
+      whenEl.textContent = '–';
+      if (line) line.textContent = t('payments.paypalNotConfigured');
       if (agoEl) agoEl.textContent = '';
       return;
     }
-    line.textContent = t('payments.paypalWebhookOnly', {
-      count: status.count ?? 0,
-    });
-    if (modeEl) {
-      modeEl.textContent = t('payments.paypalMode', {
-        mode: status.mode || 'live',
-      });
-    }
     if (status.last?.createdAt) {
-      if (whenEl) whenEl.textContent = formatDateTime(status.last.createdAt);
-      if (agoEl) agoEl.textContent = formatRelativeAgo(status.last.createdAt);
+      whenEl.textContent = formatDateTime(status.last.createdAt);
+      const ago = formatRelativeAgo(status.last.createdAt);
+      if (line) {
+        line.textContent = [ago, t('payments.paypalWebhookShort', { count: status.count ?? 0 })]
+          .filter(Boolean)
+          .join(' · ');
+      }
     } else {
-      if (whenEl) whenEl.textContent = '–';
-      if (agoEl) agoEl.textContent = t('payments.paypalNever');
+      whenEl.textContent = '–';
+      if (line) line.textContent = t('payments.paypalWebhookShort', { count: 0 });
     }
+    if (agoEl) agoEl.textContent = '';
   } catch (ex) {
-    line.textContent = ex.message || t('payments.paypalStatusError');
+    whenEl.textContent = '–';
+    if (line) line.textContent = ex.message || t('payments.paypalStatusError');
   }
 }
 

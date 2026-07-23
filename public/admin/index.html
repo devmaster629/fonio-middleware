@@ -259,45 +259,23 @@
       <section id="tab-payments" class="tab hidden">
         <header class="page-header">
           <h2 data-i18n="payments.title">Payment reconciliation</h2>
+          <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import now</button>
         </header>
         <p class="field-hint" data-i18n="payments.hint">Imported Qonto/PayPal payments. Unambiguous matches are applied automatically; unclear ones appear here for one-click review.</p>
-        <div class="payment-import-status">
-        <div class="card qonto-status-card" id="qonto-status-card">
-          <div class="qonto-status-head">
-            <h3 data-i18n="payments.qontoStatusTitle">Bank import (Qonto)</h3>
-            <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import bank transactions now</button>
+        <div class="payment-import-bar" id="payment-import-status">
+          <div class="payment-import-item">
+            <span class="payment-import-label">Qonto</span>
+            <span id="qonto-status-when" class="payment-import-value">–</span>
+            <span id="qonto-status-ago" class="payment-import-meta"></span>
+            <span id="qonto-status-line" class="payment-import-meta"></span>
           </div>
-          <div class="qonto-status-grid">
-            <div>
-              <div class="qonto-status-label" data-i18n="payments.qontoLastLabel">Last import</div>
-              <div id="qonto-status-when" class="qonto-status-when">–</div>
-              <div id="qonto-status-ago" class="field-hint"></div>
-            </div>
-            <div>
-              <div id="qonto-status-line" class="field-hint">–</div>
-              <div id="qonto-status-interval" class="field-hint"></div>
-            </div>
+          <div class="payment-import-item">
+            <span class="payment-import-label">PayPal</span>
+            <span id="paypal-status-when" class="payment-import-value">–</span>
+            <span id="paypal-status-ago" class="payment-import-meta"></span>
+            <span id="paypal-status-line" class="payment-import-meta"></span>
           </div>
-          <p id="qonto-poll-result" class="field-hint"></p>
-          <p class="field-hint" data-i18n="payments.qontoHint">When a guest says they just paid, import here instead of waiting for the next automatic run.</p>
-        </div>
-        <div class="card paypal-status-card" id="paypal-status-card">
-          <div class="qonto-status-head">
-            <h3 data-i18n="payments.paypalStatusTitle">PayPal</h3>
-          </div>
-          <div class="qonto-status-grid">
-            <div>
-              <div class="qonto-status-label" data-i18n="payments.paypalLastLabel">Last payment received</div>
-              <div id="paypal-status-when" class="qonto-status-when">–</div>
-              <div id="paypal-status-ago" class="field-hint"></div>
-            </div>
-            <div>
-              <div id="paypal-status-line" class="field-hint">–</div>
-              <div id="paypal-status-mode" class="field-hint"></div>
-            </div>
-          </div>
-          <p class="field-hint" data-i18n="payments.paypalHint">PayPal is webhook-only: new payments arrive when PayPal notifies us. Past PayPal transactions are not fetched automatically.</p>
-        </div>
+          <span id="qonto-poll-result" class="payment-import-meta"></span>
         </div>
         <h3 data-i18n="payments.viewQueue">Review queue</h3>
         <div id="payments-toolbar" class="table-toolbar"></div>

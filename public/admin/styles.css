@@ -1356,73 +1356,47 @@ a.payment-open-hostaway[aria-disabled="true"] {
   max-width: 28rem;
 }
 
-.qonto-status-card {
-  margin-bottom: 0;
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  background: rgba(37, 99, 235, 0.04);
-}
-
-.paypal-status-card {
-  margin-bottom: 0;
-  border: 1px solid rgba(0, 112, 186, 0.28);
-  background: rgba(0, 112, 186, 0.05);
-}
-
-.payment-import-status {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-
-@media (max-width: 900px) {
-  .payment-import-status {
-    grid-template-columns: 1fr;
-  }
-}
-
-.qonto-status-head {
+.payment-import-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  align-items: baseline;
+  gap: 0.35rem 1.25rem;
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.25));
+  border-radius: 0.4rem;
+  background: rgba(148, 163, 184, 0.06);
+  font-size: 0.85rem;
 }
 
-.qonto-status-head h3 {
-  margin: 0;
+.payment-import-item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
 }
 
-.qonto-status-grid {
-  display: grid;
-  grid-template-columns: minmax(12rem, 18rem) 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-.qonto-status-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted, #64748b);
-  margin-bottom: 0.2rem;
-}
-
-.qonto-status-when {
-  font-size: 1.15rem;
+.payment-import-label {
   font-weight: 700;
-  line-height: 1.3;
+  color: var(--muted, #94a3b8);
+  min-width: 3.5rem;
+}
+
+.payment-import-value {
+  font-weight: 600;
+}
+
+.payment-import-meta {
+  color: var(--muted, #94a3b8);
+  font-size: 0.8rem;
+}
+
+.payment-import-meta:empty {
+  display: none;
 }
 
 #qonto-poll-result:empty {
   display: none;
-}
-
-@media (max-width: 768px) {
-  .qonto-status-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 768px) {
