@@ -22,6 +22,8 @@ export interface PaymentMatchCandidate {
   listingName: string;
   arrivalDate: string;
   departureDate: string;
+  /** Booking source / channel (Airbnb, Booking.com, direct, …), if known */
+  channelName: string | null;
   /** Reservation total (booking amount), if known */
   totalPrice: number | null;
   /** Outstanding balance after notified charges, if known */

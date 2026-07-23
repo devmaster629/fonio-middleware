@@ -453,6 +453,11 @@ export class HostawaySyncService implements OnModuleInit {
         typeof remote.totalPrice === 'number' && Number.isFinite(remote.totalPrice)
           ? remote.totalPrice
           : null,
+      channelName: remote.channelName?.trim() || null,
+      channelId:
+        typeof remote.channelId === 'number' && Number.isFinite(remote.channelId)
+          ? remote.channelId
+          : null,
       lastSyncedAt: new Date(),
     };
 

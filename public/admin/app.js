@@ -1455,8 +1455,10 @@ function formatReservationOption(c, currency = 'EUR') {
   const dates = formatStayDates(c.arrivalDate, c.departureDate);
   const total = c.totalPrice != null ? formatMoney(c.totalPrice, currency) : '';
   const balance = c.balanceDue != null ? formatMoney(c.balanceDue, currency) : '';
+  const channel = c.channelName ? prettyChannel(c.channelName) : '';
   return [
     `#${id}`,
+    channel ? `[${channel}]` : '',
     guest,
     listing,
     dates,
@@ -1610,7 +1612,86 @@ function idOrEmpty(hostawayId) {
   return id || '';
 }
 
-function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
+/** True when the booking came from an OTA where the base stay is paid on-platform. */
+function isOtaChannel(channelName) {
+  const c = String(channelName || '').toLowerCase();
+  return /airbnb|booking|vrbo|expedia|homeaway|agoda/.test(c);
+}
+
+/** Colored badge for the booking source / channel. */
+function renderChannelBadge(channelName) {
+  if (!channelName) return '';
+  const c = String(channelName).toLowerCase();
+  let cls = 'channel-direct';
+  if (c.includes('airbnb')) cls = 'channel-airbnb';
+  else if (c.includes('booking')) cls = 'channel-booking';
+  else if (c.includes('vrbo') || c.includes('homeaway')) cls = 'channel-vrbo';
+  else if (c.includes('expedia')) cls = 'channel-expedia';
+  else if (isOtaChannel(c)) cls = 'channel-ota';
+  return `<span class="channel-badge ${cls}" title="${t('payments.channel')}">${esc(prettyChannel(channelName))}</span>`;
+}
+
+function prettyChannel(channelName) {
+  const c = String(channelName || '').toLowerCase();
+  if (c.includes('airbnb')) return 'Airbnb';
+  if (c.includes('booking')) return 'Booking.com';
+  if (c.includes('vrbo') || c.includes('homeaway')) return 'Vrbo';
+  if (c.includes('expedia')) return 'Expedia';
+  if (c === 'direct' || c.includes('website') || c.includes('manual') || c.includes('partner'))
+    return t('payments.channelDirect');
+  return channelName;
+}
+
+/**
+ * Payment breakdown so a reviewer can see, at a glance, whether this is a
+ * follow-up / additional payment on an existing reservation.
+ */
+function renderPaymentMath(payment, totalPrice, balanceDue, channelName) {
+  if (totalPrice == null && balanceDue == null) return '';
+  const currency = payment?.currency || 'EUR';
+  const amount = payment?.amount;
+  const alreadyPaid =
+    totalPrice != null && balanceDue != null
+      ? Math.max(0, Math.round((totalPrice - balanceDue) * 100) / 100)
+      : null;
+  // Heuristic: an OTA booking, or a payment that does not match total nor balance,
+  // is almost certainly an additional/extra charge (extra person, extra night…).
+  const amountMatchesTotal = totalPrice != null && amount != null && Math.abs(amount - totalPrice) < 0.5;
+  const amountMatchesBalance = balanceDue != null && amount != null && Math.abs(amount - balanceDue) < 0.5;
+  const looksAdditional =
+    amount != null &&
+    (isOtaChannel(channelName) || (!amountMatchesTotal && !amountMatchesBalance));
+
+  const lines = [];
+  if (totalPrice != null) {
+    lines.push(`${t('payments.bookingAmount')}: <strong>${esc(formatMoney(totalPrice, currency))}</strong>`);
+  }
+  if (alreadyPaid != null) {
+    lines.push(`${t('payments.alreadyRecorded')}: ${esc(formatMoney(alreadyPaid, currency))}`);
+  }
+  if (balanceDue != null) {
+    lines.push(`${t('payments.balanceDue')}: ${esc(formatMoney(balanceDue, currency))}`);
+  }
+  if (amount != null) {
+    lines.push(`${t('payments.thisPayment')}: <strong>${esc(formatMoney(amount, currency))}</strong>`);
+  }
+
+  const note = looksAdditional
+    ? `<div class="payment-additional-note">${
+        isOtaChannel(channelName)
+          ? t('payments.additionalPaymentOta', { channel: prettyChannel(channelName) })
+          : t('payments.additionalPaymentHint')
+      }</div>`
+    : '';
+
+  return `<div class="payment-math${looksAdditional ? ' is-additional' : ''}">
+    ${looksAdditional ? `<span class="payment-additional-badge">${t('payments.additionalPayment')}</span>` : ''}
+    <div class="payment-math-lines">${lines.join(' · ')}</div>
+    ${note}
+  </div>`;
+}
+
+function renderSuggestedReservation(reservation, candidate, currency = 'EUR', payment = null) {
   const src = reservation || candidate;
   if (!src) return '–';
   const hostawayId = reservation?.hostawayId ?? candidate?.hostawayId;
@@ -1620,21 +1701,19 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR') {
   const departure = reservation?.departureDate ?? candidate?.departureDate;
   const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
   const balanceDue = candidate?.balanceDue;
+  const channelName = reservation?.channelName ?? candidate?.channelName ?? null;
   const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
   const hostawayUrl = hostawayReservationUrl(hostawayId);
   const titleId = hostawayUrl
     ? `<a class="payment-hostaway-link" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">#${hostawayId}</a>`
     : `#${hostawayId}`;
+  const channelBadge = renderChannelBadge(channelName);
 
   return `<div class="payment-suggestion">
-    <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}</div>
+    <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}${channelBadge ? ` ${channelBadge}` : ''}</div>
     <div class="field-hint">${esc(listing || '–')}</div>
     <div class="field-hint">${t('payments.stay')}: ${esc(formatStayDates(arrival, departure) || '–')}</div>
-    <div class="field-hint">${t('payments.bookingAmount')}: ${esc(formatMoney(totalPrice, currency))}${
-      balanceDue != null
-        ? ` · ${t('payments.balanceDue')}: ${esc(formatMoney(balanceDue, currency))}`
-        : ''
-    }</div>
+    ${renderPaymentMath(payment, totalPrice, balanceDue, channelName)}
     ${reasons.length ? `<div class="field-hint">${t('payments.matchSignals')}: ${renderExpandableText(reasons.join('; '), 60)}</div>` : ''}
   </div>`;
 }
@@ -1660,7 +1739,8 @@ function bindReservationSearchInputs() {
           datalist.innerHTML = items.map((r) => {
             const total = r.totalPrice != null ? ` · ${formatMoney(r.totalPrice)}` : '';
             const dates = formatStayDates(r.arrivalDate, r.departureDate);
-            return `<option value="#${r.hostawayId} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} — ${esc(dates)}${esc(total)}"></option>`;
+            const channel = r.channelName ? ` [${prettyChannel(r.channelName)}]` : '';
+            return `<option value="#${r.hostawayId}${esc(channel)} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} — ${esc(dates)}${esc(total)}"></option>`;
           }).join('');
         } catch {
           /* search is best-effort */
@@ -1771,6 +1851,11 @@ async function loadPayments() {
           placeholder="${t('payments.manualReservationId')}"
           title="${t('payments.manualReservationHint')}" />
         <datalist id="payment-res-list-${p.id}"></datalist>
+        <input type="text" class="payment-note-input" data-payment-id="${p.id}"
+          autocomplete="off" maxlength="200"
+          placeholder="${t('payments.notePlaceholder')}"
+          title="${t('payments.noteHint')}"
+          value="${esc(p.reference || '')}" />
         <div class="payment-action-btns">
           <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
           <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
@@ -1790,7 +1875,7 @@ async function loadPayments() {
         <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
         ${whyNotAuto}
       </td>
-      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency)}</td>
+      <td>${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
       ${actionsCell}
     </tr>`;
   }).join('');
@@ -1812,13 +1897,15 @@ async function loadPayments() {
       const paymentId = btn.dataset.paymentId;
       const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
       const manual = $(`.payment-assign-manual[data-payment-id="${paymentId}"]`);
+      const noteInput = $(`.payment-note-input[data-payment-id="${paymentId}"]`);
       const fromSelect = select?.value ? Number(select.value) : undefined;
       const fromManual = parseReservationIdInput(manual?.value);
       const reservationHostawayId = fromManual || fromSelect || undefined;
+      const note = noteInput?.value?.trim() || undefined;
       try {
         await api(`/payments/${paymentId}/confirm`, {
           method: 'POST',
-          body: JSON.stringify({ reservationHostawayId }),
+          body: JSON.stringify({ reservationHostawayId, note }),
         });
         notify.success(t('payments.confirmOk'));
         loadPayments();

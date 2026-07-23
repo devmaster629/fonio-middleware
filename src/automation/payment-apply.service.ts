@@ -25,6 +25,8 @@ export class PaymentApplyService {
     occurredAt?: Date;
     appliedMode?: 'automatic' | 'manual';
     reviewedBy?: string;
+    /** Optional reviewer note; when set it becomes the Hostaway charge description. */
+    descriptionOverride?: string;
   }): Promise<{ chargeId: number; inboxMessageId?: number }> {
     const paymentMethod =
       params.source === ExternalPaymentSource.PAYPAL
@@ -41,7 +43,10 @@ export class PaymentApplyService {
       params.reservationHostawayId,
       {
         title,
-        description: params.reference?.slice(0, 500) ?? 'Automatisch zugeordnet',
+        description:
+          params.descriptionOverride?.slice(0, 500) ||
+          params.reference?.slice(0, 500) ||
+          'Automatisch zugeordnet',
         amount: params.amount,
         paymentMethod,
         status: 'paid',

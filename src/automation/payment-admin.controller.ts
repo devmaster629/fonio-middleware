@@ -111,6 +111,7 @@ export class PaymentAdminController {
           departureDate:
             (c.departureDate as string) ||
             live.departureDate.toISOString().slice(0, 10),
+          channelName: c.channelName ?? live.channelName ?? null,
           totalPrice: c.totalPrice ?? totalPrice,
           balanceDue: c.balanceDue ?? balanceDue,
         };

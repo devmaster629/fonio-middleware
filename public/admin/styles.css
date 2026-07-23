@@ -1266,6 +1266,66 @@ a.payment-open-hostaway[aria-disabled="true"] {
   cursor: not-allowed;
 }
 
+.channel-badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: middle;
+  color: #fff;
+  background: #64748b;
+  white-space: nowrap;
+}
+
+.channel-badge.channel-airbnb { background: #ff5a5f; }
+.channel-badge.channel-booking { background: #003580; }
+.channel-badge.channel-vrbo { background: #1e6fbb; }
+.channel-badge.channel-expedia { background: #fbc02d; color: #1f2937; }
+.channel-badge.channel-ota { background: #7c3aed; }
+.channel-badge.channel-direct { background: #0f9d58; }
+
+.payment-math {
+  margin: 0.35rem 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  background: rgba(148, 163, 184, 0.12);
+  font-size: 0.82rem;
+}
+
+.payment-math.is-additional {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.payment-math-lines {
+  line-height: 1.5;
+}
+
+.payment-additional-badge {
+  display: inline-block;
+  margin-bottom: 0.25rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.4rem;
+  background: #f59e0b;
+  color: #1f2937;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.payment-additional-note {
+  margin-top: 0.3rem;
+  color: var(--muted, #64748b);
+  font-size: 0.78rem;
+}
+
+.payment-actions-cell .payment-note-input {
+  width: 100%;
+  max-width: 28rem;
+  margin-bottom: 0.35rem;
+}
+
 @media (max-width: 768px) {
   #app-screen { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; }

@@ -195,6 +195,7 @@ export class PaymentReconciliationService {
       occurredAt: payment.occurredAt,
       appliedMode: 'manual',
       reviewedBy: reviewerEmail,
+      descriptionOverride: note,
     });
 
     return this.prisma.externalPayment.update({

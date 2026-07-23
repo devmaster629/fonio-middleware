@@ -239,6 +239,7 @@ export class PaymentMatcherService {
       arrivalDate: Date;
       departureDate: Date;
       totalPrice: number | null;
+      channelName: string | null;
       listing: { name: string; aliases: string[] };
       notifiedCharges: { amount: number }[];
     },
@@ -324,6 +325,7 @@ export class PaymentMatcherService {
       listingName: reservation.listing.name,
       arrivalDate: reservation.arrivalDate.toISOString().slice(0, 10),
       departureDate: reservation.departureDate.toISOString().slice(0, 10),
+      channelName: reservation.channelName ?? null,
       totalPrice,
       balanceDue,
       score,
