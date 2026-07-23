@@ -1357,9 +1357,28 @@ a.payment-open-hostaway[aria-disabled="true"] {
 }
 
 .qonto-status-card {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
   border: 1px solid rgba(37, 99, 235, 0.25);
   background: rgba(37, 99, 235, 0.04);
+}
+
+.paypal-status-card {
+  margin-bottom: 0;
+  border: 1px solid rgba(0, 112, 186, 0.28);
+  background: rgba(0, 112, 186, 0.05);
+}
+
+.payment-import-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .payment-import-status {
+    grid-template-columns: 1fr;
+  }
 }
 
 .qonto-status-head {

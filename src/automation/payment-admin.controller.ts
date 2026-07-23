@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { AdminPermission, ExternalPaymentStatus } from '@prisma/client';
 import { Request } from 'express';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -34,6 +35,7 @@ export class PaymentAdminController {
     private readonly prisma: PrismaService,
     private readonly reconciliation: PaymentReconciliationService,
     private readonly qontoPoll: QontoPollService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('review-queue')
@@ -152,6 +154,44 @@ export class PaymentAdminController {
   @ApiOperation({ summary: 'Last Qonto poll status (mirrors Hostaway sync status)' })
   async qontoStatus() {
     return this.qontoPoll.getStatus();
+  }
+
+  @Get('paypal-status')
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
+  @ApiOperation({
+    summary:
+      'PayPal integration status (webhook-only — no automatic polling of history)',
+  })
+  async paypalStatus() {
+    const enabled = this.config.get<string>('PAYPAL_ENABLED') === 'true';
+    const configured = Boolean(
+      this.config.get('PAYPAL_CLIENT_ID') &&
+        this.config.get('PAYPAL_CLIENT_SECRET'),
+    );
+    const last = await this.prisma.externalPayment.findFirst({
+      where: { source: 'PAYPAL' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        amount: true,
+        currency: true,
+        status: true,
+        payerName: true,
+      },
+    });
+    const count = await this.prisma.externalPayment.count({
+      where: { source: 'PAYPAL' },
+    });
+    return {
+      enabled,
+      configured,
+      mode: this.config.get<string>('PAYPAL_MODE') ?? 'live',
+      polling: false,
+      webhookPath: '/webhooks/paypal',
+      count,
+      last,
+    };
   }
 
   @Post('qonto-poll')

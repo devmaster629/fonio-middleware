@@ -17,6 +17,7 @@ let editingRuleId = null;
 let editingUserId = null;
 let editingListingAliases = null;
 let dashboardPoll = null;
+let paymentsStatusPoll = null;
 let syncSettingsDirty = false;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
@@ -284,11 +285,33 @@ function refreshActiveTab() {
 function manageDashboardPoll() {
   if (dashboardPoll) clearInterval(dashboardPoll);
   dashboardPoll = null;
+  if (paymentsStatusPoll) clearInterval(paymentsStatusPoll);
+  paymentsStatusPoll = null;
   if (activeTab === 'dashboard' && token) {
     dashboardPoll = setInterval(() => {
       if (activeTab === 'dashboard') loadDashboard();
     }, 5000);
   }
+  if (activeTab === 'payments' && token) {
+    paymentsStatusPoll = setInterval(() => {
+      if (activeTab === 'payments') {
+        loadQontoStatus();
+        loadPaypalStatus();
+      }
+    }, 15000);
+  }
+}
+
+function formatRelativeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return t('payments.agoSeconds', { n: Math.max(1, sec) });
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t('payments.agoMinutes', { n: min });
+  const hrs = Math.floor(min / 60);
+  return t('payments.agoHours', { n: hrs });
 }
 
 function formatSyncPhase(last, inProgress) {
@@ -1870,12 +1893,14 @@ function formatQontoPollMeta(last) {
 async function loadQontoStatus() {
   const line = $('#qonto-status-line');
   const whenEl = $('#qonto-status-when');
+  const agoEl = $('#qonto-status-ago');
   const intervalEl = $('#qonto-status-interval');
   const btn = $('#qonto-poll-btn');
   if (!line) return;
   try {
     const status = await api('/payments/qonto-status');
     const last = status.last;
+    const stamp = last?.finishedAt || last?.startedAt;
     const when = formatSyncTime(last, status.inProgress);
     let detail;
     let whenText = when;
@@ -1896,13 +1921,19 @@ async function loadQontoStatus() {
     } else if (last) {
       detail = t('payments.qontoLastOk', {
         when: '',
-        meta: formatQontoPollMeta(last).replace(/^ — /, '') || t('payments.qontoInterval', { n: status.intervalMinutes || 5 }),
+        meta: formatQontoPollMeta(last).replace(/^ — /, '') || '',
       });
     } else {
       detail = t('payments.qontoNever');
       whenText = '–';
     }
     if (whenEl) whenEl.textContent = whenText;
+    if (agoEl) {
+      agoEl.textContent =
+        stamp && status.enabled && !status.inProgress
+          ? formatRelativeAgo(stamp)
+          : '';
+    }
     line.textContent = detail;
     if (intervalEl) {
       intervalEl.textContent =
@@ -1924,6 +1955,48 @@ async function loadQontoStatus() {
   } catch (ex) {
     line.textContent = ex.message || t('payments.qontoStatusError');
     if (whenEl) whenEl.textContent = '–';
+    if (agoEl) agoEl.textContent = '';
+  }
+}
+
+async function loadPaypalStatus() {
+  const line = $('#paypal-status-line');
+  const whenEl = $('#paypal-status-when');
+  const agoEl = $('#paypal-status-ago');
+  const modeEl = $('#paypal-status-mode');
+  if (!line) return;
+  try {
+    const status = await api('/payments/paypal-status');
+    if (!status.enabled) {
+      line.textContent = t('payments.paypalDisabled');
+      if (whenEl) whenEl.textContent = '–';
+      if (agoEl) agoEl.textContent = '';
+      if (modeEl) modeEl.textContent = '';
+      return;
+    }
+    if (!status.configured) {
+      line.textContent = t('payments.paypalNotConfigured');
+      if (whenEl) whenEl.textContent = '–';
+      if (agoEl) agoEl.textContent = '';
+      return;
+    }
+    line.textContent = t('payments.paypalWebhookOnly', {
+      count: status.count ?? 0,
+    });
+    if (modeEl) {
+      modeEl.textContent = t('payments.paypalMode', {
+        mode: status.mode || 'live',
+      });
+    }
+    if (status.last?.createdAt) {
+      if (whenEl) whenEl.textContent = formatDateTime(status.last.createdAt);
+      if (agoEl) agoEl.textContent = formatRelativeAgo(status.last.createdAt);
+    } else {
+      if (whenEl) whenEl.textContent = '–';
+      if (agoEl) agoEl.textContent = t('payments.paypalNever');
+    }
+  } catch (ex) {
+    line.textContent = ex.message || t('payments.paypalStatusError');
   }
 }
 
@@ -1980,6 +2053,7 @@ function applyTabFromUrl() {
 async function loadPayments() {
   loadPaymentsHistory();
   loadQontoStatus();
+  loadPaypalStatus();
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
