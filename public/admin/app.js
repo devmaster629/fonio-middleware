@@ -1900,8 +1900,8 @@ async function loadQontoStatus() {
     const status = await api('/payments/qonto-status');
     const last = status.last;
     const stamp = last?.finishedAt || last?.startedAt;
-    const when = formatSyncTime(last, status.inProgress);
-    let whenText = when;
+    let whenText = formatSyncTime(last, status.inProgress);
+    let ago = '';
     let meta = '';
 
     if (!status.enabled) {
@@ -1915,9 +1915,9 @@ async function loadQontoStatus() {
     } else if (last?.status === 'failed') {
       meta = t('payments.qontoFailedShort', { error: last.error || '–' });
     } else if (last) {
+      ago = stamp ? formatRelativeAgo(stamp) : '';
       const counts = formatQontoPollMeta(last).replace(/^ — /, '');
-      const ago = stamp ? formatRelativeAgo(stamp) : '';
-      meta = [ago, counts, t('payments.qontoIntervalShort', { n: status.intervalMinutes || 5 })]
+      meta = [counts, t('payments.qontoIntervalShort', { n: status.intervalMinutes || 5 })]
         .filter(Boolean)
         .join(' · ');
     } else {
@@ -1926,7 +1926,7 @@ async function loadQontoStatus() {
     }
 
     whenEl.textContent = whenText;
-    if (agoEl) agoEl.textContent = '';
+    if (agoEl) agoEl.textContent = ago;
     if (line) line.textContent = meta;
 
     if (btn) {
@@ -1941,9 +1941,9 @@ async function loadQontoStatus() {
       );
     }
   } catch (ex) {
-    if (whenEl) whenEl.textContent = '–';
-    if (line) line.textContent = ex.message || t('payments.qontoStatusError');
+    whenEl.textContent = '–';
     if (agoEl) agoEl.textContent = '';
+    if (line) line.textContent = ex.message || t('payments.qontoStatusError');
   }
 }
 
@@ -1956,31 +1956,28 @@ async function loadPaypalStatus() {
     const status = await api('/payments/paypal-status');
     if (!status.enabled) {
       whenEl.textContent = '–';
-      if (line) line.textContent = t('payments.paypalDisabled');
       if (agoEl) agoEl.textContent = '';
+      if (line) line.textContent = t('payments.paypalDisabled');
       return;
     }
     if (!status.configured) {
       whenEl.textContent = '–';
-      if (line) line.textContent = t('payments.paypalNotConfigured');
       if (agoEl) agoEl.textContent = '';
+      if (line) line.textContent = t('payments.paypalNotConfigured');
       return;
     }
     if (status.last?.createdAt) {
       whenEl.textContent = formatDateTime(status.last.createdAt);
-      const ago = formatRelativeAgo(status.last.createdAt);
-      if (line) {
-        line.textContent = [ago, t('payments.paypalWebhookShort', { count: status.count ?? 0 })]
-          .filter(Boolean)
-          .join(' · ');
-      }
+      if (agoEl) agoEl.textContent = formatRelativeAgo(status.last.createdAt);
+      if (line) line.textContent = t('payments.paypalWebhookShort', { count: status.count ?? 0 });
     } else {
       whenEl.textContent = '–';
-      if (line) line.textContent = t('payments.paypalWebhookShort', { count: 0 });
+      if (agoEl) agoEl.textContent = '';
+      if (line) line.textContent = t('payments.paypalNeverShort');
     }
-    if (agoEl) agoEl.textContent = '';
   } catch (ex) {
     whenEl.textContent = '–';
+    if (agoEl) agoEl.textContent = '';
     if (line) line.textContent = ex.message || t('payments.paypalStatusError');
   }
 }

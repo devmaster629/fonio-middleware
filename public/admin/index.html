@@ -259,23 +259,36 @@
       <section id="tab-payments" class="tab hidden">
         <header class="page-header">
           <h2 data-i18n="payments.title">Payment reconciliation</h2>
-          <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import now</button>
         </header>
-        <p class="field-hint" data-i18n="payments.hint">Imported Qonto/PayPal payments. Unambiguous matches are applied automatically; unclear ones appear here for one-click review.</p>
-        <div class="payment-import-bar" id="payment-import-status">
-          <div class="payment-import-item">
-            <span class="payment-import-label">Qonto</span>
-            <span id="qonto-status-when" class="payment-import-value">–</span>
-            <span id="qonto-status-ago" class="payment-import-meta"></span>
-            <span id="qonto-status-line" class="payment-import-meta"></span>
+        <div class="payment-import-grid" id="payment-import-status">
+          <div class="payment-import-card" id="qonto-status-card">
+            <div class="payment-import-card-top">
+              <div>
+                <div class="payment-import-source">Qonto</div>
+                <div class="payment-import-caption" data-i18n="payments.qontoCaption">Bank transfers</div>
+              </div>
+              <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import now</button>
+            </div>
+            <div class="payment-import-time" id="qonto-status-when">–</div>
+            <div class="payment-import-meta-row">
+              <span id="qonto-status-ago"></span>
+              <span id="qonto-status-line"></span>
+            </div>
+            <div id="qonto-poll-result" class="payment-import-flash"></div>
           </div>
-          <div class="payment-import-item">
-            <span class="payment-import-label">PayPal</span>
-            <span id="paypal-status-when" class="payment-import-value">–</span>
-            <span id="paypal-status-ago" class="payment-import-meta"></span>
-            <span id="paypal-status-line" class="payment-import-meta"></span>
+          <div class="payment-import-card is-paypal" id="paypal-status-card">
+            <div class="payment-import-card-top">
+              <div>
+                <div class="payment-import-source">PayPal</div>
+                <div class="payment-import-caption" data-i18n="payments.paypalCaption">Webhook only</div>
+              </div>
+            </div>
+            <div class="payment-import-time" id="paypal-status-when">–</div>
+            <div class="payment-import-meta-row">
+              <span id="paypal-status-ago"></span>
+              <span id="paypal-status-line"></span>
+            </div>
           </div>
-          <span id="qonto-poll-result" class="payment-import-meta"></span>
         </div>
         <h3 data-i18n="payments.viewQueue">Review queue</h3>
         <div id="payments-toolbar" class="table-toolbar"></div>
