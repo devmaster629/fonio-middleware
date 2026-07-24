@@ -49,6 +49,8 @@ export class QontoPollService {
     fetched: number;
     ingested: number;
     skippedInternal: number;
+    rematchChecked?: number;
+    rematchAutoApplied?: number;
   }> {
     if (!this.isEnabled() || !this.qonto.isConfigured()) {
       return { fetched: 0, ingested: 0, skippedInternal: 0 };
@@ -103,13 +105,17 @@ export class QontoPollService {
         }
       }
 
+      const rematch = await this.reconciliation.rematchPendingReview();
+
       const summary = {
         fetched: credits.length,
         ingested,
         skippedInternal,
+        rematchChecked: rematch.checked,
+        rematchAutoApplied: rematch.autoApplied,
       };
       this.logger.log(
-        `Qonto poll: fetched=${summary.fetched} processed=${summary.ingested} skippedInternal=${summary.skippedInternal}`,
+        `Qonto poll: fetched=${summary.fetched} processed=${summary.ingested} skippedInternal=${summary.skippedInternal} rematchAuto=${summary.rematchAutoApplied}`,
       );
       await this.prisma.syncJob.update({
         where: { id: job.id },

@@ -1137,13 +1137,13 @@ body.modal-open {
   width: 100%;
 }
 
-.payments-review-table .col-time { width: 9%; }
+.payments-review-table .col-time { width: 6.5%; }
 .payments-review-table .col-source { width: 6.5%; }
-.payments-review-table .col-amount { width: 8%; }
-.payments-review-table .col-payer { width: 15%; }
-.payments-review-table .col-match { width: 13%; }
-.payments-review-table .col-reservation { width: 28%; }
-.payments-review-table .col-actions { width: 20.5%; }
+.payments-review-table .col-amount { width: 7%; }
+.payments-review-table .col-payer { width: 14%; }
+.payments-review-table .col-match { width: 15%; }
+.payments-review-table .col-reservation { width: 22%; }
+.payments-review-table .col-actions { width: 29%; }
 
 .payments-review-table th,
 .payments-review-table td {

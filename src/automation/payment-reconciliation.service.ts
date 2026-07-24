@@ -177,6 +177,40 @@ export class PaymentReconciliationService {
     return { id: updated.id, status: updated.status };
   }
 
+  /**
+   * Re-run matching for payments still in the review queue.
+   * Useful after reservation notes/channel sync improve match quality —
+   * clear cases can then auto-apply; ambiguous ones stay in review.
+   */
+  async rematchPendingReview(limit = 40): Promise<{
+    checked: number;
+    autoApplied: number;
+    stillReview: number;
+  }> {
+    const pending = await this.prisma.externalPayment.findMany({
+      where: { status: ExternalPaymentStatus.PENDING_REVIEW },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+
+    let autoApplied = 0;
+    let stillReview = 0;
+    for (const row of pending) {
+      const result = await this.reconcile(row.id);
+      if (result.status === ExternalPaymentStatus.AUTO_APPLIED) autoApplied += 1;
+      else if (result.status === ExternalPaymentStatus.PENDING_REVIEW) stillReview += 1;
+    }
+
+    if (pending.length > 0) {
+      this.logger.log(
+        `Rematch pending review: checked=${pending.length} autoApplied=${autoApplied} stillReview=${stillReview}`,
+      );
+    }
+
+    return { checked: pending.length, autoApplied, stillReview };
+  }
+
   async confirmReview(
     paymentId: string,
     reviewerEmail: string,

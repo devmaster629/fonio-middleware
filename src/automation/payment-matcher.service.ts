@@ -82,9 +82,7 @@ export class PaymentMatcherService {
       };
     }
 
-    if (hasStrongIdMatch && candidates.length > 1 && !second) {
-      // single id match path continues below
-    } else if (
+    if (
       hasStrongIdMatch &&
       candidates.length > 1 &&
       second &&
@@ -99,30 +97,50 @@ export class PaymentMatcherService {
       };
     }
 
-    if (best.score < PAYMENT_AUTO_MATCH_MIN_SCORE && !hasStrongIdMatch) {
+    if (this.canAutoApply(best, second, hasStrongIdMatch)) {
       return {
-        decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
-        candidates: candidates.slice(0, 5),
+        decision: PaymentMatchDecision.UNAMBIGUOUS,
+        candidates: [best],
         best,
-        reason: this.explainPartialMatch(best, payment),
-      };
-    }
-
-    if (!hasStrongIdMatch && best.score < PAYMENT_AUTO_MATCH_MIN_SCORE) {
-      return {
-        decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
-        candidates: candidates.slice(0, 5),
-        best,
-        reason: this.explainPartialMatch(best, payment),
+        reason: best.reasons.join('; '),
       };
     }
 
     return {
-      decision: PaymentMatchDecision.UNAMBIGUOUS,
-      candidates: [best],
+      decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
+      candidates: candidates.slice(0, 5),
       best,
-      reason: best.reasons.join('; '),
+      reason: this.explainPartialMatch(best, payment),
     };
+  }
+
+  /**
+   * Auto-apply only when the match is clear.
+   * Ambiguous / name-only / weak amount evidence still go to review.
+   */
+  private canAutoApply(
+    best: PaymentMatchCandidate,
+    second: PaymentMatchCandidate | undefined,
+    hasStrongIdMatch: boolean,
+  ): boolean {
+    if (hasStrongIdMatch) return true;
+    if (best.score >= PAYMENT_AUTO_MATCH_MIN_SCORE) return true;
+
+    const reasons = best.reasons.join(' ').toLowerCase();
+    const strongGuest =
+      reasons.includes('guest name matches') ||
+      reasons.includes('guest email matches');
+    const strongAmount =
+      reasons.includes('outstanding balance') ||
+      reasons.includes('reservation total') ||
+      reasons.includes('deposit/installment') ||
+      reasons.includes('appears in reservation notes') ||
+      reasons.includes('payment amount aligns');
+    const clearlyUnique =
+      !second || best.score - second.score >= PAYMENT_AMBIGUITY_SCORE_GAP;
+
+    // Unique guest + clear amount evidence (deposit in notes, balance, total, …)
+    return clearlyUnique && strongGuest && strongAmount && best.score >= 55;
   }
 
   /**

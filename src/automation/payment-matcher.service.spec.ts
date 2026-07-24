@@ -231,4 +231,120 @@ describe('PaymentMatcherService', () => {
     expect(result.best?.reasons.join(' ')).toMatch(/deposit|installment/i);
     expect(result.decision).toBe('UNAMBIGUOUS');
   });
+
+  it('does not auto-match name-only weak evidence', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-1',
+        hostawayId: 60347269,
+        guestName: 'Robert Braun',
+        guestEmail: null,
+        arrivalDate: new Date('2026-07-27'),
+        departureDate: new Date('2026-07-31'),
+        totalPrice: 1461.5,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Waldblick', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-name-only',
+      amount: 960.05,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'ROBERT UND ELISABETH BRAUN',
+      reference: 'Robert Braun Buchungsnummer 5721249',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('PARTIAL_UNCLEAR');
+    expect(result.reason).toMatch(/Not enough for automatic/i);
+  });
+
+  it('keeps ambiguous multi-booking name matches in review', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-a',
+        hostawayId: 62966259,
+        guestName: 'Tobias Altmann',
+        guestEmail: null,
+        arrivalDate: new Date('2027-04-20'),
+        departureDate: new Date('2027-04-23'),
+        totalPrice: 2583,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Apartment A', aliases: [] },
+      },
+      {
+        id: 'res-b',
+        hostawayId: 62966260,
+        guestName: 'Tobias Altmann',
+        guestEmail: null,
+        arrivalDate: new Date('2027-05-01'),
+        departureDate: new Date('2027-05-05'),
+        totalPrice: 2100,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Apartment B', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-altmann',
+      amount: 894.13,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Tobias Altmann',
+      reference: 'Tobias Altmann Anzahlung',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('AMBIGUOUS');
+    expect(result.decision).not.toBe('UNAMBIGUOUS');
+    expect((result.candidates?.length ?? 0)).toBeGreaterThan(1);
+  });
+
+  it('does not auto-apply unique guest match without clear amount evidence', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-a',
+        hostawayId: 62966259,
+        guestName: 'Tobias Altmann',
+        guestEmail: null,
+        arrivalDate: new Date('2027-04-20'),
+        departureDate: new Date('2027-04-23'),
+        totalPrice: 2583,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Apartment A', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-altmann-partial',
+      amount: 894.13,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Tobias Altmann',
+      reference: 'Betreff bitte T.Altmann 23.04.2027',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('PARTIAL_UNCLEAR');
+  });
 });

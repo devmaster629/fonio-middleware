@@ -2082,7 +2082,7 @@ async function loadPayments() {
     }
     const whyText = explainWhyNotAutoMatched(p);
     const whyNotAuto = whyText
-      ? `<div class="payment-why-not-auto">${esc(whyText)}</div>`
+      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${esc(whyText)}</div>`
       : '';
     const canReview = hasPermission('PAYMENTS_REVIEW');
     const defaultOpenId =
@@ -2092,7 +2092,7 @@ async function loadPayments() {
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
     const matchSignals = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
     const matchSignalsHtml = matchSignals.length
-      ? `<div class="payment-match-signals">${esc(matchSignals.join(' · '))}</div>`
+      ? `<div class="payment-match-signals"><strong>${t('payments.matchSignals')}:</strong> ${esc(matchSignals.join('; '))}</div>`
       : '';
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
@@ -2132,7 +2132,7 @@ async function loadPayments() {
       <td class="payment-match-cell">
         <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
         ${matchSignalsHtml}
-        ${matchSignalsHtml ? '' : whyNotAuto}
+        ${whyNotAuto}
       </td>
       <td class="payment-suggestion-cell">${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
       ${actionsCell}
