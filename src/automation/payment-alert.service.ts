@@ -3,6 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { ExternalPaymentSource, LogLevel } from '@prisma/client';
 import { AuditLogService } from '../logging/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
+import type { PaymentMatchCandidate } from './automation.types';
+import {
+  buildAppliedEmail,
+  buildNeedsReviewEmail,
+  buildReviewDigestEmail,
+} from './payment-alert-email.util';
 
 @Injectable()
 export class PaymentAlertService {
@@ -60,6 +66,7 @@ export class PaymentAlertService {
   private async sendMail(params: {
     subject: string;
     text: string;
+    html?: string;
     correlationId: string;
     action: string;
     metadata?: Record<string, unknown>;
@@ -93,6 +100,7 @@ export class PaymentAlertService {
         to: mail.to,
         subject: params.subject,
         text: params.text,
+        html: params.html,
         headers: { 'X-Correlation-Id': params.correlationId },
       });
       const accepted = Array.isArray(info.accepted) ? info.accepted : [];
@@ -158,40 +166,27 @@ export class PaymentAlertService {
       include: { listing: true },
     });
 
-    const amountLabel = new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency: params.currency,
-    }).format(params.amount);
-    const sourceLabel =
-      params.source === ExternalPaymentSource.PAYPAL
-        ? 'PayPal'
-        : params.source === ExternalPaymentSource.QONTO
-          ? 'Qonto / Bank transfer'
-          : params.source;
-    const subject = `[Hostaway Payments] ${params.appliedMode === 'automatic' ? 'Auto-applied' : 'Applied'} ${amountLabel} for reservation #${params.reservationHostawayId}`;
     const correlationId = `pay-alert-${params.chargeId}-${Date.now()}`;
-
-    const lines = [
-      `A payment was ${params.appliedMode === 'automatic' ? 'auto-applied' : 'applied'} in Hostaway.`,
-      '',
-      `Reservation: #${params.reservationHostawayId}`,
-      reservation?.listing?.name ? `Listing: ${reservation.listing.name}` : '',
-      reservation?.guestName ? `Guest: ${reservation.guestName}` : '',
-      `Amount: ${amountLabel}`,
-      `Source: ${sourceLabel}`,
-      params.occurredAt ? `Received at: ${params.occurredAt.toISOString()}` : '',
-      `Hostaway charge ID: ${params.chargeId}`,
-      params.reference ? `Reference: ${params.reference}` : '',
-      params.reviewedBy ? `Reviewed by: ${params.reviewedBy}` : '',
-      `Dashboard: ${this.dashboardPaymentsUrl()}`,
-      `Correlation ID: ${correlationId}`,
-      '',
-      'This notification was sent by the middleware because Hostaway does not reliably email for API-created offline paid charges.',
-    ].filter(Boolean);
+    const email = buildAppliedEmail({
+      reservationHostawayId: params.reservationHostawayId,
+      amount: params.amount,
+      currency: params.currency,
+      source: params.source,
+      reference: params.reference,
+      occurredAt: params.occurredAt,
+      appliedMode: params.appliedMode,
+      reviewedBy: params.reviewedBy,
+      chargeId: params.chargeId,
+      guestName: reservation?.guestName,
+      listingName: reservation?.listing?.name,
+      dashboardUrl: this.dashboardPaymentsUrl(),
+      correlationId,
+    });
 
     await this.sendMail({
-      subject,
-      text: lines.join('\n'),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
       correlationId,
       action: 'applied',
       metadata: {
@@ -212,45 +207,35 @@ export class PaymentAlertService {
     reference?: string | null;
     occurredAt?: Date | null;
     matchReason?: string | null;
+    candidates?: PaymentMatchCandidate[];
   }): Promise<void> {
     if (!this.isEnabled()) return;
 
-    const amountLabel = new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency: params.currency,
-    }).format(params.amount);
-    const sourceLabel =
-      params.source === ExternalPaymentSource.PAYPAL
-        ? 'PayPal'
-        : params.source === ExternalPaymentSource.QONTO
-          ? 'Qonto / Bank transfer'
-          : String(params.source);
-    const subject =
-      'A payment has been received and is waiting for assignment.';
     const correlationId = `pay-review-${params.paymentId}-${Date.now()}`;
-    const link = this.dashboardPaymentsUrl();
-
-    const lines = [
-      'A payment was received but could not be matched automatically.',
-      'Please open the payment matching section and assign it to the correct reservation.',
-      '',
-      `Amount: ${amountLabel}`,
-      `Source: ${sourceLabel}`,
-      params.payerName ? `Payer: ${params.payerName}` : '',
-      params.reference ? `Reference: ${params.reference}` : '',
-      params.occurredAt ? `Received at: ${params.occurredAt.toISOString()}` : '',
-      params.matchReason ? `Match note: ${params.matchReason}` : '',
-      '',
-      `Open payment matching: ${link}`,
-      `Correlation ID: ${correlationId}`,
-    ].filter(Boolean);
+    const email = buildNeedsReviewEmail({
+      amount: params.amount,
+      currency: params.currency,
+      source: params.source,
+      payerName: params.payerName,
+      reference: params.reference,
+      occurredAt: params.occurredAt,
+      matchReason: params.matchReason,
+      candidates: params.candidates,
+      dashboardUrl: this.dashboardPaymentsUrl(),
+      correlationId,
+    });
 
     await this.sendMail({
-      subject,
-      text: lines.join('\n'),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
       correlationId,
       action: 'needs_review',
-      metadata: { paymentId: params.paymentId, amount: params.amount },
+      metadata: {
+        paymentId: params.paymentId,
+        amount: params.amount,
+        candidateCount: params.candidates?.length ?? 0,
+      },
     });
   }
 
@@ -283,44 +268,19 @@ export class PaymentAlertService {
       },
     });
 
-    const link = this.dashboardPaymentsUrl();
-    const when =
-      slot === 'evening'
-        ? 'evening reminder (19:00)'
-        : 'morning reminder (08:00)';
-    const subject =
-      count === 1
-        ? `[Hostaway Payments] 1 unmatched payment waiting for assignment`
-        : `[Hostaway Payments] ${count} unmatched payments waiting for assignment`;
     const correlationId = `pay-digest-${slot}-${Date.now()}`;
-
-    const sampleLines = samples.map((p) => {
-      const amountLabel = new Intl.NumberFormat('de-DE', {
-        style: 'currency',
-        currency: p.currency || 'EUR',
-      }).format(p.amount);
-      const payer = p.payerName || '–';
-      const ref = p.reference ? ` — ${p.reference.slice(0, 80)}` : '';
-      return `• ${amountLabel} (${p.source}) — ${payer}${ref}`;
+    const email = buildReviewDigestEmail({
+      slot,
+      count,
+      samples,
+      dashboardUrl: this.dashboardPaymentsUrl(),
+      correlationId,
     });
 
-    const lines = [
-      `There ${count === 1 ? 'is' : 'are'} currently ${count} unmatched payment${count === 1 ? '' : 's'} waiting to be assigned.`,
-      'Please review and assign them in the payment matching dashboard.',
-      '',
-      `This is the scheduled ${when}.`,
-      '',
-      'Recent items:',
-      ...sampleLines,
-      samples.length < count ? `… and ${count - samples.length} more` : '',
-      '',
-      `Open payment matching: ${link}`,
-      `Correlation ID: ${correlationId}`,
-    ].filter(Boolean);
-
     await this.sendMail({
-      subject,
-      text: lines.join('\n'),
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
       correlationId,
       action: 'review_digest',
       metadata: { slot, count },

@@ -164,6 +164,7 @@ export class PaymentReconciliationService {
           reference: payment.reference,
           occurredAt: payment.occurredAt,
           matchReason: match.reason,
+          candidates: match.candidates,
         });
       } catch (error) {
         const message =
