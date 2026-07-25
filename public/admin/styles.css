@@ -1119,10 +1119,34 @@ body.modal-open {
   width: 100%;
 }
 
+.payment-suggestion-head {
+  margin-bottom: 0.35rem;
+}
+
 .payment-suggestion-title {
   font-weight: 600;
   line-height: 1.35;
-  margin-bottom: 0.2rem;
+}
+
+.payment-suggestion-channel {
+  margin-top: 0.2rem;
+}
+
+.payment-suggestion-stay {
+  margin-bottom: 0.4rem;
+}
+
+.payment-suggestion-listing {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.payment-suggestion-dates {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--muted);
+  margin-top: 0.1rem;
 }
 
 .payment-suggestion-meta {
@@ -1137,34 +1161,163 @@ body.modal-open {
   width: 100%;
 }
 
-.payments-review-table .col-time { width: 6.5%; }
-.payments-review-table .col-source { width: 6.5%; }
-.payments-review-table .col-amount { width: 7%; }
-.payments-review-table .col-payer { width: 14%; }
-.payments-review-table .col-match { width: 15%; }
-.payments-review-table .col-reservation { width: 22%; }
-.payments-review-table .col-actions { width: 29%; }
+.payments-review-table .col-payment { width: 10%; }
+.payments-review-table .col-payer { width: 12%; }
+.payments-review-table .col-match { width: 20%; }
+.payments-review-table .col-reservation { width: 26%; }
+.payments-review-table .col-actions { width: 32%; }
 
 .payments-review-table th,
 .payments-review-table td {
-  vertical-align: middle;
+  vertical-align: top;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.payments-review-table th.th-center,
-.payments-review-table .payment-time-cell,
-.payments-review-table .payment-source-cell,
-.payments-review-table .payment-amount-cell,
-.payments-review-table .payment-payer-cell,
-.payments-review-table .payment-match-cell {
-  text-align: center;
 }
 
 .payments-review-table th {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: left;
+}
+
+.payment-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.payment-compact-when {
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.payment-compact-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.payment-payer-block {
+  min-width: 0;
+}
+
+.payment-payer-name {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+  line-height: 1.3;
+}
+
+.payment-payer-ref {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.payment-payer-ref-label {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.payment-source-pill {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text);
+}
+
+.payment-source-pill.is-qonto {
+  background: rgba(37, 99, 235, 0.14);
+  color: #1d4ed8;
+}
+
+.payment-source-pill.is-paypal {
+  background: rgba(0, 112, 186, 0.14);
+  color: #0070ba;
+}
+
+.payment-match-block {
+  text-align: left;
+  min-width: 0;
+}
+
+.payment-match-status {
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.3;
+  margin-bottom: 0.15rem;
+}
+
+.payment-match-summary {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+  line-height: 1.35;
+}
+
+.payment-match-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.payment-match-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.payment-match-chip-icon {
+  flex: 0 0 auto;
+  font-weight: 700;
+  width: 0.9rem;
+}
+
+.payment-match-chip.is-ok {
+  color: #15803d;
+}
+
+.payment-match-chip.is-warn {
+  color: #b45309;
+}
+
+.payment-match-more {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.payment-match-more summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+  list-style: none;
+}
+
+.payment-match-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.payment-match-more-body {
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.35rem;
+  background: rgba(148, 163, 184, 0.1);
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .payment-why-not-auto {
@@ -1183,47 +1336,8 @@ body.modal-open {
   max-width: none;
 }
 
-.payment-source-cell {
-  white-space: nowrap;
-}
-
-.payment-source-pill {
-  display: inline-block;
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.35rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  background: rgba(148, 163, 184, 0.18);
-  color: var(--text);
-}
-
-.payment-amount-cell {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.payment-payer-name {
-  font-weight: 500;
-  margin-bottom: 0.2rem;
-}
-
-.payment-payer-ref {
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: var(--muted);
-}
-
-.payment-time-cell {
-  white-space: normal;
-  font-size: 0.82rem;
-  color: var(--muted);
-  line-height: 1.35;
-}
-
 .payment-suggestion-cell .payment-suggestion {
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 .payment-notes {
@@ -1456,6 +1570,26 @@ a.payment-open-hostaway[aria-disabled="true"] {
   border: 1px solid rgba(15, 157, 88, 0.35);
 }
 
+.payment-math-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.payment-math-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.payment-math-line.is-focus .payment-math-v {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .payment-math-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1476,15 +1610,16 @@ a.payment-open-hostaway[aria-disabled="true"] {
 }
 
 .payment-math-k {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.72rem;
   color: var(--muted);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .payment-math-v {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  white-space: nowrap;
   line-height: 1.25;
 }
 

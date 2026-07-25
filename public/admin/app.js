@@ -1458,12 +1458,52 @@ function paymentStatusBadge(status) {
 
 function formatMoney(amount, currency = 'EUR') {
   if (amount == null || !Number.isFinite(Number(amount))) return '–';
-  return `${Number(amount).toFixed(2)} ${currency}`;
+  try {
+    return new Intl.NumberFormat(locale(), {
+      style: 'currency',
+      currency: currency || 'EUR',
+    }).format(Number(amount));
+  } catch {
+    return `${Number(amount).toFixed(2)} ${currency}`;
+  }
+}
+
+/** Short date+time for the payment review list (e.g. 24.07.2026 · 09:35). */
+function formatCompactDateTime(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const day = pad2(d.getDate());
+  const month = pad2(d.getMonth() + 1);
+  const year = d.getFullYear();
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if (getLang() === 'de') return `${day}.${month}.${year} · ${time}`;
+  return `${day}/${month}/${year} · ${time}`;
+}
+
+function formatDayMonthYear(value) {
+  if (!value) return '';
+  const raw = String(value).slice(0, 10);
+  let d;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, day] = raw.split('-').map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(value);
+  }
+  if (Number.isNaN(d.getTime())) return String(value);
+  const day = pad2(d.getDate());
+  const month = pad2(d.getMonth() + 1);
+  const year = d.getFullYear();
+  return getLang() === 'de' ? `${day}.${month}.${year}` : `${day}/${month}/${year}`;
 }
 
 function formatStayDates(arrival, departure) {
   if (!arrival && !departure) return '';
-  return `${formatDate(arrival)}${departure ? ` → ${formatDate(departure)}` : ''}`;
+  const a = formatDayMonthYear(arrival);
+  const b = departure ? formatDayMonthYear(departure) : '';
+  if (!b) return a;
+  return `${a} – ${b}`;
 }
 
 /** Compact label for dropdown / search options */
@@ -1719,16 +1759,12 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
   if (totalPrice == null && balanceDue == null) return '';
   const currency = payment?.currency || 'EUR';
   const amount = payment?.amount;
-  const alreadyPaid =
-    totalPrice != null && balanceDue != null
-      ? Math.max(0, Math.round((totalPrice - balanceDue) * 100) / 100)
-      : null;
   const kind = classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostNote);
   const remainingAfter =
     amount != null && balanceDue != null
       ? Math.max(0, Math.round((balanceDue - amount) * 100) / 100)
-      : amount != null && totalPrice != null && alreadyPaid != null
-        ? Math.max(0, Math.round((totalPrice - alreadyPaid - amount) * 100) / 100)
+      : amount != null && totalPrice != null
+        ? Math.max(0, Math.round((totalPrice - amount) * 100) / 100)
         : null;
 
   let badge = '';
@@ -1749,36 +1785,30 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
     badge = `<span class="payment-kind-badge payment-full-badge">${t('payments.fullPayment')}</span>`;
   }
 
-  const cells = [];
-  if (amount != null) {
-    cells.push(
-      `<div class="payment-math-cell is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
-    );
-  }
-  if (kind === 'partial' && remainingAfter != null) {
-    cells.push(
-      `<div class="payment-math-cell is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
-    );
-  }
+  const lines = [];
   if (totalPrice != null) {
-    cells.push(
-      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.bookingAmount')}</span><span class="payment-math-v">${esc(formatMoney(totalPrice, currency))}</span></div>`,
+    lines.push(
+      `<div class="payment-math-line"><span class="payment-math-k">${t('payments.bookingAmount')}</span><span class="payment-math-v">${esc(formatMoney(totalPrice, currency))}</span></div>`,
     );
   }
-  if (alreadyPaid != null && alreadyPaid > 0.009) {
-    cells.push(
-      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.alreadyRecorded')}</span><span class="payment-math-v">${esc(formatMoney(alreadyPaid, currency))}</span></div>`,
+  if (amount != null) {
+    lines.push(
+      `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
     );
   }
-  if (balanceDue != null && !(kind === 'partial' && remainingAfter != null)) {
-    cells.push(
-      `<div class="payment-math-cell"><span class="payment-math-k">${t('payments.balanceDue')}</span><span class="payment-math-v">${esc(formatMoney(balanceDue, currency))}</span></div>`,
+  if (remainingAfter != null && (kind === 'partial' || remainingAfter > 0.5)) {
+    lines.push(
+      `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
+    );
+  } else if (balanceDue != null && !(amount != null && remainingAfter != null)) {
+    lines.push(
+      `<div class="payment-math-line"><span class="payment-math-k">${t('payments.balanceDue')}</span><span class="payment-math-v">${esc(formatMoney(balanceDue, currency))}</span></div>`,
     );
   }
 
   return `<div class="${boxClass}"${hint ? ` title="${esc(hint)}"` : ''}>
     ${badge}
-    <div class="payment-math-grid">${cells.join('')}</div>
+    <div class="payment-math-stack">${lines.join('')}</div>
   </div>`;
 }
 
@@ -1805,10 +1835,109 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
     : '';
 
   return `<div class="payment-suggestion">
-    <div class="payment-suggestion-title">${titleId}${guest ? ` — ${esc(guest)}` : ''}${channelBadge ? ` ${channelBadge}` : ''}</div>
-    <div class="payment-suggestion-meta">${esc(listing || '–')}${stay ? ` · ${esc(stay)}` : ''}</div>
+    <div class="payment-suggestion-head">
+      <div class="payment-suggestion-title">${titleId}${guest ? ` – ${esc(guest)}` : ''}</div>
+      ${channelBadge ? `<div class="payment-suggestion-channel">${channelBadge}</div>` : ''}
+    </div>
+    <div class="payment-suggestion-stay">
+      ${listing ? `<div class="payment-suggestion-listing">${esc(listing)}</div>` : ''}
+      ${stay ? `<div class="payment-suggestion-dates">${esc(stay)}</div>` : ''}
+    </div>
     ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
     ${notesBlock}
+  </div>`;
+}
+
+/** Map matcher reason strings to short bilingual review chips. */
+function buildMatchSignalChips(payment, bestCandidate) {
+  const reasons = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
+  const blob = reasons.join(' ').toLowerCase();
+  const chips = [];
+
+  const nameOk =
+    blob.includes('guest name matches') || blob.includes('guest name appears');
+  chips.push({
+    ok: nameOk,
+    label: nameOk ? t('payments.signal.nameOk') : t('payments.signal.nameMissing'),
+  });
+
+  const datesOk = blob.includes('stay dates appear');
+  chips.push({
+    ok: datesOk,
+    label: datesOk ? t('payments.signal.datesOk') : t('payments.signal.datesMissing'),
+  });
+
+  const amountOk =
+    blob.includes('outstanding balance') ||
+    blob.includes('reservation total') ||
+    blob.includes('deposit share') ||
+    blob.includes('payment amount aligns') ||
+    blob.includes('appears in reservation notes');
+  chips.push({
+    ok: amountOk,
+    label: amountOk ? t('payments.signal.amountOk') : t('payments.signal.amountUnclear'),
+  });
+
+  return chips;
+}
+
+function renderMatchCell(payment, candidates, bestCandidate) {
+  const decision = payment.matchDecision || payment.status || '';
+  const decisionLabel = paymentDecisionLabel(decision);
+  const count = candidates.length;
+  let summaryLine = '';
+  if (decision === 'AMBIGUOUS' || count > 1) {
+    summaryLine = t('payments.matchCandidatesCount', { count: Math.max(count, 2) });
+  } else if (decision === 'NO_MATCH' || count === 0) {
+    summaryLine = t('payments.matchNoneFound');
+  } else if (count === 1) {
+    summaryLine = t('payments.matchOneFound');
+  }
+
+  const chips = buildMatchSignalChips(payment, bestCandidate);
+  const chipsHtml = chips
+    .map((chip) => {
+      const icon = chip.ok ? '✓' : '!';
+      const cls = chip.ok ? 'is-ok' : 'is-warn';
+      return `<div class="payment-match-chip ${cls}"><span class="payment-match-chip-icon">${icon}</span>${esc(chip.label)}</div>`;
+    })
+    .join('');
+
+  const whyText = explainWhyNotAutoMatched(payment);
+  const details = whyText
+    ? `<details class="payment-match-more"><summary>${t('payments.showMore')}</summary><div class="payment-match-more-body">${esc(whyText)}</div></details>`
+    : '';
+
+  return `<div class="payment-match-block">
+    <div class="payment-match-status">${esc(decisionLabel)}</div>
+    ${summaryLine ? `<div class="payment-match-summary">${esc(summaryLine)}</div>` : ''}
+    ${chipsHtml ? `<div class="payment-match-chips">${chipsHtml}</div>` : ''}
+    ${details}
+  </div>`;
+}
+
+function renderPaymentCell(payment) {
+  const when = formatCompactDateTime(payment.occurredAt || payment.createdAt);
+  const source = String(payment.source || '').toLowerCase() === 'paypal' ? 'PayPal' : (payment.source || '–');
+  const sourceCls =
+    String(payment.source || '').toUpperCase() === 'PAYPAL'
+      ? 'is-paypal'
+      : String(payment.source || '').toUpperCase() === 'QONTO'
+        ? 'is-qonto'
+        : '';
+  return `<div class="payment-compact">
+    <div class="payment-compact-when">${esc(when)}</div>
+    <div class="payment-compact-source"><span class="payment-source-pill ${sourceCls}">${esc(source)}</span></div>
+    <div class="payment-compact-amount">${esc(formatMoney(payment.amount, payment.currency))}</div>
+  </div>`;
+}
+
+function renderPayerCell(payment) {
+  const name = payment.payerName || '–';
+  const ref = payment.reference ? String(payment.reference).trim() : '';
+  return `<div class="payment-payer-block">
+    <div class="payment-payer-name">${esc(name)}</div>
+    ${ref ? `<div class="payment-payer-ref"><span class="payment-payer-ref-label">${t('payments.referenceLabel')}</span> ${esc(ref)}</div>` : ''}
   </div>`;
 }
 
@@ -2080,20 +2209,12 @@ async function loadPayments() {
         }, p.currency))}</option>`,
       );
     }
-    const whyText = explainWhyNotAutoMatched(p);
-    const whyNotAuto = whyText
-      ? `<div class="payment-why-not-auto"><strong>${t('payments.whyNotAuto')}:</strong> ${esc(whyText)}</div>`
-      : '';
     const canReview = hasPermission('PAYMENTS_REVIEW');
     const defaultOpenId =
       reservation?.hostawayId ||
       bestCandidate?.hostawayId ||
       (candidates[0] && candidates[0].hostawayId);
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
-    const matchSignals = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
-    const matchSignalsHtml = matchSignals.length
-      ? `<div class="payment-match-signals"><strong>${t('payments.matchSignals')}:</strong> ${esc(matchSignals.join('; '))}</div>`
-      : '';
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
         <div class="payment-actions-stack">
@@ -2125,33 +2246,25 @@ async function loadPayments() {
       </td>`;
     return `
     <tr class="payment-review-row">
-      <td class="payment-time-cell">${formatDateTime(p.createdAt)}</td>
-      <td class="payment-source-cell"><span class="payment-source-pill">${esc(p.source)}</span></td>
-      <td class="payment-amount-cell">${esc(formatMoney(p.amount, p.currency))}</td>
-      <td class="payment-payer-cell"><div class="payment-payer-name">${esc(p.payerName || '–')}</div>${p.reference ? `<div class="payment-payer-ref">${esc(p.reference)}</div>` : ''}</td>
-      <td class="payment-match-cell">
-        <span class="badge manual">${esc(paymentDecisionLabel(p.matchDecision || p.status))}</span>
-        ${matchSignalsHtml}
-        ${whyNotAuto}
-      </td>
+      <td class="payment-payment-cell">${renderPaymentCell(p)}</td>
+      <td class="payment-payer-cell">${renderPayerCell(p)}</td>
+      <td class="payment-match-cell">${renderMatchCell(p, candidates, bestCandidate)}</td>
       <td class="payment-suggestion-cell">${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
       ${actionsCell}
     </tr>`;
   }).join('');
   $('#payments-table').innerHTML = `
     <table class="payments-review-table"><colgroup>
-      <col class="col-time" /><col class="col-source" /><col class="col-amount" />
-      <col class="col-payer" /><col class="col-match" /><col class="col-reservation" /><col class="col-actions" />
+      <col class="col-payment" /><col class="col-payer" /><col class="col-match" />
+      <col class="col-reservation" /><col class="col-actions" />
     </colgroup><thead><tr>
-      <th class="th-center">${t('payments.time')}</th>
-      <th class="th-center">${t('payments.source')}</th>
-      <th class="th-center">${t('payments.amount')}</th>
-      <th class="th-center">${t('payments.payer')}</th>
-      <th class="th-center">${t('payments.match')}</th>
+      <th>${t('payments.paymentCol')}</th>
+      <th>${t('payments.payer')}</th>
+      <th>${t('payments.match')}</th>
       <th>${t('payments.reservation')}</th>
       <th>${t('payments.actions')}</th>
     </tr></thead>
-    <tbody>${rows || `<tr><td colspan="7">${t('payments.none')}</td></tr>`}</tbody></table>`;
+    <tbody>${rows || `<tr><td colspan="5">${t('payments.none')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
   bindReservationSearchInputs();
