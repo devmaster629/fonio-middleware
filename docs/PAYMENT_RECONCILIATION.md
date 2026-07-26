@@ -53,6 +53,7 @@ Generic automation platform for importing external payments, matching them to Ho
 | Decision | Default in v1 |
 |----------|----------------|
 | Auto-apply minimum match score | `85` (`PAYMENT_AUTO_MATCH_MIN_SCORE`) |
+| Candidate arrival window | past departures −30 days → arrivals up to **+730 days** (2 years) |
 | Partial payments | → review queue (not auto) |
 | Refunds (negative amounts) | → skipped |
 | Bulk payments (> €50,000) | → skipped |

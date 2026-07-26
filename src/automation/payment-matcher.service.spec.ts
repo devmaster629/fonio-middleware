@@ -347,4 +347,83 @@ describe('PaymentMatcherService', () => {
     const result = await service.match(payment);
     expect(result.decision).toBe('PARTIAL_UNCLEAR');
   });
+
+  it('loads candidate reservations up to 2 years ahead', async () => {
+    prisma.reservation.findMany.mockResolvedValue([]);
+
+    await service.match({
+      source: 'QONTO',
+      externalId: 'qonto-lookahead',
+      amount: 100,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Test Guest',
+      reference: 'test',
+      rawPayload: {},
+    });
+
+    const args = prisma.reservation.findMany.mock.calls[0][0];
+    const lookahead = args.where.arrivalDate.lte as Date;
+    const lookback = args.where.departureDate.gte as Date;
+    const now = Date.now();
+    const daysAhead = (lookahead.getTime() - now) / (24 * 60 * 60 * 1000);
+    const daysBack = (now - lookback.getTime()) / (24 * 60 * 60 * 1000);
+
+    expect(daysAhead).toBeGreaterThan(700);
+    expect(daysAhead).toBeLessThan(740);
+    expect(daysBack).toBeGreaterThan(25);
+    expect(daysBack).toBeLessThan(35);
+    expect(args.take).toBe(2000);
+  });
+
+  it('matches payments for stays about 2 years ahead', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-merz',
+        hostawayId: 70000001,
+        guestName: 'Siegfried Merz',
+        guestEmail: null,
+        arrivalDate: new Date('2028-06-03'),
+        departureDate: new Date('2028-06-08'),
+        totalPrice: 985.25,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Apartment Merz', aliases: [] },
+      },
+      {
+        id: 'res-other',
+        hostawayId: 56520057,
+        guestName: 'Kristina Peter',
+        guestEmail: null,
+        arrivalDate: new Date('2026-10-13'),
+        departureDate: new Date('2026-10-17'),
+        totalPrice: 985.47,
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Porschewerk', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-merz-2028',
+      amount: 985.25,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'SIEGFRIED MERZ',
+      reference:
+        'Betreff: RE-2026-23-115 Buchung 03.06.-08.06.2028. Referenz QY74MWX | SIEGFRIED MERZ | income',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.best?.hostawayId).toBe(70000001);
+    expect(result.best?.reasons.some((r) => /stay dates appear/i.test(r))).toBe(
+      true,
+    );
+  });
 });

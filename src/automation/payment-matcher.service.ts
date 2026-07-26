@@ -233,8 +233,9 @@ export class PaymentMatcherService {
   private async loadCandidateReservations() {
     const lookback = new Date();
     lookback.setDate(lookback.getDate() - 30);
+    // Include far-ahead prepaid stays (payments often arrive 1–2+ years early).
     const lookahead = new Date();
-    lookahead.setDate(lookahead.getDate() + 365);
+    lookahead.setDate(lookahead.getDate() + 730);
 
     return this.prisma.reservation.findMany({
       where: {
@@ -243,7 +244,7 @@ export class PaymentMatcherService {
         status: { notIn: ['cancelled', 'declined', 'expired'] },
       },
       include: { listing: true, notifiedCharges: true },
-      take: 500,
+      take: 2000,
       orderBy: { arrivalDate: 'asc' },
     });
   }
