@@ -95,14 +95,23 @@ function updateMobilePageTitle(tab) {
 
 function enhanceResponsiveTables(root = document) {
   root.querySelectorAll('.table-wrap table, #payments-table table').forEach((table) => {
-    const headers = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    const headers = [...table.querySelectorAll('thead th')].map((th) => {
+      const raw = th.getAttribute('data-label') || th.textContent || '';
+      return raw.replace(/\s*[▲▼]\s*/g, '').trim();
+    });
     if (!headers.length) return;
     table.classList.add('responsive-stack');
     table.querySelectorAll('tbody tr').forEach((tr) => {
       if (tr.children.length === 1 && tr.children[0].hasAttribute('colspan')) return;
       [...tr.children].forEach((cell, index) => {
-        if (cell.tagName === 'TD' && headers[index]) {
-          cell.setAttribute('data-label', headers[index]);
+        if (cell.tagName !== 'TD') return;
+        const label = headers[index] || '';
+        if (label) {
+          cell.setAttribute('data-label', label);
+          cell.classList.remove('mobile-actions');
+        } else {
+          cell.removeAttribute('data-label');
+          cell.classList.add('mobile-actions');
         }
       });
     });
@@ -440,7 +449,7 @@ function sortIndicator(tabKey, column) {
 }
 
 function sortTh(tabKey, column, label) {
-  return `<th class="sortable" data-sort="${column}" role="button" tabindex="0">${label}${sortIndicator(tabKey, column)}</th>`;
+  return `<th class="sortable" data-sort="${column}" data-label="${esc(label)}" role="button" tabindex="0">${label}${sortIndicator(tabKey, column)}</th>`;
 }
 
 function toggleSort(tabKey, column) {
@@ -497,13 +506,15 @@ function ensureTableToolbar(toolbarId, tabKey, loader) {
   el.innerHTML = `
     <div class="table-length">
       <label>
-        ${t('table.show')}
-        <select data-table-length="${tabKey}">
-          ${PAGE_SIZE_OPTIONS.map((n) =>
-            `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-          ).join('')}
-        </select>
-        ${t('table.entries')}
+        <span class="table-length-prefix">${t('table.show')}</span>
+        <span class="table-length-control">
+          <select data-table-length="${tabKey}">
+            ${PAGE_SIZE_OPTIONS.map((n) =>
+              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
+            ).join('')}
+          </select>
+          <span>${t('table.entries')}</span>
+        </span>
       </label>
     </div>
     <div class="table-filter">
@@ -2544,15 +2555,18 @@ async function loadLogRetentionStatus() {
       `).join('');
       samplesEl.innerHTML = `
         <p class="field-hint">${t('logs.statusSamplesHint')}</p>
-        <table class="meta-kv-table retention-samples-table">
-          <thead><tr>
-            <th>${t('logs.time')}</th>
-            <th>${t('logs.source')}</th>
-            <th>${t('logs.retentionRule')}</th>
-            <th>${t('logs.deletesOn')}</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
+        <div class="table-wrap">
+          <table class="retention-samples-table">
+            <thead><tr>
+              <th>${t('logs.time')}</th>
+              <th>${t('logs.source')}</th>
+              <th>${t('logs.retentionRule')}</th>
+              <th>${t('logs.deletesOn')}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      scheduleEnhanceResponsiveTables();
     } else if (samplesEl) {
       samplesEl.innerHTML = '';
     }

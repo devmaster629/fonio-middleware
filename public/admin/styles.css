@@ -97,19 +97,16 @@ body {
 .app-main {
   min-height: 100vh;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
-.mobile-topbar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 1rem;
-  padding-top: max(0.65rem, env(safe-area-inset-top));
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 120;
+.content {
+  padding: 1rem;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  overflow-x: clip;
+  overflow-y: auto;
+  max-width: 100%;
 }
 
 .mobile-page-title {
@@ -475,8 +472,8 @@ input, select, textarea {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
@@ -485,15 +482,32 @@ input, select, textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stat-card .value {
-  font-size: 1.75rem;
+  font-size: clamp(1rem, 4.2vw, 1.75rem);
   font-weight: 700;
   color: var(--primary);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .stat-card .label { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+@media (min-width: 480px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 
 .table-wrap {
   overflow-x: auto;
@@ -1594,6 +1608,19 @@ form.is-readonly .btn.primary {
   align-items: stretch;
 }
 
+.table-length-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.table-length-control select {
+  width: auto;
+  min-width: 4.5rem;
+  margin-bottom: 0;
+}
+
 .table-filter input {
   min-width: 0;
   width: 100%;
@@ -1688,12 +1715,15 @@ form.is-readonly .btn.primary {
 
 .table-wrap .responsive-stack td,
 .payments-review-table.responsive-stack td {
-  display: grid;
-  grid-template-columns: minmax(6.5rem, 34%) 1fr;
-  gap: 0.35rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.55rem 0.85rem;
   border-bottom: 1px solid var(--border);
-  align-items: start;
+  align-items: stretch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .table-wrap .responsive-stack td::before,
@@ -1705,7 +1735,6 @@ form.is-readonly .btn.primary {
   text-transform: uppercase;
   color: var(--muted);
   line-height: 1.35;
-  padding-top: 0.1rem;
 }
 
 .table-wrap .responsive-stack td:last-child,
@@ -1722,6 +1751,34 @@ form.is-readonly .btn.primary {
 .table-wrap .responsive-stack td[colspan]::before,
 .payments-review-table.responsive-stack td[colspan]::before {
   display: none;
+}
+
+/* Action cells (empty header): full-width button row */
+.table-wrap .responsive-stack td.mobile-actions,
+.table-wrap .responsive-stack td:not([data-label]),
+.table-wrap .responsive-stack td[data-label=""],
+.payments-review-table.responsive-stack td.mobile-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.7rem;
+}
+
+.table-wrap .responsive-stack td.mobile-actions::before,
+.table-wrap .responsive-stack td:not([data-label])::before,
+.table-wrap .responsive-stack td[data-label=""]::before,
+.payments-review-table.responsive-stack td.mobile-actions::before {
+  display: none;
+  content: none;
+}
+
+.table-wrap .responsive-stack td.mobile-actions .btn,
+.table-wrap .responsive-stack td:not([data-label]) .btn,
+.table-wrap .responsive-stack td[data-label=""] .btn {
+  flex: 1 1 calc(50% - 0.45rem);
+  min-width: 0;
+  text-align: center;
+  justify-content: center;
 }
 
 .payments-review-table.responsive-stack {
@@ -1865,14 +1922,24 @@ form.is-readonly .btn.primary {
   .table-wrap .responsive-stack td,
   .payments-review-table.responsive-stack td {
     display: table-cell;
-    grid-template-columns: none;
+    flex-direction: initial;
+    gap: initial;
     padding: 0.65rem 0.75rem;
+    overflow-wrap: normal;
+    word-break: normal;
   }
 
   .table-wrap .responsive-stack td::before,
   .payments-review-table.responsive-stack td::before {
     display: none;
     content: none;
+  }
+
+  .table-wrap .responsive-stack td.mobile-actions .btn,
+  .table-wrap .responsive-stack td:not([data-label]) .btn,
+  .table-wrap .responsive-stack td[data-label=""] .btn {
+    flex: initial;
+    width: auto;
   }
 
   .payments-review-table.responsive-stack {
