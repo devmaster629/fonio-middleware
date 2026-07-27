@@ -61,6 +61,78 @@ function formatDate(value) {
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+const MOBILE_NAV_BREAKPOINT = 1024;
+
+function isMobileNav() {
+  return window.matchMedia(`(max-width: ${MOBILE_NAV_BREAKPOINT - 1}px)`).matches;
+}
+
+function setSidebarOpen(open) {
+  const backdrop = $('#sidebar-backdrop');
+  const toggle = $('#sidebar-toggle');
+  document.body.classList.toggle('sidebar-open', open);
+  if (backdrop) {
+    backdrop.hidden = !open;
+    backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', t(open ? 'nav.closeMenu' : 'nav.openMenu'));
+  }
+}
+
+function closeSidebar() {
+  if (isMobileNav()) setSidebarOpen(false);
+}
+
+function updateMobilePageTitle(tab) {
+  const titleEl = $('#mobile-page-title');
+  const btn = $(`.nav-btn[data-tab="${tab}"]`);
+  if (!titleEl || !btn) return;
+  const key = btn.dataset.i18n;
+  titleEl.textContent = key ? t(key) : btn.textContent.trim();
+}
+
+function enhanceResponsiveTables(root = document) {
+  root.querySelectorAll('.table-wrap table, #payments-table table').forEach((table) => {
+    const headers = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    if (!headers.length) return;
+    table.classList.add('responsive-stack');
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      if (tr.children.length === 1 && tr.children[0].hasAttribute('colspan')) return;
+      [...tr.children].forEach((cell, index) => {
+        if (cell.tagName === 'TD' && headers[index]) {
+          cell.setAttribute('data-label', headers[index]);
+        }
+      });
+    });
+  });
+}
+
+let enhanceTablesScheduled = false;
+function scheduleEnhanceResponsiveTables() {
+  if (enhanceTablesScheduled) return;
+  enhanceTablesScheduled = true;
+  requestAnimationFrame(() => {
+    enhanceTablesScheduled = false;
+    enhanceResponsiveTables();
+  });
+}
+
+function initMobileNav() {
+  $('#sidebar-toggle')?.addEventListener('click', () => {
+    if (!isMobileNav()) return;
+    setSidebarOpen(!document.body.classList.contains('sidebar-open'));
+  });
+  $('#sidebar-backdrop')?.addEventListener('click', () => closeSidebar());
+  window.addEventListener('resize', () => {
+    if (!isMobileNav()) setSidebarOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebar();
+  });
+}
+
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -223,6 +295,7 @@ function applyRoleUi() {
     $$('.tab').forEach((tab) => tab.classList.add('hidden'));
     $(`#tab-${activeTab}`)?.classList.remove('hidden');
   }
+  scheduleEnhanceResponsiveTables();
 }
 
 function updateAdminSession() {
@@ -259,6 +332,7 @@ function showApp() {
   $('#app-screen').classList.remove('hidden');
   applyRoleUi();
   applyTabFromUrl();
+  updateMobilePageTitle(activeTab);
   refreshActiveTab();
 }
 
@@ -742,6 +816,7 @@ document.addEventListener('langchange', () => {
   refreshActiveTab();
   updateRuleFormUI();
   renderRuleConditionsPanel();
+  updateMobilePageTitle(activeTab);
 });
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -774,6 +849,8 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 $('#logout-btn').addEventListener('click', logout);
+
+initMobileNav();
 
 $$('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -1117,6 +1194,7 @@ async function loadGroups() {
   bindSortableHeaders('#listing-groups-table', 'groups', loadGroups);
   renderTableInfo('#groups-info', data);
   renderPagination('#groups-pagination', data, 'groups', loadGroups);
+  scheduleEnhanceResponsiveTables();
 }
 
 async function loadReservations() {
@@ -1149,6 +1227,7 @@ async function loadReservations() {
   bindSortableHeaders('#reservations-table', 'reservations', loadReservations);
   renderTableInfo('#reservations-info', data);
   renderPagination('#reservations-pagination', data, 'reservations', loadReservations);
+  scheduleEnhanceResponsiveTables();
 }
 
 async function loadConversations() {
@@ -2145,6 +2224,8 @@ function activateTab(tab) {
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $$('.tab').forEach((el) => el.classList.add('hidden'));
   $(`#tab-${tab}`)?.classList.remove('hidden');
+  updateMobilePageTitle(tab);
+  closeSidebar();
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
@@ -2551,6 +2632,7 @@ async function loadLogs() {
   data.items.forEach((log, idx) => {
     $(`[data-log-detail="${idx}"]`)?.addEventListener('click', () => showLogDetail(log));
   });
+  scheduleEnhanceResponsiveTables();
 }
 
 function formatLogSummary(log) {
@@ -2724,6 +2806,7 @@ async function loadFonioActivity() {
   data.items.forEach((log, idx) => {
     $(`[data-fonio-detail="${idx}"]`)?.addEventListener('click', () => showFonioActivityDetail(log));
   });
+  scheduleEnhanceResponsiveTables();
 }
 
 function ensureFonioActivityToolbar(loader) {
@@ -2954,6 +3037,7 @@ async function loadUsers() {
   }
   bindUserRowClicks();
   await loadRolePermissionsMatrix();
+  scheduleEnhanceResponsiveTables();
 }
 
 let cachedPermMatrix = null;

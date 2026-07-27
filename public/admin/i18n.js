@@ -20,6 +20,8 @@ const I18N = {
     'nav.fonio': 'fonio Setup',
     'nav.users': 'Users',
     'nav.logout': 'Sign out',
+    'nav.openMenu': 'Open menu',
+    'nav.closeMenu': 'Close menu',
     'dashboard.syncBtn': 'Hostaway Sync',
     'dashboard.listings': 'Listings',
     'dashboard.reservations': 'Reservations',
@@ -492,6 +494,8 @@ const I18N = {
     'nav.fonio': 'fonio Setup',
     'nav.users': 'Benutzer',
     'nav.logout': 'Abmelden',
+    'nav.openMenu': 'Menü öffnen',
+    'nav.closeMenu': 'Menü schließen',
     'dashboard.syncBtn': 'Hostaway Sync',
     'dashboard.listings': 'Unterkünfte',
     'dashboard.reservations': 'Reservierungen',
@@ -983,6 +987,9 @@ function applyI18n() {
   });
   document.querySelectorAll('[data-i18n-hint]').forEach((el) => {
     el.textContent = t(el.dataset.i18nHint);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.dataset.i18nAria));
   });
   document.querySelectorAll('.lang-select').forEach((sel) => {
     sel.value = getLang();
