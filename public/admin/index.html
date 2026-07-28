@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260728c" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260728e" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -235,13 +235,8 @@
             </label>
             <label><span data-i18n="rules.priority">Priority</span>
               <input type="number" id="rule-priority" value="0" min="0" />
-              <span class="field-hint" data-i18n="rules.priorityHint">Higher number wins when multiple rules match.</span>
+              <span class="field-hint" data-i18n="rules.priorityHint">Higher number wins.</span>
             </label>
-            <fieldset id="rule-conditions-panel" class="rule-conditions hidden">
-              <legend data-i18n="rules.conditionsTitle">Conditions (AUTO mode)</legend>
-              <p id="rule-conditions-note" class="field-hint hidden"></p>
-              <div id="rule-conditions-fields" class="conditions-fields"></div>
-            </fieldset>
             <label class="checkbox-row rule-active-row">
               <input type="checkbox" id="rule-active" checked />
               <span data-i18n="rules.isActive">Rule active</span>
@@ -416,8 +411,8 @@
             </label>
             <label>
               <span data-i18n="users.password">Password</span>
-              <input type="password" id="user-password" minlength="8" autocomplete="new-password" />
-              <span class="field-hint" id="user-password-hint" data-i18n="users.passwordHint">Min. 8 characters. Leave blank when editing to keep current password.</span>
+              <input type="password" id="user-password" autocomplete="new-password" />
+              <span class="field-hint error hidden" id="user-password-warning" data-i18n="users.passwordTooShort">Password must be at least 8 characters.</span>
             </label>
             <label>
               <span data-i18n="users.role">Role</span>
@@ -511,8 +506,8 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260727a"></script>
+  <script src="/admin/i18n.js?v=20260728d"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260728c"></script>
+  <script src="/admin/app.js?v=20260728d"></script>
 </body>
 </html>

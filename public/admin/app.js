@@ -723,93 +723,17 @@ function syncRuleModeForType() {
 }
 
 function renderRuleConditionsPanel() {
-  const panel = $('#rule-conditions-panel');
-  const note = $('#rule-conditions-note');
-  const fields = $('#rule-conditions-fields');
-  if (!panel || !note || !fields) return;
-
-  const type = $('#rule-type')?.value;
-  const mode = $('#rule-mode')?.value;
-  const schema = cachedConditionSchema?.[type];
-  const showAuto = mode === 'AUTO' && type !== 'CANCELLATION';
-
-  panel.classList.toggle('hidden', !schema && !showAuto);
-  note.classList.add('hidden');
-  fields.innerHTML = '';
-
-  if (!schema) return;
-
-  if (schema.noteKey) {
-    note.textContent = t(schema.noteKey);
-    note.classList.remove('hidden');
-  }
-
-  if (!showAuto) {
-    panel.classList.remove('hidden');
-    return;
-  }
-
-  panel.classList.remove('hidden');
-  fields.innerHTML = (schema.fields || []).map((field) => {
-    const id = `rule-cond-${field.key}`;
-    const label = t(field.labelKey);
-    const hint = field.hintKey ? t(field.hintKey) : '';
-    if (field.type === 'boolean') {
-      return `
-        <label class="checkbox-row">
-          <input type="checkbox" id="${id}" data-cond-key="${field.key}" data-cond-type="boolean" />
-          <span><strong>${label}</strong>${hint ? `<br><span class="field-hint">${esc(hint)}</span>` : ''}</span>
-        </label>`;
-    }
-    const inputType = field.type === 'time' ? 'time' : 'number';
-    const step = field.type === 'time' ? '' : ' min="1"';
-    const defaultVal = field.default ?? '';
-    return `
-      <label class="cond-field">
-        <span>${label}</span>
-        <input type="${inputType}" id="${id}" data-cond-key="${field.key}" data-cond-type="${field.type}"${step} value="${defaultVal}" />
-        ${hint ? `<span class="field-hint">${esc(hint)}</span>` : ''}
-      </label>`;
-  }).join('');
+  // Conditions UI removed to keep the rules form simple.
+  $('#rule-conditions-panel')?.classList.add('hidden');
 }
 
 function buildConditionsFromForm() {
-  const mode = $('#rule-mode')?.value;
-  const type = $('#rule-type')?.value;
-  if (mode !== 'AUTO' || type === 'CANCELLATION') return undefined;
-
-  const schema = cachedConditionSchema?.[type];
-  if (!schema?.fields?.length) return undefined;
-
-  const conditions = {};
-  schema.fields.forEach((field) => {
-    const el = $(`#rule-cond-${field.key}`);
-    if (!el) return;
-    if (field.type === 'boolean') {
-      if (el.checked) conditions[field.key] = true;
-      return;
-    }
-    const val = el.value?.trim();
-    if (val) conditions[field.key] = field.type === 'number' ? Number(val) : val;
-  });
-  return Object.keys(conditions).length ? conditions : {};
+  // Do not send conditions from the form so existing values stay unchanged on edit.
+  return undefined;
 }
 
-function loadConditionsIntoForm(conditions) {
-  const type = $('#rule-type')?.value;
+function loadConditionsIntoForm(_conditions) {
   renderRuleConditionsPanel();
-  const schema = cachedConditionSchema?.[type];
-  if (!schema?.fields) return;
-  const c = conditions || {};
-  schema.fields.forEach((field) => {
-    const el = $(`#rule-cond-${field.key}`);
-    if (!el) return;
-    if (field.type === 'boolean') {
-      el.checked = Boolean(c[field.key]);
-    } else if (c[field.key] !== undefined && c[field.key] !== null) {
-      el.value = String(c[field.key]);
-    }
-  });
 }
 
 $('#rule-type')?.addEventListener('change', () => {
@@ -2967,6 +2891,16 @@ function formatFonioActionSummary(action, meta) {
   }
 }
 
+function updateUserPasswordWarning() {
+  const input = $('#user-password');
+  const warning = $('#user-password-warning');
+  if (!input || !warning) return;
+  const value = input.value;
+  const show = value.length > 0 && value.length < 8;
+  warning.classList.toggle('hidden', !show);
+  warning.textContent = t('users.passwordTooShort');
+}
+
 function resetUserForm() {
   editingUserId = null;
   $('#user-id').value = '';
@@ -2980,6 +2914,7 @@ function resetUserForm() {
   $('#user-submit-btn').textContent = t('users.addUser');
   $('#user-cancel-btn')?.classList.add('hidden');
   $('#user-delete-btn')?.classList.add('hidden');
+  updateUserPasswordWarning();
   updateUserRowSelection(null);
 }
 
@@ -2998,6 +2933,7 @@ function loadUserIntoForm(user) {
   $('#user-submit-btn').textContent = t('users.save');
   $('#user-cancel-btn')?.classList.remove('hidden');
   $('#user-delete-btn')?.classList.toggle('hidden', !user.isActive);
+  updateUserPasswordWarning();
   updateUserRowSelection(user.id);
 }
 
@@ -3121,12 +3057,20 @@ $('#user-new-btn')?.addEventListener('click', () => resetUserForm());
 
 $('#user-cancel-btn')?.addEventListener('click', () => resetUserForm());
 
+$('#user-password')?.addEventListener('input', updateUserPasswordWarning);
+
 $('#user-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = $('#user-email').value.trim();
   const password = $('#user-password').value;
   const role = $('#user-role').value;
   const isActive = $('#user-active').checked;
+
+  if (password && password.length < 8) {
+    updateUserPasswordWarning();
+    notify.error(t('users.passwordTooShort'));
+    return;
+  }
 
   try {
     if (editingUserId) {
@@ -3135,7 +3079,7 @@ $('#user-form')?.addEventListener('submit', async (e) => {
       await api(`/users/${editingUserId}`, { method: 'PATCH', body: JSON.stringify(body) });
       notify.success(t('users.saved'));
     } else {
-      if (!password || password.length < 8) {
+      if (!password) {
         notify.error(t('users.passwordRequired'));
         return;
       }
