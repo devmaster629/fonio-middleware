@@ -2787,7 +2787,7 @@ async function loadFonioActivity() {
     const meta = l.metadata ?? {};
     const summary = formatFonioActionSummary(l.action, meta);
     const requestText = formatFonioRequestSummary(meta.requestReceived, l.action, meta);
-    const actionText = truncateText(meta.middlewareAction ?? '–', 80);
+    const actionText = String(meta.middlewareAction ?? '–');
     const outcome = formatFonioOutcome(meta);
     return `
     <tr>
@@ -2869,8 +2869,8 @@ function formatFonioRequestSummary(requestReceived, action, meta) {
   if (req.listingId) parts.push(`listingId=${req.listingId}`);
   if (req.callerNumber || req.phone) parts.push('phone=[masked]');
   if (req.email || req.guestEmail) parts.push('email=[masked]');
-  if (parts.length > 0) return truncateText(parts.join(' · '), 80);
-  return truncateText(JSON.stringify(req), 80);
+  if (parts.length > 0) return parts.join(' · ');
+  return JSON.stringify(req);
 }
 
 function formatLegacyFonioRequest(action, meta) {
