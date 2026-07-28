@@ -2324,6 +2324,7 @@ async function loadPayments() {
     });
   });
   applyRoleUi();
+  scheduleEnhanceResponsiveTables();
   } catch (ex) {
     notify.error(ex.message);
     $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
@@ -2385,6 +2386,7 @@ async function loadPaymentsHistory() {
         }
       });
     });
+    scheduleEnhanceResponsiveTables();
   } catch (ex) {
     notify.error(ex.message);
     $('#payments-history-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;

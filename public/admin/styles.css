@@ -1842,6 +1842,29 @@ form.is-readonly .btn.primary {
   flex: 1 1 calc(50% - 0.35rem);
 }
 
+.payments-review-table.responsive-stack .payment-actions-stack,
+.payments-review-table.responsive-stack .payment-compact,
+.payments-review-table.responsive-stack .payment-payer-block,
+.payments-review-table.responsive-stack .payment-match-block,
+.payments-review-table.responsive-stack .payment-suggestion {
+  width: 100%;
+  max-width: none;
+}
+
+.payments-review-table.responsive-stack .payment-compact-when,
+.payments-review-table.responsive-stack .payment-compact-amount {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.payments-review-table.responsive-stack .payment-action-btns {
+  width: 100%;
+}
+
+.table-wrap .responsive-stack td .payment-retry-btn {
+  margin-top: 0.35rem;
+}
+
 /* Mobile stacked cards: show full description text (no ellipsis) */
 .table-wrap .responsive-stack .metadata-cell,
 .table-wrap .responsive-stack .metadata-cell.oneline,
