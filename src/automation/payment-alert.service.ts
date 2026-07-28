@@ -8,7 +8,11 @@ import {
   buildAppliedEmail,
   buildNeedsReviewEmail,
   buildReviewDigestEmail,
+  buildUnpaidReminderEmail,
 } from './payment-alert-email.util';
+import {
+  PAYMENT_EXCLUDED_RESERVATION_STATUSES,
+} from './automation.types';
 
 @Injectable()
 export class PaymentAlertService {
@@ -287,4 +291,113 @@ export class PaymentAlertService {
     });
     return { sent: true, count };
   }
+
+  /**
+   * Daily reminder: confirmed bookings that still have an outstanding balance
+   * exactly 4 weeks before arrival.
+   */
+  async notifyUnpaidBeforeArrival(): Promise<{
+    checked: number;
+    sent: number;
+  }> {
+    if (!this.isEnabled()) return { checked: 0, sent: 0 };
+
+    const targetYmd = berlinYmdPlusDays(28);
+    const dayStart = new Date(`${targetYmd}T00:00:00.000Z`);
+    const dayEnd = new Date(`${targetYmd}T23:59:59.999Z`);
+
+    const candidates = await this.prisma.reservation.findMany({
+      where: {
+        arrivalDate: { gte: dayStart, lte: dayEnd },
+        unpaidReminderSentAt: null,
+        totalPrice: { gt: 0 },
+        status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
+      },
+      include: {
+        listing: true,
+        notifiedCharges: true,
+      },
+      take: 200,
+      orderBy: { arrivalDate: 'asc' },
+    });
+
+    let sent = 0;
+    for (const reservation of candidates) {
+      if (isLikelyOtaChannel(reservation.channelName)) continue;
+
+      const paid = reservation.notifiedCharges.reduce(
+        (sum, charge) => sum + (Number(charge.amount) || 0),
+        0,
+      );
+      const total = Number(reservation.totalPrice) || 0;
+      const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+      if (balanceDue <= 1) continue;
+
+      const hostawayUrl = `https://dashboard.hostaway.com/reservations/${reservation.hostawayId}`;
+      const correlationId = `pay-unpaid-${reservation.hostawayId}-${Date.now()}`;
+      const email = buildUnpaidReminderEmail({
+        reservationHostawayId: reservation.hostawayId,
+        guestName: reservation.guestName,
+        listingName: reservation.listing?.name,
+        channelName: reservation.channelName,
+        arrivalDate: reservation.arrivalDate,
+        departureDate: reservation.departureDate,
+        totalPrice: total,
+        paidAmount: paid,
+        balanceDue,
+        currency: 'EUR',
+        hostawayUrl,
+        dashboardUrl: this.dashboardPaymentsUrl(),
+        correlationId,
+      });
+
+      await this.sendMail({
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        correlationId,
+        action: 'unpaid_before_arrival',
+        metadata: {
+          reservationHostawayId: reservation.hostawayId,
+          balanceDue,
+          arrivalDate: targetYmd,
+        },
+      });
+
+      await this.prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { unpaidReminderSentAt: new Date() },
+      });
+      sent += 1;
+    }
+
+    return { checked: candidates.length, sent };
+  }
+}
+
+function berlinYmdPlusDays(days: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const y = Number(parts.find((p) => p.type === 'year')?.value);
+  const m = Number(parts.find((p) => p.type === 'month')?.value);
+  const d = Number(parts.find((p) => p.type === 'day')?.value);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+function isLikelyOtaChannel(channelName: string | null | undefined): boolean {
+  const c = String(channelName || '').toLowerCase();
+  return (
+    c.includes('airbnb') ||
+    c.includes('bookingcom') ||
+    c.includes('booking.com') ||
+    c.includes('vrbo') ||
+    c.includes('homeaway') ||
+    c.includes('expedia') ||
+    c.includes('agoda')
+  );
 }

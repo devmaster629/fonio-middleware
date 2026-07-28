@@ -43,3 +43,31 @@ export interface PaymentMatchResult {
 
 export const PAYMENT_AUTO_MATCH_MIN_SCORE = 85;
 export const PAYMENT_AMBIGUITY_SCORE_GAP = 10;
+
+/** Hostaway inquiry statuses are quotes, not real bookings — exclude from payment matching. */
+export const INQUIRY_RESERVATION_STATUSES = [
+  'inquiry',
+  'inquiryPreapproved',
+  'inquiryDenied',
+  'inquiryTimedout',
+  'inquiryNotPossible',
+] as const;
+
+/** Statuses excluded from payment match candidates and unpaid reminders. */
+export const PAYMENT_EXCLUDED_RESERVATION_STATUSES = [
+  'cancelled',
+  'declined',
+  'expired',
+  ...INQUIRY_RESERVATION_STATUSES,
+] as const;
+
+export function isInquiryReservationStatus(
+  status: string | null | undefined,
+): boolean {
+  if (!status) return false;
+  const normalized = status.trim().toLowerCase();
+  return (
+    normalized === 'inquiry' ||
+    normalized.startsWith('inquiry')
+  );
+}

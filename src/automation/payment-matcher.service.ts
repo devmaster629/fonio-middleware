@@ -8,6 +8,7 @@ import {
   NormalizedExternalPayment,
   PAYMENT_AMBIGUITY_SCORE_GAP,
   PAYMENT_AUTO_MATCH_MIN_SCORE,
+  PAYMENT_EXCLUDED_RESERVATION_STATUSES,
   PaymentMatchCandidate,
   PaymentMatchResult,
 } from './automation.types';
@@ -241,7 +242,8 @@ export class PaymentMatcherService {
       where: {
         departureDate: { gte: lookback },
         arrivalDate: { lte: lookahead },
-        status: { notIn: ['cancelled', 'declined', 'expired'] },
+        // Inquiry statuses are quotes only — never suggest or auto-match them.
+        status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
       },
       include: { listing: true, notifiedCharges: true },
       take: 2000,

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ExternalPaymentSource,
   ExternalPaymentStatus,
@@ -6,10 +11,14 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { NormalizedExternalPayment } from './automation.types';
+import {
+  isInquiryReservationStatus,
+  NormalizedExternalPayment,
+} from './automation.types';
 import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
+import { HostawayClient } from '../hostaway/hostaway.client';
 
 @Injectable()
 export class PaymentReconciliationService {
@@ -20,6 +29,7 @@ export class PaymentReconciliationService {
     private readonly matcher: PaymentMatcherService,
     private readonly apply: PaymentApplyService,
     private readonly alerts: PaymentAlertService,
+    private readonly hostaway: HostawayClient,
   ) {}
 
   async ingestAndReconcile(
@@ -57,7 +67,9 @@ export class PaymentReconciliationService {
 
   async reconcile(
     paymentId: string,
+    options?: { allowAutoApply?: boolean },
   ): Promise<{ id: string; status: ExternalPaymentStatus }> {
+    const allowAutoApply = options?.allowAutoApply !== false;
     const payment = await this.prisma.externalPayment.findUnique({
       where: { id: paymentId },
     });
@@ -86,7 +98,11 @@ export class PaymentReconciliationService {
 
     const match = await this.matcher.match(normalized);
 
-    if (match.decision === PaymentMatchDecision.UNAMBIGUOUS && match.best) {
+    if (
+      allowAutoApply &&
+      match.decision === PaymentMatchDecision.UNAMBIGUOUS &&
+      match.best
+    ) {
       try {
         const applied = await this.apply.applyToReservation({
           reservationHostawayId: match.best.hostawayId,
@@ -245,6 +261,11 @@ export class PaymentReconciliationService {
       where: { id: reservationId },
     });
     if (!reservation) throw new NotFoundException('Reservation not found');
+    if (isInquiryReservationStatus(reservation.status)) {
+      throw new BadRequestException(
+        'Inquiry bookings are quotes only and cannot receive payments. Choose a confirmed reservation.',
+      );
+    }
 
     const applied = await this.apply.applyToReservation({
       reservationHostawayId: reservation.hostawayId,
@@ -286,5 +307,87 @@ export class PaymentReconciliationService {
         reviewNote: note,
       },
     });
+  }
+
+  /**
+   * Reverse an incorrect payment assignment:
+   * best-effort Hostaway charge cancel + local ledger rollback + return to review queue.
+   */
+  async undoApplication(paymentId: string, reviewerEmail: string) {
+    const payment = await this.prisma.externalPayment.findUnique({
+      where: { id: paymentId },
+      include: { matchedReservation: true },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (
+      payment.status !== ExternalPaymentStatus.AUTO_APPLIED &&
+      payment.status !== ExternalPaymentStatus.MANUALLY_APPLIED
+    ) {
+      throw new BadRequestException(
+        'Only applied payments can be undone',
+      );
+    }
+
+    let hostawayChargeCancelled = false;
+    const hostawayId = payment.matchedReservation?.hostawayId;
+    if (payment.hostawayChargeId && hostawayId) {
+      try {
+        await this.hostaway.cancelGuestCharge(
+          hostawayId,
+          payment.hostawayChargeId,
+        );
+        hostawayChargeCancelled = true;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Hostaway cancel failed';
+        this.logger.warn(
+          `Undo: could not cancel Hostaway charge ${payment.hostawayChargeId} on reservation ${hostawayId}: ${message}`,
+        );
+      }
+
+      await this.prisma.notifiedGuestCharge.deleteMany({
+        where: { hostawayChargeId: payment.hostawayChargeId },
+      });
+    }
+
+    const noteParts = [
+      `Undone by ${reviewerEmail}`,
+      hostawayChargeCancelled
+        ? 'Hostaway charge cancelled'
+        : payment.hostawayChargeId
+          ? `Hostaway charge ${payment.hostawayChargeId} may still need manual cancel`
+          : null,
+      payment.reviewNote ? `Previous note: ${payment.reviewNote}` : null,
+    ].filter(Boolean);
+
+    await this.prisma.externalPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: ExternalPaymentStatus.PENDING_REVIEW,
+        matchedReservationId: null,
+        hostawayChargeId: null,
+        matchDecision: null,
+        matchScore: null,
+        matchReason: null,
+        matchCandidates: Prisma.JsonNull,
+        reviewedBy: reviewerEmail,
+        reviewedAt: new Date(),
+        reviewNote: noteParts.join(' · '),
+        error: hostawayChargeCancelled
+          ? null
+          : payment.hostawayChargeId
+            ? `Undo incomplete in Hostaway — cancel charge ${payment.hostawayChargeId} manually if still present`
+            : null,
+      },
+    });
+
+    // Rematch for fresh candidates, but never auto-apply again from undo.
+    const result = await this.reconcile(payment.id, { allowAutoApply: false });
+    return {
+      ...result,
+      hostawayChargeCancelled,
+      hostawayChargeId: payment.hostawayChargeId,
+      previousReservationHostawayId: hostawayId ?? null,
+    };
   }
 }

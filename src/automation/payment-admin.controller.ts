@@ -23,6 +23,7 @@ import {
   ManualPaymentIngestDto,
   SkipPaymentReviewDto,
 } from './dto/payment.dto';
+import { isInquiryReservationStatus } from './automation.types';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { QontoPollService } from './qonto-poll.service';
 
@@ -87,7 +88,14 @@ export class PaymentAdminController {
       const candidates = Array.isArray(item.matchCandidates)
         ? (item.matchCandidates as Array<Record<string, unknown>>)
         : [];
-      const matchCandidates = candidates.map((c) => {
+      const matchCandidates = candidates
+        .filter((c) => {
+          const id = Number(c.hostawayId);
+          const live = Number.isFinite(id) ? byHostawayId.get(id) : undefined;
+          if (!live) return true;
+          return !isInquiryReservationStatus(live.status);
+        })
+        .map((c) => {
         const id = Number(c.hostawayId);
         const live = Number.isFinite(id) ? byHostawayId.get(id) : undefined;
         if (!live) return c;
@@ -259,6 +267,22 @@ export class PaymentAdminController {
     @Req() req: Request & { user?: { email?: string } },
   ) {
     return this.reconciliation.skipReview(id, req.user?.email ?? 'admin', dto.note);
+  }
+
+  @Post(':id/undo')
+  @Permissions(AdminPermission.PAYMENTS_REVIEW)
+  @ApiOperation({
+    summary:
+      'Undo an applied payment assignment and return it to the review queue',
+  })
+  async undoApplication(
+    @Param('id') id: string,
+    @Req() req: Request & { user?: { email?: string } },
+  ) {
+    return this.reconciliation.undoApplication(
+      id,
+      req.user?.email ?? 'admin',
+    );
   }
 
   @Post(':id/retry')

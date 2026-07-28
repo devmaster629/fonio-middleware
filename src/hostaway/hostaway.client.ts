@@ -298,4 +298,21 @@ export class HostawayClient {
     });
     return data.result;
   }
+
+  /**
+   * Best-effort cancel of a guest charge created by this middleware.
+   * Hostaway may reject updates on already-paid charges — callers should
+   * continue local undo and surface a manual Hostaway follow-up if this fails.
+   */
+  async cancelGuestCharge(
+    reservationId: number,
+    chargeId: number,
+  ): Promise<HostawayGuestCharge> {
+    const { data } = await this.http.put<
+      HostawaySingleResponse<HostawayGuestCharge>
+    >(`/guestPayments/charges/${reservationId}/${chargeId}`, {
+      status: 'cancelled',
+    });
+    return data.result;
+  }
 }

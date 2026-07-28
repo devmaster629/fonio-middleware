@@ -2354,6 +2354,9 @@ async function loadPaymentsHistory() {
       const retryBtn = (p.status === 'FAILED' || p.status === 'RECEIVED') && hasPermission('PAYMENTS_REVIEW')
         ? `<button type="button" class="btn ghost btn-sm payment-retry-btn" data-payment-id="${p.id}">${t('payments.retry')}</button>`
         : '';
+      const undoBtn = (p.status === 'AUTO_APPLIED' || p.status === 'MANUALLY_APPLIED') && hasPermission('PAYMENTS_REVIEW')
+        ? `<button type="button" class="btn ghost btn-sm payment-undo-btn" data-payment-id="${p.id}">${t('payments.undo')}</button>`
+        : '';
       return `
       <tr>
         <td>${formatDateTime(p.createdAt)}</td>
@@ -2362,7 +2365,7 @@ async function loadPaymentsHistory() {
         <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
         <td>${paymentStatusBadge(p.status)}${p.error ? `<br><span class="field-hint">${esc(p.error)}</span>` : ''}</td>
         <td>${reservationLabel}</td>
-        <td>${esc(p.reviewedBy || '–')} ${retryBtn}</td>
+        <td>${esc(p.reviewedBy || '–')} ${retryBtn}${undoBtn}</td>
       </tr>`;
     }).join('');
     $('#payments-history-table').innerHTML = `
@@ -2380,6 +2383,31 @@ async function loadPaymentsHistory() {
         try {
           await api(`/payments/${btn.dataset.paymentId}/retry`, { method: 'POST', body: '{}' });
           notify.success(t('payments.retryOk'));
+          loadPayments();
+        } catch (ex) {
+          notify.error(ex.message);
+        }
+      });
+    });
+
+    $$('.payment-undo-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!hasPermission('PAYMENTS_REVIEW')) return;
+        const ok = await notify.confirm(
+          t('payments.undoConfirm'),
+          { title: t('payments.undoTitle'), okLabel: t('payments.undo') },
+        );
+        if (!ok) return;
+        try {
+          const result = await api(`/payments/${btn.dataset.paymentId}/undo`, {
+            method: 'POST',
+            body: '{}',
+          });
+          if (result?.hostawayChargeCancelled === false && result?.hostawayChargeId) {
+            notify.info(t('payments.undoHostawayManual', { chargeId: result.hostawayChargeId }));
+          } else {
+            notify.success(t('payments.undoOk'));
+          }
           loadPayments();
         } catch (ex) {
           notify.error(ex.message);

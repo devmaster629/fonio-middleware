@@ -217,6 +217,7 @@ model Reservation {
   comment            String?
   hostawayConversationId Int?
   paymentBaselinedAt DateTime?
+  unpaidReminderSentAt DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]
@@ -227,6 +228,7 @@ model Reservation {
   @@index([phoneHash])
   @@index([emailHash])
   @@index([arrivalDate, departureDate])
+  @@index([unpaidReminderSentAt, arrivalDate])
 }
 
 model NotifiedGuestCharge {

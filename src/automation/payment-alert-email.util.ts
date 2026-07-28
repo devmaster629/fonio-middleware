@@ -427,3 +427,92 @@ export function buildReviewDigestEmail(input: {
 
   return { subject, text, html };
 }
+
+
+export function buildUnpaidReminderEmail(input: {
+  reservationHostawayId: number;
+  guestName?: string | null;
+  listingName?: string | null;
+  channelName?: string | null;
+  arrivalDate: Date;
+  departureDate: Date;
+  totalPrice: number;
+  paidAmount: number;
+  balanceDue: number;
+  currency: string;
+  hostawayUrl: string;
+  dashboardUrl: string;
+  correlationId: string;
+}): BuiltEmail {
+  const amountDue = formatAmountDe(input.balanceDue, input.currency);
+  const totalLabel = formatAmountDe(input.totalPrice, input.currency);
+  const paidLabel = formatAmountDe(input.paidAmount, input.currency);
+  const arrival = formatReceivedAtDe(input.arrivalDate).split(' – ')[0];
+  const departure = formatReceivedAtDe(input.departureDate).split(' – ')[0];
+  const channel = prettyChannelDe(input.channelName) ?? '–';
+  const subject = `Zahlungserinnerung – offener Restbetrag ${amountDue} – Reservierung #${input.reservationHostawayId}`;
+
+  const textLines = [
+    subject,
+    '',
+    'Diese Buchung ist 4 Wochen vor Anreise noch nicht vollständig bezahlt.',
+    '',
+    `Reservierung: #${input.reservationHostawayId}`,
+    input.listingName ? `Unterkunft: ${input.listingName}` : null,
+    input.guestName ? `Gast: ${input.guestName}` : null,
+    `Kanal: ${channel}`,
+    `Anreise: ${arrival}`,
+    `Abreise: ${departure}`,
+    `Buchungsbetrag: ${totalLabel}`,
+    `Bereits erfasst: ${paidLabel}`,
+    `Offener Restbetrag: ${amountDue}`,
+    '',
+    `Hostaway öffnen: ${input.hostawayUrl}`,
+    `Zahlungs-Dashboard: ${input.dashboardUrl}`,
+    '',
+    `Korrelations-ID: ${input.correlationId}`,
+  ].filter((line): line is string => line != null);
+
+  const rowsHtml = [
+    ['Reservierung', `#${input.reservationHostawayId}`],
+    input.listingName ? ['Unterkunft', input.listingName] : null,
+    input.guestName ? ['Gast', input.guestName] : null,
+    ['Kanal', channel],
+    ['Anreise', arrival],
+    ['Abreise', departure],
+    ['Buchungsbetrag', totalLabel],
+    ['Bereits erfasst', paidLabel],
+    ['Offener Restbetrag', amountDue],
+  ]
+    .filter((row): row is [string, string] => Array.isArray(row))
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 0;color:#6b7280;width:40%;">${escapeHtml(label)}</td><td style="padding:6px 0;color:#111827;font-weight:600;">${escapeHtml(value)}</td></tr>`,
+    )
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:640px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+    <div style="padding:20px 24px;">
+      <div style="font-size:15px;color:#92400e;font-weight:700;margin-bottom:8px;">${escapeHtml(subject)}</div>
+      <p style="margin:0 0 16px;color:#374151;">Diese Buchung ist 4 Wochen vor Anreise noch nicht vollständig bezahlt.</p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">${rowsHtml}</table>
+      <div style="text-align:center;margin:8px 0 12px;">
+        <a href="${escapeHtml(input.hostawayUrl)}"
+           style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:700;">
+          Reservierung in Hostaway öffnen
+        </a>
+      </div>
+      <p style="margin:0 0 8px;text-align:center;">
+        <a href="${escapeHtml(input.dashboardUrl)}" style="color:#2563eb;text-decoration:none;">Zum Zahlungs-Dashboard</a>
+      </p>
+      <p style="margin:12px 0 0;color:#9ca3af;font-size:12px;">Korrelations-ID: ${escapeHtml(input.correlationId)}</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text: textLines.join('\n'), html };
+}

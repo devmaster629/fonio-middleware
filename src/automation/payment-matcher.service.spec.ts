@@ -426,4 +426,34 @@ describe('PaymentMatcherService', () => {
       true,
     );
   });
+
+  it('excludes inquiry statuses from match candidates', async () => {
+    prisma.reservation.findMany.mockResolvedValue([]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-inquiry-filter',
+      amount: 100,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Test Guest',
+      reference: 'Reservierung 999',
+      rawPayload: {},
+    };
+
+    await service.match(payment);
+    expect(prisma.reservation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: {
+            notIn: expect.arrayContaining([
+              'inquiry',
+              'inquiryPreapproved',
+              'cancelled',
+            ]),
+          },
+        }),
+      }),
+    );
+  });
 });
