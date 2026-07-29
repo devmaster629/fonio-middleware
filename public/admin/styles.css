@@ -1316,11 +1316,25 @@ body.modal-open {
   width: 100%;
 }
 
-.payments-review-table .col-payment { width: 10%; }
-.payments-review-table .col-payer { width: 12%; }
-.payments-review-table .col-match { width: 20%; }
-.payments-review-table .col-reservation { width: 26%; }
-.payments-review-table .col-actions { width: 32%; }
+.payments-review-table .col-payment,
+.payments-review-table th:nth-child(1),
+.payments-review-table td:nth-child(1) { width: 8%; }
+
+.payments-review-table .col-payer,
+.payments-review-table th:nth-child(2),
+.payments-review-table td:nth-child(2) { width: 16%; }
+
+.payments-review-table .col-match,
+.payments-review-table th:nth-child(3),
+.payments-review-table td:nth-child(3) { width: 16%; }
+
+.payments-review-table .col-reservation,
+.payments-review-table th:nth-child(4),
+.payments-review-table td:nth-child(4) { width: 23%; }
+
+.payments-review-table .col-actions,
+.payments-review-table th:nth-child(5),
+.payments-review-table td:nth-child(5) { width: 37%; }
 
 .payments-review-table th,
 .payments-review-table td {
@@ -1330,7 +1344,7 @@ body.modal-open {
 }
 
 .payments-review-table th {
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
@@ -1830,14 +1844,6 @@ form.is-readonly .btn.primary {
   justify-content: center;
 }
 
-.payments-review-table.responsive-stack .col-payment,
-.payments-review-table.responsive-stack .col-payer,
-.payments-review-table.responsive-stack .col-match,
-.payments-review-table.responsive-stack .col-reservation,
-.payments-review-table.responsive-stack .col-actions {
-  width: auto;
-}
-
 .payments-review-table.responsive-stack .payment-action-btns .btn {
   flex: 1 1 calc(50% - 0.35rem);
 }
@@ -2042,6 +2048,26 @@ form.is-readonly .btn.primary {
   .payments-review-table.responsive-stack {
     table-layout: fixed;
   }
+
+  .payments-review-table.responsive-stack .col-payment,
+  .payments-review-table.responsive-stack th:nth-child(1),
+  .payments-review-table.responsive-stack td:nth-child(1) { width: 8%; }
+
+  .payments-review-table.responsive-stack .col-payer,
+  .payments-review-table.responsive-stack th:nth-child(2),
+  .payments-review-table.responsive-stack td:nth-child(2) { width: 16%; }
+
+  .payments-review-table.responsive-stack .col-match,
+  .payments-review-table.responsive-stack th:nth-child(3),
+  .payments-review-table.responsive-stack td:nth-child(3) { width: 16%; }
+
+  .payments-review-table.responsive-stack .col-reservation,
+  .payments-review-table.responsive-stack th:nth-child(4),
+  .payments-review-table.responsive-stack td:nth-child(4) { width: 23%; }
+
+  .payments-review-table.responsive-stack .col-actions,
+  .payments-review-table.responsive-stack th:nth-child(5),
+  .payments-review-table.responsive-stack td:nth-child(5) { width: 37%; }
 
   .payments-review-table.responsive-stack .payment-action-btns .btn {
     flex: initial;
