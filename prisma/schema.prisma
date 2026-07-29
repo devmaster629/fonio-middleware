@@ -221,6 +221,7 @@ model Reservation {
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]
+  paymentAllocations PaymentAllocation[]
   lastSyncedAt       DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
@@ -270,11 +271,29 @@ model ExternalPayment {
   error                  String?
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
+  allocations            PaymentAllocation[]
 
   @@unique([source, externalId])
   @@index([status])
   @@index([createdAt])
   @@index([matchedReservationId])
+}
+
+model PaymentAllocation {
+  id                String          @id @default(uuid())
+  externalPaymentId String
+  externalPayment   ExternalPayment @relation(fields: [externalPaymentId], references: [id], onDelete: Cascade)
+  reservationId     String
+  reservation       Reservation     @relation(fields: [reservationId], references: [id])
+  amount            Float
+  hostawayChargeId  Int?
+  note              String?
+  sortOrder         Int             @default(0)
+  createdAt         DateTime        @default(now())
+
+  @@unique([externalPaymentId, reservationId])
+  @@index([externalPaymentId])
+  @@index([reservationId])
 }
 
 model VerificationConfig {

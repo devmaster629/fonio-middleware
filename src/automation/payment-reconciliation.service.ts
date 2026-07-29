@@ -124,6 +124,16 @@ export class PaymentReconciliationService {
             matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
             matchedReservationId: match.best.reservationId,
             hostawayChargeId: applied.chargeId,
+            allocations: {
+              create: [
+                {
+                  reservationId: match.best.reservationId,
+                  amount: payment.amount,
+                  hostawayChargeId: applied.chargeId,
+                  sortOrder: 0,
+                },
+              ],
+            },
           },
         });
         return { id: updated.id, status: updated.status };
@@ -231,8 +241,15 @@ export class PaymentReconciliationService {
   async confirmReview(
     paymentId: string,
     reviewerEmail: string,
-    reservationHostawayId?: number,
-    note?: string,
+    options: {
+      reservationHostawayId?: number;
+      note?: string;
+      allocations?: Array<{
+        reservationHostawayId: number;
+        amount: number;
+        note?: string;
+      }>;
+    } = {},
   ) {
     const payment = await this.prisma.externalPayment.findUnique({
       where: { id: paymentId },
@@ -242,52 +259,173 @@ export class PaymentReconciliationService {
       throw new NotFoundException('Payment is not in review queue');
     }
 
-    let reservationId = payment.matchedReservationId;
-    if (reservationHostawayId) {
-      const reservation = await this.prisma.reservation.findUnique({
-        where: { hostawayId: reservationHostawayId },
-      });
-      if (!reservation) {
-        throw new NotFoundException('Reservation not found');
+    const note = options.note;
+    const lines =
+      options.allocations && options.allocations.length > 0
+        ? options.allocations
+        : [
+            {
+              reservationHostawayId: options.reservationHostawayId,
+              amount: payment.amount,
+              note,
+            },
+          ];
+
+    if (lines.length === 1 && !lines[0].reservationHostawayId) {
+      // Fall back to previously matched reservation for 1:1 confirm.
+      if (!payment.matchedReservationId) {
+        throw new NotFoundException('No reservation selected for this payment');
       }
-      reservationId = reservation.id;
+      const matched = await this.prisma.reservation.findUnique({
+        where: { id: payment.matchedReservationId },
+      });
+      if (!matched) throw new NotFoundException('Reservation not found');
+      lines[0].reservationHostawayId = matched.hostawayId;
     }
 
-    if (!reservationId) {
-      throw new NotFoundException('No reservation selected for this payment');
-    }
-
-    const reservation = await this.prisma.reservation.findUnique({
-      where: { id: reservationId },
+    const normalized = lines.map((line, index) => {
+      const reservationHostawayId = Number(line.reservationHostawayId);
+      const amount = Number(line.amount);
+      if (!Number.isFinite(reservationHostawayId) || reservationHostawayId <= 0) {
+        throw new BadRequestException(
+          `Allocation #${index + 1}: reservation is required`,
+        );
+      }
+      if (!Number.isFinite(amount) || amount < 0.01) {
+        throw new BadRequestException(
+          `Allocation #${index + 1}: amount must be at least 0.01`,
+        );
+      }
+      return {
+        reservationHostawayId,
+        amount: Math.round(amount * 100) / 100,
+        note: line.note?.trim() || note,
+      };
     });
-    if (!reservation) throw new NotFoundException('Reservation not found');
-    if (isInquiryReservationStatus(reservation.status)) {
+
+    const uniqueIds = new Set(
+      normalized.map((line) => line.reservationHostawayId),
+    );
+    if (uniqueIds.size !== normalized.length) {
       throw new BadRequestException(
-        'Inquiry bookings are quotes only and cannot receive payments. Choose a confirmed reservation.',
+        'Each split line must use a different reservation',
       );
     }
 
-    const applied = await this.apply.applyToReservation({
-      reservationHostawayId: reservation.hostawayId,
-      amount: payment.amount,
-      currency: payment.currency,
-      source: payment.source,
-      reference: payment.reference ?? undefined,
-      occurredAt: payment.occurredAt,
-      appliedMode: 'manual',
-      reviewedBy: reviewerEmail,
-      descriptionOverride: note,
-    });
+    const sum = Math.round(
+      normalized.reduce((acc, line) => acc + line.amount, 0) * 100,
+    ) / 100;
+    if (Math.abs(sum - payment.amount) > 0.01) {
+      throw new BadRequestException(
+        `Split amounts (${sum}) must equal payment amount (${payment.amount})`,
+      );
+    }
 
+    const reservations = await this.prisma.reservation.findMany({
+      where: {
+        hostawayId: {
+          in: normalized.map((line) => line.reservationHostawayId),
+        },
+      },
+    });
+    const byHostawayId = new Map(reservations.map((r) => [r.hostawayId, r]));
+
+    for (const line of normalized) {
+      const reservation = byHostawayId.get(line.reservationHostawayId);
+      if (!reservation) {
+        throw new NotFoundException(
+          `Reservation #${line.reservationHostawayId} not found`,
+        );
+      }
+      if (isInquiryReservationStatus(reservation.status)) {
+        throw new BadRequestException(
+          `Inquiry booking #${line.reservationHostawayId} cannot receive payments`,
+        );
+      }
+    }
+
+    const appliedLines: Array<{
+      reservationId: string;
+      reservationHostawayId: number;
+      amount: number;
+      chargeId: number;
+      note?: string;
+    }> = [];
+
+    try {
+      for (const [index, line] of normalized.entries()) {
+        const reservation = byHostawayId.get(line.reservationHostawayId)!;
+        const applied = await this.apply.applyToReservation({
+          reservationHostawayId: reservation.hostawayId,
+          amount: line.amount,
+          currency: payment.currency,
+          source: payment.source,
+          reference: payment.reference ?? undefined,
+          occurredAt: payment.occurredAt,
+          appliedMode: 'manual',
+          reviewedBy: reviewerEmail,
+          descriptionOverride:
+            line.note ||
+            (normalized.length > 1
+              ? `Teilzahlung ${index + 1}/${normalized.length}`
+              : undefined),
+        });
+        appliedLines.push({
+          reservationId: reservation.id,
+          reservationHostawayId: reservation.hostawayId,
+          amount: line.amount,
+          chargeId: applied.chargeId,
+          note: line.note,
+        });
+      }
+    } catch (error) {
+      // Best-effort rollback of Hostaway charges already created in this split.
+      for (const line of appliedLines) {
+        try {
+          await this.hostaway.cancelGuestCharge(
+            line.reservationHostawayId,
+            line.chargeId,
+          );
+        } catch {
+          /* ignore */
+        }
+        await this.prisma.notifiedGuestCharge.deleteMany({
+          where: { hostawayChargeId: line.chargeId },
+        });
+      }
+      throw error;
+    }
+
+    const primary = appliedLines[0];
     return this.prisma.externalPayment.update({
       where: { id: payment.id },
       data: {
         status: ExternalPaymentStatus.MANUALLY_APPLIED,
-        matchedReservationId: reservation.id,
-        hostawayChargeId: applied.chargeId,
+        matchedReservationId: primary.reservationId,
+        hostawayChargeId: primary.chargeId,
         reviewedBy: reviewerEmail,
         reviewedAt: new Date(),
-        reviewNote: note,
+        reviewNote:
+          note ||
+          (appliedLines.length > 1
+            ? `Split across ${appliedLines.length} bookings`
+            : null),
+        error: null,
+        allocations: {
+          create: appliedLines.map((line, index) => ({
+            reservationId: line.reservationId,
+            amount: line.amount,
+            hostawayChargeId: line.chargeId,
+            note: line.note,
+            sortOrder: index,
+          })),
+        },
+      },
+      include: {
+        allocations: {
+          include: { reservation: { include: { listing: true } } },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     });
   }
@@ -316,7 +454,10 @@ export class PaymentReconciliationService {
   async undoApplication(paymentId: string, reviewerEmail: string) {
     const payment = await this.prisma.externalPayment.findUnique({
       where: { id: paymentId },
-      include: { matchedReservation: true },
+      include: {
+        matchedReservation: true,
+        allocations: { include: { reservation: true } },
+      },
     });
     if (!payment) throw new NotFoundException('Payment not found');
     if (
@@ -328,35 +469,61 @@ export class PaymentReconciliationService {
       );
     }
 
-    let hostawayChargeCancelled = false;
-    const hostawayId = payment.matchedReservation?.hostawayId;
-    if (payment.hostawayChargeId && hostawayId) {
+    const chargeTargets: Array<{
+      reservationHostawayId: number;
+      hostawayChargeId: number;
+    }> = [];
+
+    if (payment.allocations.length > 0) {
+      for (const allocation of payment.allocations) {
+        if (!allocation.hostawayChargeId) continue;
+        chargeTargets.push({
+          reservationHostawayId: allocation.reservation.hostawayId,
+          hostawayChargeId: allocation.hostawayChargeId,
+        });
+      }
+    } else if (payment.hostawayChargeId && payment.matchedReservation) {
+      chargeTargets.push({
+        reservationHostawayId: payment.matchedReservation.hostawayId,
+        hostawayChargeId: payment.hostawayChargeId,
+      });
+    }
+
+    const cancelled: number[] = [];
+    const failed: number[] = [];
+    for (const target of chargeTargets) {
       try {
         await this.hostaway.cancelGuestCharge(
-          hostawayId,
-          payment.hostawayChargeId,
+          target.reservationHostawayId,
+          target.hostawayChargeId,
         );
-        hostawayChargeCancelled = true;
+        cancelled.push(target.hostawayChargeId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Hostaway cancel failed';
         this.logger.warn(
-          `Undo: could not cancel Hostaway charge ${payment.hostawayChargeId} on reservation ${hostawayId}: ${message}`,
+          `Undo: could not cancel Hostaway charge ${target.hostawayChargeId} on reservation ${target.reservationHostawayId}: ${message}`,
         );
+        failed.push(target.hostawayChargeId);
       }
-
       await this.prisma.notifiedGuestCharge.deleteMany({
-        where: { hostawayChargeId: payment.hostawayChargeId },
+        where: { hostawayChargeId: target.hostawayChargeId },
       });
     }
 
+    await this.prisma.paymentAllocation.deleteMany({
+      where: { externalPaymentId: payment.id },
+    });
+
+    const hostawayChargeCancelled = failed.length === 0 && cancelled.length > 0;
     const noteParts = [
       `Undone by ${reviewerEmail}`,
-      hostawayChargeCancelled
-        ? 'Hostaway charge cancelled'
-        : payment.hostawayChargeId
-          ? `Hostaway charge ${payment.hostawayChargeId} may still need manual cancel`
-          : null,
+      cancelled.length
+        ? `Hostaway charges cancelled: ${cancelled.join(', ')}`
+        : null,
+      failed.length
+        ? `Hostaway charges may need manual cancel: ${failed.join(', ')}`
+        : null,
       payment.reviewNote ? `Previous note: ${payment.reviewNote}` : null,
     ].filter(Boolean);
 
@@ -373,21 +540,21 @@ export class PaymentReconciliationService {
         reviewedBy: reviewerEmail,
         reviewedAt: new Date(),
         reviewNote: noteParts.join(' · '),
-        error: hostawayChargeCancelled
-          ? null
-          : payment.hostawayChargeId
-            ? `Undo incomplete in Hostaway — cancel charge ${payment.hostawayChargeId} manually if still present`
-            : null,
+        error: failed.length
+          ? `Undo incomplete in Hostaway — cancel charge(s) ${failed.join(', ')} manually if still present`
+          : null,
       },
     });
 
-    // Rematch for fresh candidates, but never auto-apply again from undo.
     const result = await this.reconcile(payment.id, { allowAutoApply: false });
     return {
       ...result,
       hostawayChargeCancelled,
       hostawayChargeId: payment.hostawayChargeId,
-      previousReservationHostawayId: hostawayId ?? null,
+      hostawayChargeIdsCancelled: cancelled,
+      hostawayChargeIdsFailed: failed,
+      previousReservationHostawayId:
+        payment.matchedReservation?.hostawayId ?? null,
     };
   }
 }

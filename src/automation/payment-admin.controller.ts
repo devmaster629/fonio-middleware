@@ -24,6 +24,7 @@ import {
   SkipPaymentReviewDto,
 } from './dto/payment.dto';
 import { isInquiryReservationStatus } from './automation.types';
+import { detectCombinedDepositHint } from './payment-split-hint.util';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { QontoPollService } from './qonto-poll.service';
 
@@ -132,7 +133,17 @@ export class PaymentAdminController {
       return { ...item, matchCandidates };
     });
 
-    return paginated(enriched, total, page, pageSize);
+    const withHints = enriched.map((item) => {
+      const combinedDepositHint = detectCombinedDepositHint(
+        item.amount,
+        Array.isArray(item.matchCandidates)
+          ? (item.matchCandidates as Array<Record<string, unknown>>)
+          : [],
+      );
+      return { ...item, combinedDepositHint };
+    });
+
+    return paginated(withHints, total, page, pageSize);
   }
 
   @Get()
@@ -147,6 +158,12 @@ export class PaymentAdminController {
         include: {
           matchedReservation: {
             include: { listing: true },
+          },
+          allocations: {
+            include: {
+              reservation: { include: { listing: true } },
+            },
+            orderBy: { sortOrder: 'asc' },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -253,8 +270,11 @@ export class PaymentAdminController {
     return this.reconciliation.confirmReview(
       id,
       req.user?.email ?? 'admin',
-      dto.reservationHostawayId,
-      dto.note,
+      {
+        reservationHostawayId: dto.reservationHostawayId,
+        note: dto.note,
+        allocations: dto.allocations,
+      },
     );
   }
 

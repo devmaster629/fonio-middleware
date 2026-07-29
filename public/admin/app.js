@@ -2180,6 +2180,221 @@ function applyTabFromUrl() {
   }
 }
 
+function buildAssignOptionsHtml(payment, selectedHostawayId) {
+  const reservation = payment.matchedReservation;
+  const candidates = Array.isArray(payment.matchCandidates) ? payment.matchCandidates : [];
+  const seenIds = new Set();
+  const options = [];
+  const preferred = selectedHostawayId != null ? Number(selectedHostawayId) : null;
+  for (const c of candidates) {
+    const id = Number(c.hostawayId);
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+    const selected = preferred
+      ? preferred === id
+      : reservation?.hostawayId && Number(reservation.hostawayId) === id;
+    options.push(
+      `<option value="${id}"${selected ? ' selected' : ''}>${esc(formatReservationOption(c, payment.currency))}</option>`,
+    );
+  }
+  if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
+    const id = Number(reservation.hostawayId);
+    const selected = preferred ? preferred === id : true;
+    options.push(
+      `<option value="${id}"${selected ? ' selected' : ''}>${esc(formatReservationOption({
+        hostawayId: reservation.hostawayId,
+        guestName: reservation.guestName,
+        listingName: reservation.listing?.name,
+        arrivalDate: reservation.arrivalDate,
+        departureDate: reservation.departureDate,
+        totalPrice: reservation.totalPrice,
+      }, payment.currency))}</option>`,
+    );
+  }
+  return options.join('');
+}
+
+function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selectedHostawayId) {
+  const listId = `payment-res-list-${paymentId}-${rowIndex}`;
+  const amountValue = amount != null && Number.isFinite(Number(amount))
+    ? Number(amount).toFixed(2)
+    : '';
+  let options = optionsHtml;
+  if (selectedHostawayId) {
+    // Ensure selected option is marked for this row.
+    options = options
+      .replace(/ selected/g, '')
+      .replace(
+        new RegExp(`value="${Number(selectedHostawayId)}"`),
+        `value="${Number(selectedHostawayId)}" selected`,
+      );
+  }
+  return `
+    <div class="payment-split-row" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
+      <div class="payment-split-row-head">
+        <label class="payment-field-label">${t('payments.assignLabel')} ${rowIndex + 1}</label>
+        <button type="button" class="btn ghost btn-sm payment-split-remove" data-payment-id="${paymentId}" data-row-index="${rowIndex}" title="${t('payments.splitRemove')}">${t('payments.splitRemove')}</button>
+      </div>
+      <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
+        <option value="">${t('payments.pickReservation')}</option>
+        ${options}
+      </select>
+      <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+        list="${listId}" autocomplete="off"
+        placeholder="${t('payments.manualReservationId')}"
+        title="${t('payments.manualReservationHint')}" />
+      <datalist id="${listId}"></datalist>
+      <label class="payment-field-label">${t('payments.splitAmount')}</label>
+      <input type="number" class="payment-split-amount" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+        min="0.01" step="0.01" value="${amountValue}" />
+    </div>`;
+}
+
+function initPaymentSplitRows(paymentId, paymentAmount, optionsHtml, rows) {
+  const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+  if (!container) return;
+  const seed = Array.isArray(rows) && rows.length
+    ? rows
+    : [{ reservationHostawayId: undefined, amount: paymentAmount }];
+  container.innerHTML = seed.map((row, index) =>
+    paymentSplitRowTemplate(
+      paymentId,
+      optionsHtml,
+      index,
+      row.amount != null ? row.amount : (seed.length === 1 ? paymentAmount : ''),
+      row.reservationHostawayId,
+    ),
+  ).join('');
+  updatePaymentSplitUi(paymentId);
+}
+
+function updatePaymentSplitUi(paymentId) {
+  const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+  const stack = $(`.payment-actions-stack[data-payment-id="${paymentId}"]`);
+  const totalEl = $(`.payment-split-total[data-payment-id="${paymentId}"]`);
+  if (!container || !stack) return;
+  const rows = [...container.querySelectorAll('.payment-split-row')];
+  const paymentAmount = Number(stack.dataset.paymentAmount || 0);
+  rows.forEach((row, index) => {
+    row.dataset.rowIndex = String(index);
+    const label = row.querySelector('.payment-field-label');
+    if (label) label.textContent = `${t('payments.assignLabel')} ${index + 1}`;
+    row.querySelectorAll('[data-row-index]').forEach((el) => {
+      el.dataset.rowIndex = String(index);
+    });
+    const removeBtn = row.querySelector('.payment-split-remove');
+    if (removeBtn) removeBtn.classList.toggle('hidden', rows.length <= 1);
+    const amountInput = row.querySelector('.payment-split-amount');
+    if (amountInput && rows.length === 1 && !amountInput.value) {
+      amountInput.value = paymentAmount.toFixed(2);
+    }
+  });
+  const sum = Math.round(
+    rows.reduce((acc, row) => acc + (Number(row.querySelector('.payment-split-amount')?.value) || 0), 0) * 100,
+  ) / 100;
+  if (totalEl) {
+    const ok = Math.abs(sum - paymentAmount) <= 0.01;
+    totalEl.textContent = t('payments.splitTotal', {
+      sum: formatMoney(sum),
+      total: formatMoney(paymentAmount),
+    });
+    totalEl.classList.toggle('is-invalid', !ok);
+  }
+  stack.classList.toggle('is-split', rows.length > 1);
+}
+
+function collectPaymentSplitAllocations(paymentId) {
+  const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+  if (!container) return [];
+  return [...container.querySelectorAll('.payment-split-row')].map((row) => {
+    const select = row.querySelector('.payment-assign-select');
+    const manual = row.querySelector('.payment-assign-manual');
+    const amountInput = row.querySelector('.payment-split-amount');
+    const fromManual = parseReservationIdInput(manual?.value);
+    const fromSelect = select?.value ? Number(select.value) : undefined;
+    return {
+      reservationHostawayId: fromManual || fromSelect,
+      amount: Math.round((Number(amountInput?.value) || 0) * 100) / 100,
+    };
+  }).filter((row) => row.reservationHostawayId && row.amount >= 0.01);
+}
+
+function bindPaymentSplitControls(paymentItems) {
+  const byId = new Map((paymentItems || []).map((p) => [p.id, p]));
+  window.__paymentSplitById = byId;
+
+  $$('.payment-split-add').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const paymentId = btn.dataset.paymentId;
+      const payment = window.__paymentSplitById?.get(paymentId);
+      const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+      if (!container || !payment) return;
+      const optionsHtml = buildAssignOptionsHtml(payment);
+      const index = container.querySelectorAll('.payment-split-row').length;
+      const allocated = Math.round(
+        [...container.querySelectorAll('.payment-split-amount')].reduce(
+          (acc, input) => acc + (Number(input.value) || 0),
+          0,
+        ) * 100,
+      ) / 100;
+      const remaining = Math.round((Number(payment.amount) - allocated) * 100) / 100;
+      container.insertAdjacentHTML(
+        'beforeend',
+        paymentSplitRowTemplate(
+          paymentId,
+          optionsHtml,
+          index,
+          remaining >= 0.01 ? remaining : '',
+        ),
+      );
+      updatePaymentSplitUi(paymentId);
+      bindReservationSearchInputs();
+      bindPaymentHostawayOpeners();
+    });
+  });
+
+  $$('.payment-apply-split-hint').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const paymentId = btn.dataset.paymentId;
+      const payment = window.__paymentSplitById?.get(paymentId);
+      const hint = payment?.combinedDepositHint;
+      if (!payment || !hint?.reservationHostawayIds?.length) return;
+      const optionsHtml = buildAssignOptionsHtml(payment);
+      initPaymentSplitRows(
+        paymentId,
+        payment.amount,
+        optionsHtml,
+        hint.reservationHostawayIds.map((id, idx) => ({
+          reservationHostawayId: id,
+          amount: hint.suggestedAmounts?.[idx],
+        })),
+      );
+      bindReservationSearchInputs();
+      bindPaymentHostawayOpeners();
+    });
+  });
+
+  const table = $('#payments-table');
+  if (table && !table.dataset.splitDelegationBound) {
+    table.dataset.splitDelegationBound = '1';
+    table.addEventListener('click', (e) => {
+      const removeBtn = e.target.closest?.('.payment-split-remove');
+      if (!removeBtn) return;
+      const paymentId = removeBtn.dataset.paymentId;
+      const row = removeBtn.closest('.payment-split-row');
+      const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+      if (!row || !container) return;
+      if (container.querySelectorAll('.payment-split-row').length <= 1) return;
+      row.remove();
+      updatePaymentSplitUi(paymentId);
+    });
+    table.addEventListener('input', (e) => {
+      if (!e.target.classList?.contains('payment-split-amount')) return;
+      updatePaymentSplitUi(e.target.dataset.paymentId);
+    });
+  }
+}
+
 async function loadPayments() {
   loadPaymentsHistory();
   loadQontoStatus();
@@ -2202,54 +2417,30 @@ async function loadPayments() {
     const bestCandidate =
       candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
       candidates[0];
-    const seenIds = new Set();
-    const assignOptions = [];
-    for (const c of candidates) {
-      const id = Number(c.hostawayId);
-      if (!id || seenIds.has(id)) continue;
-      seenIds.add(id);
-      const selected = reservation?.hostawayId && Number(reservation.hostawayId) === id ? ' selected' : '';
-      assignOptions.push(
-        `<option value="${id}"${selected}>${esc(formatReservationOption(c, p.currency))}</option>`,
-      );
-    }
-    if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
-      assignOptions.push(
-        `<option value="${reservation.hostawayId}" selected>${esc(formatReservationOption({
-          hostawayId: reservation.hostawayId,
-          guestName: reservation.guestName,
-          listingName: reservation.listing?.name,
-          arrivalDate: reservation.arrivalDate,
-          departureDate: reservation.departureDate,
-          totalPrice: reservation.totalPrice,
-        }, p.currency))}</option>`,
-      );
-    }
     const canReview = hasPermission('PAYMENTS_REVIEW');
     const defaultOpenId =
       reservation?.hostawayId ||
       bestCandidate?.hostawayId ||
       (candidates[0] && candidates[0].hostawayId);
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
+    const hint = p.combinedDepositHint;
+    const hintHtml = hint
+      ? `<div class="payment-split-hint" data-payment-id="${p.id}">
+          <strong>${t('payments.combinedDepositHintTitle')}</strong>
+          <span>${t('payments.combinedDepositHint', { guest: hint.guestName || '–' })}</span>
+          <button type="button" class="btn ghost btn-sm payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositApply')}</button>
+        </div>`
+      : '';
+    const initialAmount = Number(p.amount) || 0;
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
-        <div class="payment-actions-stack">
-          <label class="payment-field-label">${t('payments.assignLabel')}</label>
-          <select class="payment-assign-select" data-payment-id="${p.id}">
-            <option value="">${t('payments.pickReservation')}</option>
-            ${assignOptions.join('')}
-          </select>
-          <input type="text" class="payment-assign-manual" data-payment-id="${p.id}"
-            list="payment-res-list-${p.id}" autocomplete="off"
-            placeholder="${t('payments.manualReservationId')}"
-            title="${t('payments.manualReservationHint')}" />
-          <datalist id="payment-res-list-${p.id}"></datalist>
-          <label class="payment-field-label">${t('payments.noteLabel')}</label>
-          <input type="text" class="payment-note-input" data-payment-id="${p.id}"
-            autocomplete="off" maxlength="200"
-            placeholder="${t('payments.notePlaceholder')}"
-            title="${t('payments.noteHint')}"
-            value="${esc(p.reference || '')}" />
+        <div class="payment-actions-stack" data-payment-id="${p.id}" data-payment-amount="${initialAmount}" data-currency="${esc(p.currency || 'EUR')}">
+          ${hintHtml}
+          <div class="payment-split-rows" data-payment-id="${p.id}"></div>
+          <div class="payment-split-toolbar">
+            <button type="button" class="btn ghost btn-sm payment-split-add" data-payment-id="${p.id}">${t('payments.split')}</button>
+            <span class="payment-split-total muted" data-payment-id="${p.id}"></span>
+          </div>
           <div class="payment-action-btns">
             <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
             <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
@@ -2261,7 +2452,7 @@ async function loadPayments() {
         ${openHostawayBtn || `<span class="muted feature-locked-hint">${t('perms.featureLocked')}</span>`}
       </td>`;
     return `
-    <tr class="payment-review-row">
+    <tr class="payment-review-row" data-payment-id="${p.id}">
       <td class="payment-payment-cell">${renderPaymentCell(p)}</td>
       <td class="payment-payer-cell">${renderPayerCell(p)}</td>
       <td class="payment-match-cell">${renderMatchCell(p, candidates, bestCandidate)}</td>
@@ -2283,27 +2474,54 @@ async function loadPayments() {
     <tbody>${rows || `<tr><td colspan="5">${t('payments.none')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
+
+  // One booking row by default; combined-deposit hint is opt-in via button.
+  data.items.forEach((p) => {
+    const optionsHtml = buildAssignOptionsHtml(p);
+    const defaultId =
+      p.matchedReservation?.hostawayId ||
+      (Array.isArray(p.matchCandidates) && p.matchCandidates[0]?.hostawayId) ||
+      undefined;
+    initPaymentSplitRows(p.id, p.amount, optionsHtml, [
+      { reservationHostawayId: defaultId, amount: p.amount },
+    ]);
+  });
+
   bindReservationSearchInputs();
   bindExpandableToggles('#payments-table');
   bindPaymentHostawayOpeners();
+  bindPaymentSplitControls(data.items);
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!hasPermission('PAYMENTS_REVIEW')) return;
       const paymentId = btn.dataset.paymentId;
-      const select = $(`.payment-assign-select[data-payment-id="${paymentId}"]`);
-      const manual = $(`.payment-assign-manual[data-payment-id="${paymentId}"]`);
-      const noteInput = $(`.payment-note-input[data-payment-id="${paymentId}"]`);
-      const fromSelect = select?.value ? Number(select.value) : undefined;
-      const fromManual = parseReservationIdInput(manual?.value);
-      const reservationHostawayId = fromManual || fromSelect || undefined;
-      const note = noteInput?.value?.trim() || undefined;
+      const stack = $(`.payment-actions-stack[data-payment-id="${paymentId}"]`);
+      const paymentAmount = Number(stack?.dataset.paymentAmount || 0);
+      const allocations = collectPaymentSplitAllocations(paymentId);
+      if (!allocations.length) {
+        notify.error(t('payments.splitNeedReservation'));
+        return;
+      }
+      const sum = Math.round(allocations.reduce((acc, row) => acc + row.amount, 0) * 100) / 100;
+      if (Math.abs(sum - paymentAmount) > 0.01) {
+        notify.error(t('payments.splitSumMismatch', {
+          sum: formatMoney(sum),
+          total: formatMoney(paymentAmount),
+        }));
+        return;
+      }
+      const body = allocations.length === 1
+        ? { reservationHostawayId: allocations[0].reservationHostawayId }
+        : { allocations };
       try {
         await api(`/payments/${paymentId}/confirm`, {
           method: 'POST',
-          body: JSON.stringify({ reservationHostawayId, note }),
+          body: JSON.stringify(body),
         });
-        notify.success(t('payments.confirmOk'));
+        notify.success(
+          allocations.length > 1 ? t('payments.splitOk') : t('payments.confirmOk'),
+        );
         loadPayments();
       } catch (ex) {
         notify.error(ex.message);
@@ -2348,9 +2566,20 @@ async function loadPaymentsHistory() {
     ].join(' '));
     const rows = data.items.map((p) => {
       const reservation = p.matchedReservation;
-      const reservationLabel = reservation
-        ? `#${reservation.hostawayId} — ${esc(reservation.listing?.name || '')}`
-        : '–';
+      const allocations = Array.isArray(p.allocations) ? p.allocations : [];
+      let reservationLabel = '–';
+      if (allocations.length > 1) {
+        reservationLabel = allocations.map((a) => {
+          const hostawayId = a.reservation?.hostawayId;
+          const listing = a.reservation?.listing?.name || '';
+          return `#${hostawayId || '?'} · ${formatMoney(a.amount)}${listing ? ` — ${esc(listing)}` : ''}`;
+        }).join('<br>');
+      } else if (reservation) {
+        reservationLabel = `#${reservation.hostawayId} — ${esc(reservation.listing?.name || '')}`;
+      } else if (allocations.length === 1) {
+        const a = allocations[0];
+        reservationLabel = `#${a.reservation?.hostawayId || '?'} — ${esc(a.reservation?.listing?.name || '')}`;
+      }
       const retryBtn = (p.status === 'FAILED' || p.status === 'RECEIVED') && hasPermission('PAYMENTS_REVIEW')
         ? `<button type="button" class="btn ghost btn-sm payment-retry-btn" data-payment-id="${p.id}">${t('payments.retry')}</button>`
         : '';
@@ -2363,7 +2592,7 @@ async function loadPaymentsHistory() {
         <td>${p.source}</td>
         <td>${p.amount.toFixed(2)} ${p.currency}</td>
         <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
-        <td>${paymentStatusBadge(p.status)}${p.error ? `<br><span class="field-hint">${esc(p.error)}</span>` : ''}</td>
+        <td>${paymentStatusBadge(p.status)}${p.error ? `<br><span class="field-hint">${esc(p.error)}</span>` : ''}${allocations.length > 1 ? `<br><span class="badge auto">${t('payments.splitBadge')}</span>` : ''}</td>
         <td>${reservationLabel}</td>
         <td>${esc(p.reviewedBy || '–')} ${retryBtn}${undoBtn}</td>
       </tr>`;
@@ -2403,8 +2632,9 @@ async function loadPaymentsHistory() {
             method: 'POST',
             body: '{}',
           });
-          if (result?.hostawayChargeCancelled === false && result?.hostawayChargeId) {
-            notify.info(t('payments.undoHostawayManual', { chargeId: result.hostawayChargeId }));
+          if (result?.hostawayChargeCancelled === false && (result?.hostawayChargeIdsFailed?.length || result?.hostawayChargeId)) {
+            const ids = (result.hostawayChargeIdsFailed || [result.hostawayChargeId]).filter(Boolean);
+            notify.info(t('payments.undoHostawayManual', { chargeId: ids.join(', ') }));
           } else {
             notify.success(t('payments.undoOk'));
           }

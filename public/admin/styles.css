@@ -2147,6 +2147,71 @@ form.is-readonly .btn.primary {
   max-width: 100%;
 }
 
+.payment-split-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.payment-split-hint strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.payment-split-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.payment-split-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.payment-actions-stack.is-split .payment-split-row {
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.payment-split-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.payment-split-row .payment-split-amount {
+  width: 100%;
+  max-width: 11rem;
+}
+
+.payment-split-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.payment-split-total.is-invalid {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.payment-split-remove.hidden {
+  display: none;
+}
+
 .payment-field-label {
   margin: 0.15rem 0 0;
   font-size: 0.68rem;

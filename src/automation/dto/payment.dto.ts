@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -9,6 +11,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { ExternalPaymentSource } from '@prisma/client';
 
@@ -46,6 +49,21 @@ export class ManualPaymentIngestDto {
   reference?: string;
 }
 
+export class PaymentAllocationDto {
+  @Type(() => Number)
+  @IsInt()
+  reservationHostawayId!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
 export class ConfirmPaymentReviewDto {
   @IsOptional()
   @Type(() => Number)
@@ -55,6 +73,14 @@ export class ConfirmPaymentReviewDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  /** When set (2+ lines), payment is split across multiple reservations. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PaymentAllocationDto)
+  allocations?: PaymentAllocationDto[];
 }
 
 export class SkipPaymentReviewDto {
