@@ -2194,14 +2194,14 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
       ? preferred === id
       : reservation?.hostawayId && Number(reservation.hostawayId) === id;
     options.push(
-      `<option value="${id}"${selected ? ' selected' : ''}>${esc(formatReservationOption(c, payment.currency))}</option>`,
+      `<option value="${id}" data-total-price="${c.totalPrice != null ? Number(c.totalPrice) : ''}"${selected ? ' selected' : ''}>${esc(formatReservationOption(c, payment.currency))}</option>`,
     );
   }
   if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
     const id = Number(reservation.hostawayId);
     const selected = preferred ? preferred === id : true;
     options.push(
-      `<option value="${id}"${selected ? ' selected' : ''}>${esc(formatReservationOption({
+      `<option value="${id}" data-total-price="${reservation.totalPrice != null ? Number(reservation.totalPrice) : ''}"${selected ? ' selected' : ''}>${esc(formatReservationOption({
         hostawayId: reservation.hostawayId,
         guestName: reservation.guestName,
         listingName: reservation.listing?.name,
@@ -2214,10 +2214,13 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
   return options.join('');
 }
 
-function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selectedHostawayId) {
+function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selectedHostawayId, percent) {
   const listId = `payment-res-list-${paymentId}-${rowIndex}`;
   const amountValue = amount != null && Number.isFinite(Number(amount))
     ? Number(amount).toFixed(2)
+    : '';
+  const percentValue = percent != null && Number.isFinite(Number(percent))
+    ? String(Number(percent))
     : '';
   let options = optionsHtml;
   if (selectedHostawayId) {
@@ -2244,10 +2247,63 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
         placeholder="${t('payments.manualReservationId')}"
         title="${t('payments.manualReservationHint')}" />
       <datalist id="${listId}"></datalist>
-      <label class="payment-field-label">${t('payments.splitAmount')}</label>
-      <input type="number" class="payment-split-amount" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
-        min="0.01" step="0.01" value="${amountValue}" />
+      <div class="payment-split-fields">
+        <div class="payment-split-field">
+          <label class="payment-field-label">${t('payments.splitPercent')}</label>
+          <div class="payment-split-percent-wrap">
+            <input type="number" class="payment-split-percent" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+              min="0.01" max="100" step="0.01" value="${percentValue}"
+              placeholder="25" title="${t('payments.splitPercentHint')}" />
+            <span class="payment-split-percent-suffix">%</span>
+          </div>
+        </div>
+        <div class="payment-split-field">
+          <label class="payment-field-label">${t('payments.splitAmount')}</label>
+          <input type="number" class="payment-split-amount" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+            min="0.01" step="0.01" value="${amountValue}" />
+        </div>
+      </div>
     </div>`;
+}
+
+function getSplitRowBookingTotal(paymentId, row) {
+  const payment = window.__paymentSplitById?.get(paymentId);
+  const select = row.querySelector('.payment-assign-select');
+  const manual = row.querySelector('.payment-assign-manual');
+  const hostawayId =
+    parseReservationIdInput(manual?.value) ||
+    (select?.value ? Number(select.value) : undefined);
+  if (!hostawayId) return null;
+
+  const opt = select?.querySelector(`option[value="${hostawayId}"]`);
+  const fromOpt = Number(opt?.dataset?.totalPrice);
+  if (Number.isFinite(fromOpt) && fromOpt > 0) return fromOpt;
+
+  const candidates = Array.isArray(payment?.matchCandidates) ? payment.matchCandidates : [];
+  const candidate = candidates.find((c) => Number(c.hostawayId) === hostawayId);
+  if (candidate?.totalPrice != null && Number(candidate.totalPrice) > 0) {
+    return Number(candidate.totalPrice);
+  }
+  if (
+    Number(payment?.matchedReservation?.hostawayId) === hostawayId &&
+    payment.matchedReservation.totalPrice != null &&
+    Number(payment.matchedReservation.totalPrice) > 0
+  ) {
+    return Number(payment.matchedReservation.totalPrice);
+  }
+  return null;
+}
+
+function applySplitRowPercentage(paymentId, row) {
+  const pctInput = row.querySelector('.payment-split-percent');
+  const amountInput = row.querySelector('.payment-split-amount');
+  if (!pctInput || !amountInput) return false;
+  const pct = Number(pctInput.value);
+  if (!Number.isFinite(pct) || pct <= 0) return false;
+  const bookingTotal = getSplitRowBookingTotal(paymentId, row);
+  if (bookingTotal == null) return false;
+  amountInput.value = (Math.round(bookingTotal * pct) / 100).toFixed(2);
+  return true;
 }
 
 function initPaymentSplitRows(paymentId, paymentAmount, optionsHtml, rows) {
@@ -2263,8 +2319,15 @@ function initPaymentSplitRows(paymentId, paymentAmount, optionsHtml, rows) {
       index,
       row.amount != null ? row.amount : (seed.length === 1 ? paymentAmount : ''),
       row.reservationHostawayId,
+      row.percent,
     ),
   ).join('');
+  // Recalculate amounts from percentage when both booking + % are set.
+  container.querySelectorAll('.payment-split-row').forEach((row) => {
+    if (row.querySelector('.payment-split-percent')?.value) {
+      applySplitRowPercentage(paymentId, row);
+    }
+  });
   updatePaymentSplitUi(paymentId);
 }
 
@@ -2277,7 +2340,7 @@ function updatePaymentSplitUi(paymentId) {
   const paymentAmount = Number(stack.dataset.paymentAmount || 0);
   rows.forEach((row, index) => {
     row.dataset.rowIndex = String(index);
-    const label = row.querySelector('.payment-field-label');
+    const label = row.querySelector('.payment-split-row-head .payment-field-label');
     if (label) label.textContent = `${t('payments.assignLabel')} ${index + 1}`;
     row.querySelectorAll('[data-row-index]').forEach((el) => {
       el.dataset.rowIndex = String(index);
@@ -2364,10 +2427,23 @@ function bindPaymentSplitControls(paymentItems) {
         paymentId,
         payment.amount,
         optionsHtml,
-        hint.reservationHostawayIds.map((id, idx) => ({
-          reservationHostawayId: id,
-          amount: hint.suggestedAmounts?.[idx],
-        })),
+        hint.reservationHostawayIds.map((id, idx) => {
+          const bookingTotal = (() => {
+            const candidates = Array.isArray(payment.matchCandidates) ? payment.matchCandidates : [];
+            const c = candidates.find((row) => Number(row.hostawayId) === Number(id));
+            return c?.totalPrice != null ? Number(c.totalPrice) : null;
+          })();
+          const suggested = hint.suggestedAmounts?.[idx];
+          const looksLike25 =
+            bookingTotal != null &&
+            suggested != null &&
+            Math.abs(suggested - bookingTotal * 0.25) <= 1.01;
+          return {
+            reservationHostawayId: id,
+            amount: suggested,
+            percent: looksLike25 ? 25 : undefined,
+          };
+        }),
       );
       bindReservationSearchInputs();
       bindPaymentHostawayOpeners();
@@ -2389,8 +2465,30 @@ function bindPaymentSplitControls(paymentItems) {
       updatePaymentSplitUi(paymentId);
     });
     table.addEventListener('input', (e) => {
-      if (!e.target.classList?.contains('payment-split-amount')) return;
-      updatePaymentSplitUi(e.target.dataset.paymentId);
+      const paymentId = e.target.dataset?.paymentId;
+      if (!paymentId) return;
+      const row = e.target.closest?.('.payment-split-row');
+      if (e.target.classList?.contains('payment-split-percent')) {
+        if (row) applySplitRowPercentage(paymentId, row);
+        updatePaymentSplitUi(paymentId);
+        return;
+      }
+      if (e.target.classList?.contains('payment-split-amount')) {
+        // Manual amount override — clear % so it does not fight the typed value.
+        const pct = row?.querySelector('.payment-split-percent');
+        if (pct) pct.value = '';
+        updatePaymentSplitUi(paymentId);
+      }
+    });
+    table.addEventListener('change', (e) => {
+      if (!e.target.classList?.contains('payment-assign-select')) return;
+      const paymentId = e.target.dataset.paymentId;
+      const row = e.target.closest('.payment-split-row');
+      if (!paymentId || !row) return;
+      if (row.querySelector('.payment-split-percent')?.value) {
+        applySplitRowPercentage(paymentId, row);
+      }
+      updatePaymentSplitUi(paymentId);
     });
   }
 }

@@ -75,6 +75,15 @@ function suggestSplitAmounts(
   left: CandidateLike,
   right: CandidateLike,
 ): number[] | null {
+  const totals = [Number(left.totalPrice), Number(right.totalPrice)];
+  if (totals.every((v) => Number.isFinite(v) && v > 0)) {
+    // Deposits are typically 25% of each booking total (combined transfer).
+    const deposits = totals.map((v) => roundMoney(v * 0.25));
+    if (Math.abs(deposits[0] + deposits[1] - paymentAmount) <= 2.01) {
+      return deposits;
+    }
+  }
+
   const balances = [Number(left.balanceDue), Number(right.balanceDue)];
   if (
     balances.every((v) => Number.isFinite(v) && v > 0) &&
@@ -83,12 +92,7 @@ function suggestSplitAmounts(
     return [roundMoney(balances[0]), roundMoney(balances[1])];
   }
 
-  const totals = [Number(left.totalPrice), Number(right.totalPrice)];
   if (totals.every((v) => Number.isFinite(v) && v > 0)) {
-    const deposits = totals.map((v) => roundMoney(v * 0.25));
-    if (Math.abs(deposits[0] + deposits[1] - paymentAmount) <= 2.01) {
-      return deposits;
-    }
     const sum = totals[0] + totals[1];
     const first = roundMoney((paymentAmount * totals[0]) / sum);
     const second = roundMoney(paymentAmount - first);

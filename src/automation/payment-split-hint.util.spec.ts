@@ -68,6 +68,16 @@ describe('detectCombinedDepositHint', () => {
     expect(hint?.guestName).toBe('Anna Müller');
   });
 
+  it('prefers 25% of booking totals over misleading balanceDue values', () => {
+    const withOddBalances = [
+      { ...candidates[0], balanceDue: 894.13 },
+      { ...candidates[1], balanceDue: 0 },
+    ];
+    // 25% of 800 + 25% of 600 = 350
+    const hint = detectCombinedDepositHint(350, withOddBalances);
+    expect(hint?.suggestedAmounts).toEqual([200, 150]);
+  });
+
   it('does not suggest when listings are the same', () => {
     const sameListing = candidates.map((c) => ({
       ...c,

@@ -2193,7 +2193,39 @@ form.is-readonly .btn.primary {
 
 .payment-split-row .payment-split-amount {
   width: 100%;
-  max-width: 11rem;
+  max-width: none;
+}
+
+.payment-split-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 0.45rem;
+  align-items: end;
+}
+
+.payment-split-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.payment-split-percent-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.payment-split-percent-wrap .payment-split-percent {
+  width: 100%;
+  min-width: 0;
+}
+
+.payment-split-percent-suffix {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .payment-split-toolbar {
