@@ -5,29 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260730a" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260803c" />
 </head>
 <body>
   <div id="login-screen" class="screen">
     <div class="card login-card">
-      <div class="lang-bar">
-        <label for="lang-login" data-i18n="lang.label">Language</label>
-        <select id="lang-login" class="lang-select" aria-label="Language">
+      <div class="login-header">
+        <img src="/admin/logo.png" alt="" class="login-logo" />
+        <select id="lang-login" class="lang-select login-lang" aria-label="Language" data-i18n-aria="lang.label">
           <option value="en">English</option>
           <option value="de">Deutsch</option>
         </select>
       </div>
-      <h1 class="login-brand">
-        <img src="/admin/logo.png" alt="" class="login-logo" />
-        <span data-i18n="app.title">brainions Vermietung</span>
-      </h1>
-      <p class="subtitle" data-i18n="login.subtitle">Middleware Admin</p>
+      <h1 class="login-title" data-i18n="app.title">brainions Vermietung</h1>
       <form id="login-form">
         <label for="email" data-i18n="login.email">Email</label>
         <input type="email" id="email" required autocomplete="username" />
         <label for="password" data-i18n="login.password">Password</label>
         <input type="password" id="password" required autocomplete="current-password" />
-        <button type="submit" class="btn primary" data-i18n="login.submit">Sign in</button>
+        <button type="submit" class="btn primary login-submit" data-i18n="login.submit">Sign in</button>
         <p id="login-error" class="error hidden"></p>
       </form>
     </div>
