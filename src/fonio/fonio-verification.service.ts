@@ -203,9 +203,9 @@ export class FonioVerificationService {
       throw new UnauthorizedException({
         message: 'Verification token required',
         hintDe:
-          'Bitte zuerst „Gast verifizieren“ aufrufen und verificationToken aus der Antwort bei „Gästeanfrage“ mitschicken.',
+          'Bitte zuerst „Gast verifizieren“ aufrufen und verificationToken aus der Antwort bei „Gästeanfrage“, „Buchung abrufen“ oder „Anreiseinfos senden“ mitschicken.',
         fonioHint:
-          'Call POST guest/verify first, then pass verificationToken to guest/requests and guest/reservation.',
+          'Call POST guest/verify first, then pass verificationToken to guest/requests, guest/reservation, and guest/send-checkin-info.',
       });
     }
 

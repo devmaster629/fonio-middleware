@@ -79,6 +79,18 @@ export interface HostawayConversationMessage {
   isIncoming?: number;
 }
 
+export interface HostawayMessageTemplate {
+  id: number;
+  accountId?: number;
+  listingMapId?: number | string | null;
+  channelId?: number | string | null;
+  messageTemplateGroupId?: number | string | null;
+  name: string;
+  description?: string | null;
+  message?: string | null;
+  color?: number | string | null;
+}
+
 export interface HostawayUnifiedWebhook {
   id: number;
   isEnabled: number;

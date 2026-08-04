@@ -46,7 +46,7 @@
         "Bei minMatchCount=3: An- und Abreisedatum + 2 weitere Angaben reichen (z. B. Unterkunft + Reservierungsnummer)",
         "ALLE bereits genannten Angaben in EINEM verify-Aufruf mitschicken — nicht nur die letzte Antwort",
         "Der Gast muss NICHT alle Felder nennen — nur genug zur Bestätigung",
-        "Bei Erfolg: verificationToken speichern und bei Gästeanfrage + Buchung abrufen mitschicken",
+        "Bei Erfolg: verificationToken speichern und bei Gästeanfrage + Buchung abrufen + Anreiseinfos senden mitschicken",
         "Bei Fehlschlag: whatToAskDe oder hint aus API — nur fehlende Angaben nachfragen",
         "Nach Verifizierung nicht erneut nach Name fragen — guestNameHint steht in der Antwort"
       ],
@@ -61,6 +61,24 @@
         "verificationToken": "FROM_VERIFY_RESPONSE"
       },
       "whenToUse": "Nur nach erfolgreicher Verifizierung"
+    },
+    {
+      "name": "Anreiseinfos senden",
+      "method": "POST",
+      "urlPath": "/api/v1/fonio/guest/send-checkin-info",
+      "bodyExample": {
+        "reservationId": 62144308,
+        "verificationToken": "FROM_VERIFY_RESPONSE",
+        "callId": "optional-fonio-call-id"
+      },
+      "notes": [
+        "Nur nach erfolgreicher Verifizierung (verificationToken Pflicht)",
+        "Sendet die passende Hostaway Anreiseinfo-/Check-in-Vorlage per E-Mail an den Gast",
+        "Erst emailSent=true aus der Antwort prüfen — NUR dann dem Gast sagen, dass die E-Mail versendet wurde",
+        "Bei emailSent=false: guestMessageDe / hintDe verwenden — NIEMALS behaupten, die Mail sei schon raus",
+        "Adresse/PIN am Telefon nicht aus der Wissensdatenbank vorlesen, wenn der Gast die Infos per E-Mail haben möchte — dieses Tool nutzen"
+      ],
+      "whenToUse": "Verifizierter Gast fragt nach Adresse, Anreiseinfos, Zugangscode oder will diese Infos per E-Mail"
     },
     {
       "name": "Gästeanfrage",

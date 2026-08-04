@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RequestType } from '@prisma/client';
+import {
+  htmlToPlainText,
+  pickCheckinTemplate,
+} from './checkin-template.util';
 import { HostawayClient } from './hostaway.client';
+import { HostawayMessageTemplate } from './hostaway.types';
 
 const APPLIED_CHANGE_LABELS: Partial<Record<RequestType, string>> = {
   ADD_GUEST: '+1 Gast',
@@ -35,6 +40,61 @@ export class HostawayMessagingService {
       return delta === 1 ? '+1 Gast' : `+${delta} Gäste`;
     }
     return APPLIED_CHANGE_LABELS[requestType] ?? String(requestType);
+  }
+
+  async resolveCheckinTemplate(params: {
+    reservationHostawayId: number;
+    listingHostawayId?: number | null;
+  }): Promise<HostawayMessageTemplate | null> {
+    let templates: HostawayMessageTemplate[] = [];
+    try {
+      templates = await this.hostaway.getReservationMessageTemplates(
+        params.reservationHostawayId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Reservation messageTemplates failed for ${params.reservationHostawayId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    if (templates.length === 0) {
+      try {
+        templates = await this.hostaway.getMessageTemplates({
+          reservationId: params.reservationHostawayId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `messageTemplates fallback failed for ${params.reservationHostawayId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return pickCheckinTemplate(templates, params.listingHostawayId);
+  }
+
+  async sendCheckinInfoEmail(params: {
+    conversationId: number;
+    template: HostawayMessageTemplate;
+  }): Promise<number> {
+    const body = htmlToPlainText(params.template.message ?? '');
+    if (!body) {
+      throw new Error('Selected Hostaway template has empty message body');
+    }
+
+    const messageId = await this.hostaway.sendConversationMessage(
+      params.conversationId,
+      body,
+      'email',
+    );
+
+    this.logger.log(
+      `Sent check-in template "${params.template.name}" (#${params.template.id}) as email to conversation ${params.conversationId} (message ${messageId})`,
+    );
+    return messageId;
   }
 
   async forwardRequestToInbox(params: {

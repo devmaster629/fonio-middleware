@@ -3114,7 +3114,7 @@ function ensureFonioActivityToolbar(loader) {
   filterWrap.className = 'table-filter';
   const actions = [
     '', 'call_context', 'availability_search', 'guest_verify',
-    'guest_reservation', 'guest_request', 'booking_offer', 'verify_requirements',
+    'guest_reservation', 'guest_request', 'guest_payment', 'guest_send_checkin_info', 'booking_offer', 'verify_requirements',
   ];
   filterWrap.innerHTML = `
     <label>
@@ -3231,6 +3231,14 @@ function formatFonioActionSummary(action, meta) {
         type: meta.requestType ?? '–',
         status: meta.status ?? '–',
       });
+    case 'guest_send_checkin_info':
+      return meta.emailSent
+        ? t('fonioActivity.checkinEmailOk', {
+            name: meta.templateName ?? meta.responseRecorded?.templateName ?? '–',
+          })
+        : t('fonioActivity.checkinEmailFail', {
+            message: meta.outcomeDetail ?? meta.message ?? '–',
+          });
     case 'booking_offer':
       return meta.offerCreated !== false && meta.reservationId
         ? t('fonioActivity.bookingOfferOk', {

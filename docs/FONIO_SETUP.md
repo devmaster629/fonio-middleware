@@ -26,6 +26,7 @@ GET /api/v1/admin/fonio-setup
 | Guest verify | `POST http://localhost:3000/api/v1/fonio/guest/verify` |
 | Guest reservation | `GET http://localhost:3000/api/v1/fonio/guest/reservation` |
 | Guest requests | `POST http://localhost:3000/api/v1/fonio/guest/requests` |
+| Send check-in info (email) | `POST http://localhost:3000/api/v1/fonio/guest/send-checkin-info` |
 
 **Auth header for all fonio endpoints:** `x-api-key: <FONIO_API_KEY from .env>`
 
@@ -40,7 +41,8 @@ Replace `localhost:3000` with `https://vermietung.brainions.digital`
 3. Add **API requests during call** for:
    - Availability questions
    - Guest verification
-   - Guest requests
+   - Guest reservation / requests
+   - Send check-in info (Hostaway Anreise template by email)
 4. Set API key header: `x-api-key`
 
 ## Suggested fonio prompt variables

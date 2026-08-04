@@ -112,6 +112,8 @@ export class FonioCallContextService {
       guest_verify_requirements: `${base}/api/v1/fonio/guest/verify/requirements`,
       guest_reservation: `${base}/api/v1/fonio/guest/reservation`,
       guest_requests: `${base}/api/v1/fonio/guest/requests`,
+      guest_payments: `${base}/api/v1/fonio/guest/payments`,
+      guest_send_checkin_info: `${base}/api/v1/fonio/guest/send-checkin-info`,
       booking_offer: `${base}/api/v1/fonio/booking-offer`,
       hostaway_webhook: `${base}/webhooks/hostaway`,
       swagger_docs: `${base}/docs`,

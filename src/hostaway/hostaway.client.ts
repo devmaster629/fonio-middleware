@@ -8,6 +8,7 @@ import {
   HostawayGuestCharge,
   HostawayListResponse,
   HostawayListing,
+  HostawayMessageTemplate,
   HostawayPriceDetails,
   HostawayReservation,
   HostawaySingleResponse,
@@ -198,6 +199,25 @@ export class HostawayClient {
       communicationType,
     });
     return data.result.id;
+  }
+
+  async getMessageTemplates(params?: {
+    reservationId?: number;
+    listingMapId?: number;
+  }): Promise<HostawayMessageTemplate[]> {
+    const { data } = await this.http.get<
+      HostawayListResponse<HostawayMessageTemplate>
+    >('/messageTemplates', { params });
+    return data.result ?? [];
+  }
+
+  async getReservationMessageTemplates(
+    reservationId: number,
+  ): Promise<HostawayMessageTemplate[]> {
+    const { data } = await this.http.get<
+      HostawayListResponse<HostawayMessageTemplate>
+    >(`/reservations/${reservationId}/messageTemplates`);
+    return data.result ?? [];
   }
 
   async listUnifiedWebhooks(): Promise<HostawayUnifiedWebhook[]> {

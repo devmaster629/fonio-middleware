@@ -17,11 +17,13 @@ import { GuestRequestDto } from './dto/guest-request.dto';
 import { GuestVerifyDto } from './dto/guest-verify.dto';
 import { BookingOfferDto } from './dto/booking-offer.dto';
 import { PaymentReceivedDto } from './dto/payment-received.dto';
+import { SendCheckinInfoDto } from './dto/send-checkin-info.dto';
 import { FonioActivityService } from './fonio-activity.service';
 import { listProvidedVerifyFields } from './fonio-activity.util';
 import { FonioAvailabilityService } from './fonio-availability.service';
 import { FonioBookingOfferService } from './fonio-booking-offer.service';
 import { FonioCallContextService } from './fonio-call-context.service';
+import { FonioCheckinEmailService } from './fonio-checkin-email.service';
 import { FonioPaymentService } from './fonio-payment.service';
 import { FonioRequestsService } from './fonio-requests.service';
 import { FonioVerificationService } from './fonio-verification.service';
@@ -37,6 +39,7 @@ export class FonioController {
     private readonly verification: FonioVerificationService,
     private readonly requests: FonioRequestsService,
     private readonly payments: FonioPaymentService,
+    private readonly checkinEmail: FonioCheckinEmailService,
     private readonly bookingOffer: FonioBookingOfferService,
     private readonly activity: FonioActivityService,
   ) {}
@@ -431,6 +434,87 @@ export class FonioController {
         extra: {
           reservationId: dto.reservationId,
           amount: dto.amount,
+        },
+      });
+      throw error;
+    }
+  }
+
+  @Post('guest/send-checkin-info')
+  @ApiOperation({
+    summary:
+      'After verification: send Hostaway Anreiseinfo / check-in template to the guest by email',
+  })
+  async sendCheckinInfo(
+    @Body() dto: SendCheckinInfoDto,
+    @Req() req: Request,
+  ) {
+    const callId = dto.callId;
+    try {
+      const result = await this.checkinEmail.sendCheckinInfo(dto);
+      await this.activity.record({
+        action: 'guest_send_checkin_info',
+        callId,
+        method: req.method,
+        path: req.path,
+        statusCode: 200,
+        requestReceived: {
+          reservationId: dto.reservationId,
+          callId,
+          hasVerificationToken: Boolean(dto.verificationToken),
+        },
+        middlewareAction: result.emailSent
+          ? `Emailed Hostaway template "${result.templateName}"`
+          : result.templateFound
+            ? 'Check-in template found but email was not sent'
+            : 'No matching Hostaway check-in template',
+        outcome: result.emailSent ? 'success' : 'failed',
+        outcomeDetail: result.message,
+        responseRecorded: result,
+        extra: {
+          reservationId: dto.reservationId,
+          emailSent: result.emailSent,
+          templateId: result.templateId ?? null,
+          templateName: result.templateName ?? null,
+        },
+      });
+      return result;
+    } catch (error) {
+      const raw =
+        error && typeof error === 'object' && 'getResponse' in error
+          ? (error as { getResponse: () => unknown }).getResponse()
+          : null;
+      const body =
+        raw && typeof raw === 'object'
+          ? (raw as Record<string, unknown>)
+          : {
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Send check-in info failed',
+            };
+      const statusCode =
+        error && typeof error === 'object' && 'getStatus' in error
+          ? (error as { getStatus: () => number }).getStatus()
+          : 400;
+
+      await this.activity.record({
+        action: 'guest_send_checkin_info',
+        callId,
+        method: req.method,
+        path: req.path,
+        statusCode,
+        requestReceived: {
+          reservationId: dto.reservationId,
+          callId,
+          hasVerificationToken: Boolean(dto.verificationToken),
+        },
+        middlewareAction: 'Check-in email request rejected',
+        outcome: 'failed',
+        outcomeDetail: String(body.message ?? 'Send check-in info failed'),
+        responseRecorded: body,
+        extra: {
+          reservationId: dto.reservationId,
         },
       });
       throw error;

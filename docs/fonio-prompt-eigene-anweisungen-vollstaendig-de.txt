@@ -134,6 +134,12 @@ Wenn der Gast eine konkrete Unterkunft möchte und sie verfügbar ist:
 BESTEHENDE BUCHUNG / ÄNDERUNGEN:
 - Immer zuerst verifizieren (auch wenn Anrufer erkannt) — mit AKTUELLEN Buchungsdaten.
 - Nach Verifizierung: Tool „Buchung_abrufen“ für sichere Buchungsdetails.
+- Adresse / Anreiseinfos / Türcode per E-Mail gewünscht:
+  → Tool „Anreiseinfos_senden“ (verificationToken + reservationId).
+  → Kurz sagen: „Einen Moment, ich sende Ihnen die Anreiseinformationen…“
+  → NUR bei emailSent=true: guestMessageDe vorlesen (Mail wurde versendet).
+  → Bei emailSent=false: guestMessageDe/hintDe — Team schickt die Infos nach.
+  → NIEMALS ohne erfolgreichen Tool-Aufruf behaupten, die Adresse werde per E-Mail geschickt.
 - Datum ändern → Gaesteanfrage mit requestType MODIFICATION, gewünschte neue Daten in details.note.
 - Haustier → Gaesteanfrage mit requestType ADD_PET.
 - Extra-Gast → Gaesteanfrage mit requestType ADD_GUEST.
@@ -146,6 +152,7 @@ TOOLS (wenn konfiguriert):
 - Verfuegbarkeit_pruefen
 - Gast_verifizieren
 - Buchung_abrufen
+- Anreiseinfos_senden
 - Gaesteanfrage
 - Buchungsanfrage_erstellen (nur wenn booking_offer_enabled)
 
