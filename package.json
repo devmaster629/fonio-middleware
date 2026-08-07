@@ -23,6 +23,7 @@
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build",
     "test:availability": "node scripts/test-availability.mjs",
     "test:hostaway": "node scripts/test-hostaway-api.mjs",
+    "test:check24": "node scripts/test-check24-ping.mjs",
     "test:verify": "node scripts/test-verify.mjs",
     "setup:local": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1 -Migrate",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",

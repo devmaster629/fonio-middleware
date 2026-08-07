@@ -5,6 +5,9 @@ coverage
 .env.local
 .env.*.local
 .data
+tmp-check24
+cookies.txt
+login.html
 
 /generated/prisma
 

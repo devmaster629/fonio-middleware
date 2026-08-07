@@ -12,6 +12,7 @@ import { LoggingModule } from './logging/logging.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RulesModule } from './rules/rules.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { Check24Module } from './check24/check24.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     AutomationModule,
     AdminModule,
     WebhooksModule,
+    Check24Module,
     BootstrapModule,
   ],
   controllers: [HealthController],

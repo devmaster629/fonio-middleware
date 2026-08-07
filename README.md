@@ -119,6 +119,11 @@ See **[docs/MONITORING.md](docs/MONITORING.md)** for health checks and error log
 ## Webhooks
 
 - `POST /webhooks/hostaway` — Hostaway unified webhooks (optional Basic Auth)
+- `POST /webhooks/check24/bookings` — CHECK24 booking webhook (optional Basic Auth)
+
+## CHECK24
+
+Optional CHECK24 Ferienwohnungen Supply API sync (content + availability/rates + inbound bookings). See **[docs/CHECK24.md](docs/CHECK24.md)**.
 
 ## Production domain
 

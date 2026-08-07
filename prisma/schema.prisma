@@ -167,6 +167,7 @@ model Listing {
   calendarDays     CalendarDay[]
   reservations     Reservation[]
   approvalRules    ApprovalRule[]
+  check24Mapping   Check24PropertyMapping?
   lastSyncedAt     DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -174,6 +175,40 @@ model Listing {
   @@index([city])
   @@index([status, isBookable])
   @@index([listingGroupId])
+}
+
+/// Hostaway listing ↔ CHECK24 Supply API property mapping
+model Check24PropertyMapping {
+  id                 String    @id @default(uuid())
+  listingId          String    @unique
+  listing            Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  check24PropertyId  String    @unique
+  enabled            Boolean   @default(true)
+  contentSyncedAt    DateTime?
+  availabilitySyncedAt DateTime?
+  ratesSyncedAt      DateTime?
+  lastError          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([enabled])
+}
+
+/// Inbound CHECK24 booking processed into Hostaway
+model Check24Booking {
+  id                     String    @id @default(uuid())
+  check24BookingId       String    @unique
+  check24PropertyId      String
+  status                 String
+  hostawayReservationId  Int?
+  rawPayload             Json?
+  lastError              String?
+  processedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([status])
+  @@index([check24PropertyId])
 }
 
 model CalendarDay {

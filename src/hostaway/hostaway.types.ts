@@ -15,17 +15,46 @@ export interface HostawaySingleResponse<T> {
   result: T;
 }
 
+export interface HostawayListingImage {
+  id?: number;
+  url?: string;
+  caption?: string | null;
+  sortOrder?: number | null;
+}
+
 export interface HostawayListing {
   id: number;
   name: string;
+  externalListingName?: string | null;
+  description?: string | null;
   city: string | null;
   state: string | null;
+  street?: string | null;
+  address?: string | null;
+  zipcode?: string | null;
+  country?: string | null;
+  countryCode?: string | null;
+  lat?: number | string | null;
+  lng?: number | string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   personCapacity: number;
   bedroomsNumber: number | null;
+  bathroomsNumber?: number | null;
   roomType: string | null;
+  propertyTypeId?: number | null;
   specialStatus: string | null;
+  checkInTimeStart?: number | string | null;
+  checkInTimeEnd?: number | string | null;
+  checkOutTime?: number | string | null;
+  houseRules?: string | null;
+  cleaningFee?: number | null;
+  squareMeters?: number | null;
+  phone?: string | null;
+  contactName?: string | null;
   listingTags?: { id: number; name: string }[];
   listingAmenities?: { amenityId: number; amenityName: string }[];
+  listingImages?: HostawayListingImage[];
 }
 
 export interface HostawayListingUnit {

@@ -7,6 +7,12 @@ This document aligns **brainions Vermietung**, **fonio.ai**, and **Hostaway** on
 
 ---
 
+## Optional channel: CHECK24
+
+When enabled, the middleware can push Hostaway listings / availability / rates to the **CHECK24 Ferienwohnungen Supply API** and import bookings back into Hostaway. See **[CHECK24.md](./CHECK24.md)**.
+
+---
+
 ## Two main use cases
 
 ### Use case 1 — Existing guests (verification → requests)
