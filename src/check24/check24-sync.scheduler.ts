@@ -19,17 +19,23 @@ export class Check24SyncScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async tick() {
     if (!this.sync.isConfigured()) return;
-    if ((this.config.get('CHECK24_AUTO_SYNC') ?? 'true').toLowerCase() === 'false') {
-      return;
-    }
 
+    const autoSync =
+      (this.config.get('CHECK24_AUTO_SYNC') ?? 'true').toLowerCase() !== 'false';
+    const retryErrors =
+      (this.config.get('CHECK24_RETRY_FAILED') ?? 'true').toLowerCase() !==
+      'false';
     const ariMinutes = Number(this.config.get('CHECK24_SYNC_INTERVAL_MINUTES') ?? 30);
+    const retryMinutes = Number(
+      this.config.get('CHECK24_RETRY_FAILED_MINUTES') ?? 10,
+    );
     const pollMinutes = Number(
       this.config.get('CHECK24_BOOKING_POLL_INTERVAL_MINUTES') ?? 10,
     );
     const now = Date.now();
 
     if (
+      autoSync &&
       !this.sync.isSyncInProgress() &&
       (!this.lastAriSyncAt ||
         now - this.lastAriSyncAt.getTime() >= ariMinutes * 60_000)
@@ -46,6 +52,28 @@ export class Check24SyncScheduler {
       } catch (err) {
         this.logger.warn(
           `CHECK24 auto ARI sync failed: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    } else if (
+      retryErrors &&
+      !this.sync.isSyncInProgress() &&
+      (!this.lastAriSyncAt ||
+        now - this.lastAriSyncAt.getTime() >= retryMinutes * 60_000)
+    ) {
+      // Even with auto-sync off: re-push listings that previously failed.
+      try {
+        const retried = await this.sync.retryFailedListings();
+        if (retried.attempted > 0) {
+          this.lastAriSyncAt = new Date();
+          this.logger.log(
+            `CHECK24 error retry: ${retried.succeeded}/${retried.attempted} succeeded`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `CHECK24 error retry failed: ${
             err instanceof Error ? err.message : err
           }`,
         );

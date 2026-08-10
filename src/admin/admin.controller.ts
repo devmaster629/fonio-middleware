@@ -142,7 +142,11 @@ export class AdminController {
   @ApiOperation({ summary: 'Last sync job status and auto-sync settings' })
   async syncStatus() {
     const [last, settings, listingCount, reservationCount] = await Promise.all([
-      this.prisma.syncJob.findFirst({ orderBy: { startedAt: 'desc' } }),
+      // Only Hostaway full/auto sync — not webhooks, CHECK24, Qonto, etc.
+      this.prisma.syncJob.findFirst({
+        where: { jobType: { in: ['full_sync', 'auto_sync'] } },
+        orderBy: { startedAt: 'desc' },
+      }),
       this.syncSettings.getOrCreate(),
       this.prisma.listing.count(),
       this.prisma.reservation.count(),

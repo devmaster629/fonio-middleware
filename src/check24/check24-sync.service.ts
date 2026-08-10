@@ -126,46 +126,70 @@ export class Check24SyncService {
       const concurrency = Number(this.config.get('CHECK24_SYNC_CONCURRENCY') ?? 2);
       const delayMs = Number(this.config.get('CHECK24_SYNC_DELAY_MS') ?? 200);
 
-      let contentOk = 0;
-      let availabilityOk = 0;
-      let ratesOk = 0;
+      const maxAttempts = Math.max(
+        1,
+        Number(this.config.get('CHECK24_SYNC_RETRY_ATTEMPTS') ?? 3),
+      );
+      const retryDelayMs = Math.max(
+        0,
+        Number(this.config.get('CHECK24_SYNC_RETRY_DELAY_MS') ?? 2000),
+      );
+
+      type ListingRow = (typeof listings)[number];
+      let pending: ListingRow[] = [...listings];
       const errors: Array<{ hostawayId: number; error: string }> = [];
 
-      await mapWithConcurrency(listings, concurrency, async (listing) => {
-        try {
-          if (doContent) {
-            await this.syncListingContent(listing.id);
-            contentOk += 1;
-          }
-          if (doAvailability) {
-            await this.syncListingAvailability(listing.id);
-            availabilityOk += 1;
-          }
-          if (doRates) {
-            await this.syncListingRates(listing.id);
-            ratesOk += 1;
-          }
-        } catch (err) {
-          const message = this.check24.describeError(err);
-          errors.push({ hostawayId: listing.hostawayId, error: message });
-          await this.prisma.check24PropertyMapping.updateMany({
-            where: { listingId: listing.id },
-            data: { lastError: message.slice(0, 1000) },
-          });
-          this.logger.warn(
-            `CHECK24 sync failed for listing ${listing.hostawayId}: ${message}`,
-          );
-        }
-        if (delayMs > 0) {
-          await new Promise((r) => setTimeout(r, delayMs));
-        }
-      });
+      for (let attempt = 1; attempt <= maxAttempts && pending.length; attempt++) {
+        const failedThisRound: ListingRow[] = [];
+        const attemptErrors = new Map<number, string>();
 
+        await mapWithConcurrency(pending, concurrency, async (listing) => {
+          try {
+            if (doContent) await this.syncListingContent(listing.id);
+            if (doAvailability) await this.syncListingAvailability(listing.id);
+            if (doRates) await this.syncListingRates(listing.id);
+          } catch (err) {
+            const message = this.check24.describeError(err);
+            attemptErrors.set(listing.hostawayId, message);
+            failedThisRound.push(listing);
+            const propertyId = this.mapper.propertyIdForHostaway(
+              listing.hostawayId,
+            );
+            await this.upsertMapping(listing.id, propertyId, {
+              lastError: message.slice(0, 1000),
+            });
+            this.logger.warn(
+              `CHECK24 sync failed for listing ${listing.hostawayId} (attempt ${attempt}/${maxAttempts}): ${message}`,
+            );
+          }
+          if (delayMs > 0) {
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+        });
+
+        pending = failedThisRound;
+        errors.length = 0;
+        for (const [hostawayId, error] of attemptErrors) {
+          errors.push({ hostawayId, error });
+        }
+
+        if (pending.length && attempt < maxAttempts) {
+          this.logger.log(
+            `CHECK24 retrying ${pending.length} failed listing(s) after ${retryDelayMs * attempt}ms…`,
+          );
+          if (retryDelayMs > 0) {
+            await new Promise((r) => setTimeout(r, retryDelayMs * attempt));
+          }
+        }
+      }
+
+      const succeeded = listings.length - pending.length;
       const metadata = {
         listings: listings.length,
-        contentOk,
-        availabilityOk,
-        ratesOk,
+        contentOk: doContent ? succeeded : 0,
+        availabilityOk: doAvailability ? succeeded : 0,
+        ratesOk: doRates ? succeeded : 0,
+        attempts: maxAttempts,
         errors,
       };
       await this.prisma.syncJob.update({
@@ -175,7 +199,7 @@ export class Check24SyncService {
           finishedAt: new Date(),
           metadata,
           error: errors.length
-            ? `${errors.length} listing(s) failed`
+            ? `${errors.length} listing(s) failed after ${maxAttempts} attempt(s)`
             : null,
         },
       });
@@ -194,6 +218,34 @@ export class Check24SyncService {
     } finally {
       this.syncInProgress = false;
     }
+  }
+
+  /** Re-push listings that still have a lastError (used by scheduler). */
+  async retryFailedListings() {
+    const failed = await this.prisma.check24PropertyMapping.findMany({
+      where: { lastError: { not: null } },
+      include: { listing: { select: { hostawayId: true } } },
+    });
+    if (!failed.length) {
+      return { attempted: 0, succeeded: 0, errors: [] as Array<{ hostawayId: number; error: string }> };
+    }
+
+    const listingIds = failed
+      .map((m) => m.listing.hostawayId)
+      .filter((id): id is number => Number.isFinite(id));
+
+    const result = await this.syncAll({
+      content: true,
+      availability: true,
+      rates: true,
+      listingIds,
+    });
+
+    return {
+      attempted: listingIds.length,
+      succeeded: listingIds.length - (result.errors?.length ?? 0),
+      errors: result.errors ?? [],
+    };
   }
 
   async syncListingContent(listingId: string) {

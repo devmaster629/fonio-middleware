@@ -93,9 +93,7 @@ export class Check24PropertyMapper {
       squareMeters: remote.squareMeters ?? undefined,
       images,
       amenities: this.mapAmenities(local, remote),
-      policies: remote.houseRules
-        ? [{ name: 'house_rules', content: remote.houseRules }]
-        : undefined,
+      policies: this.mapPolicies(local, remote),
       pricingMethod: 'standard',
       currencyCode: 'EUR',
       defaultCancellation: [
@@ -157,6 +155,26 @@ export class Check24PropertyMapper {
       })
       .filter((x): x is Check24Image => Boolean(x));
     return images.slice(0, 50);
+  }
+
+  /** CHECK24 only accepts these policy names (not free-form "house_rules"). */
+  private mapPolicies(
+    local: Listing,
+    remote: HostawayListing,
+  ): Array<{ name: string; content: string }> | undefined {
+    const policies: Array<{ name: string; content: string }> = [];
+    const rules = remote.houseRules?.trim();
+    if (rules) {
+      // General house rules → fees/rules bucket (valid enum value).
+      policies.push({ name: 'policies_fees', content: rules });
+    }
+    if (local.petsAllowed) {
+      policies.push({
+        name: 'policies_pets',
+        content: 'Pets are allowed. Please confirm details with the host.',
+      });
+    }
+    return policies.length ? policies : undefined;
   }
 
   private mapAmenities(local: Listing, remote: HostawayListing): Check24Amenity[] {

@@ -223,6 +223,7 @@ const NAV_PERMISSIONS = {
   logs: 'LOGS_VIEW',
   fonioActivity: 'FONIO_ACTIVITY_VIEW',
   fonio: 'FONIO_SETUP_VIEW',
+  check24: 'DASHBOARD_VIEW',
   users: 'USERS_MANAGE',
 };
 
@@ -236,12 +237,16 @@ function applyRoleUi() {
   const canPaymentsReview = hasPermission('PAYMENTS_REVIEW');
   const canListingsEdit = hasPermission('LISTINGS_EDIT');
   const canRequestsManage = hasPermission('REQUESTS_MANAGE');
+  const canWebhooks = hasPermission('WEBHOOKS_MANAGE');
 
   const syncBtn = $('#sync-btn');
   syncBtn?.toggleAttribute('disabled', !canSyncRun);
   if (syncBtn) {
     syncBtn.title = canSyncRun ? '' : t('dashboard.syncReadonly');
   }
+  $('#check24-sync-btn')?.toggleAttribute('disabled', !canSyncRun);
+  $('#check24-poll-btn')?.toggleAttribute('disabled', !canSyncRun);
+  $('#check24-webhook-btn')?.toggleAttribute('disabled', !canWebhooks);
   setControlsDisabled($('#sync-settings-form'), !canSyncSettings);
   $('#sync-settings-readonly-hint')?.classList.toggle('hidden', canSyncSettings);
 
@@ -359,6 +364,7 @@ function refreshActiveTab() {
     logs: loadLogs,
     fonioActivity: loadFonioActivity,
     fonio: loadFonio,
+    check24: loadCheck24,
     users: loadUsers,
   };
   updateRuleSelects();
@@ -3503,6 +3509,190 @@ async function loadFonio() {
     </p>
   `;
 }
+
+function check24FmtTs(value) {
+  if (!value) return null;
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return String(value);
+  }
+}
+
+function check24MappingState(m) {
+  if (m.lastError) return 'error';
+  const synced =
+    m.contentSyncedAt && m.availabilitySyncedAt && m.ratesSyncedAt;
+  if (synced) return 'ready';
+  if (m.contentSyncedAt || m.availabilitySyncedAt || m.ratesSyncedAt) {
+    return 'partial';
+  }
+  return 'partial';
+}
+
+async function loadCheck24() {
+  const [status, mappings] = await Promise.all([
+    api('/check24/status'),
+    api('/check24/mappings'),
+  ]);
+
+  const connected =
+    Boolean(status?.enabled) &&
+    Boolean(status?.configured) &&
+    Boolean(status?.ping?.ok);
+  const baseUrl = String(status?.baseUrl || '');
+  const isTest =
+    /staging|test/i.test(baseUrl) || baseUrl.includes('check24-test');
+  const mapCount = mappings?.length ?? status?.mappings ?? 0;
+  const bookingCount = status?.bookings ?? 0;
+
+  const hero = $('#check24-hero');
+  if (hero) {
+    hero.className = `check24-hero ${connected ? 'is-ok' : 'is-bad'}`;
+    hero.innerHTML = `
+      <div class="check24-hero-main">
+        <div class="check24-hero-dot" aria-hidden="true"></div>
+        <div>
+          <h3>${esc(connected ? t('check24.heroOkTitle') : t('check24.heroBadTitle'))}</h3>
+          <p>${esc(connected ? t('check24.heroOkText') : t('check24.heroBadText'))}</p>
+        </div>
+      </div>
+      <div class="check24-hero-stats">
+        <span class="check24-pill ${isTest ? 'is-test' : 'is-live'}">${esc(
+          isTest ? t('check24.modeTest') : t('check24.modeLive'),
+        )}</span>
+        <span class="check24-pill">${esc(
+          t('check24.statApartments', { count: String(mapCount) }),
+        )}</span>
+        <span class="check24-pill">${esc(
+          t('check24.statBookings', { count: String(bookingCount) }),
+        )}</span>
+      </div>
+    `;
+  }
+
+  const badge = $('#check24-count-badge');
+  if (badge) badge.textContent = String(mapCount);
+
+  const job = status.lastJob;
+  const jobWhen = job
+    ? check24FmtTs(job.finishedAt || job.startedAt)
+    : null;
+  const jobText = job
+    ? `${job.status}${jobWhen ? ` · ${jobWhen}` : ''}${job.error ? ` · ${job.error}` : ''}`
+    : t('check24.none');
+  const hint = $('#check24-status-hint');
+  if (hint) {
+    hint.innerHTML = `
+      <strong>${t('check24.baseUrl')}:</strong> <code>${esc(baseUrl)}</code><br>
+      <strong>${t('check24.lastJob')}:</strong> ${esc(jobText)}
+      ${status.ping?.error ? `<br><span class="error">${esc(status.ping.error)}</span>` : ''}
+    `;
+  }
+
+  const list = $('#check24-mappings-table');
+  if (list) {
+    if (!mappings?.length) {
+      list.innerHTML = `<div class="check24-empty">${esc(t('check24.none'))}</div>`;
+    } else {
+      list.innerHTML = mappings
+        .map((m) => {
+          const state = check24MappingState(m);
+          const label =
+            state === 'ready'
+              ? t('check24.statusReady')
+              : state === 'error'
+                ? t('check24.statusError')
+                : t('check24.statusPartial');
+          const last =
+            check24FmtTs(
+              m.ratesSyncedAt ||
+                m.availabilitySyncedAt ||
+                m.contentSyncedAt,
+            ) || t('check24.notSynced');
+          return `
+            <article class="check24-listing ${state === 'error' ? 'is-error' : state === 'ready' ? 'is-ready' : 'is-partial'}">
+              <div class="check24-listing-top">
+                <div>
+                  <h4>${esc(m.listing?.name || '—')}</h4>
+                  <p class="check24-listing-meta">Hostaway #${esc(
+                    String(m.listing?.hostawayId ?? '—'),
+                  )} · CHECK24 ${esc(m.check24PropertyId || '—')}</p>
+                </div>
+                <span class="check24-status-badge is-${state}">${esc(label)}</span>
+              </div>
+              <p class="check24-listing-sent">${esc(
+                t('check24.sentAt', { time: last }),
+              )}</p>
+              ${
+                m.lastError
+                  ? `<p class="check24-listing-error">${esc(m.lastError)}</p>`
+                  : ''
+              }
+            </article>
+          `;
+        })
+        .join('');
+    }
+  }
+
+  applyRoleUi();
+}
+
+$('#check24-refresh-btn')?.addEventListener('click', () => {
+  loadCheck24().catch((ex) => notify.error(ex.message));
+});
+
+$('#check24-sync-btn')?.addEventListener('click', async () => {
+  const el = $('#check24-action-result');
+  try {
+    const data = await api('/check24/sync', {
+      method: 'POST',
+      body: JSON.stringify({ content: true, availability: true, rates: true }),
+    });
+    if (data.started === false) {
+      el.textContent = t('check24.syncAlready');
+      notify.info(t('check24.syncAlready'));
+    } else {
+      el.textContent = t('check24.syncStarted');
+      notify.success(t('check24.syncStarted'));
+      setTimeout(() => loadCheck24().catch(() => {}), 8000);
+    }
+  } catch (ex) {
+    el.textContent = ex.message;
+    notify.error(ex.message);
+  }
+});
+
+$('#check24-webhook-btn')?.addEventListener('click', async () => {
+  const el = $('#check24-action-result');
+  try {
+    const data = await api('/check24/webhooks/bookings/register', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    el.textContent = t('check24.webhookOk', { url: data.url || '' });
+    notify.success(t('check24.webhookOk', { url: data.url || '' }));
+  } catch (ex) {
+    el.textContent = ex.message;
+    notify.error(ex.message);
+  }
+});
+
+$('#check24-poll-btn')?.addEventListener('click', async () => {
+  const el = $('#check24-action-result');
+  try {
+    const data = await api('/check24/bookings/poll', { method: 'POST' });
+    el.textContent = t('check24.pollOk', {
+      processed: String(data.processed ?? 0),
+    });
+    notify.success(el.textContent);
+    loadCheck24().catch(() => {});
+  } catch (ex) {
+    el.textContent = ex.message;
+    notify.error(ex.message);
+  }
+});
 
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-copy]');

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260803c" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260807c" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -48,6 +48,7 @@
         <button data-tab="logs" class="nav-btn" data-i18n="nav.logs">Audit log</button>
         <button data-tab="fonioActivity" class="nav-btn" data-i18n="nav.fonioActivity">fonio Activity</button>
         <button data-tab="fonio" class="nav-btn" data-i18n="nav.fonio">fonio Setup</button>
+        <button data-tab="check24" class="nav-btn" data-i18n="nav.check24">CHECK24</button>
         <button data-tab="users" class="nav-btn hidden" id="nav-users" data-i18n="nav.users">Users</button>
         <div class="lang-bar sidebar-lang">
           <label for="lang-app" data-i18n="lang.label">Language</label>
@@ -391,6 +392,64 @@
         <div class="card" id="fonio-setup"></div>
       </section>
 
+      <section id="tab-check24" class="tab hidden">
+        <header class="page-header">
+          <h2 data-i18n="check24.title">CHECK24</h2>
+        </header>
+
+        <div id="check24-hero" class="check24-hero"></div>
+
+        <div class="check24-flow" aria-label="How CHECK24 works">
+          <div class="check24-step">
+            <div class="check24-step-num">1</div>
+            <div>
+              <strong data-i18n="check24.step1Title">Hostaway</strong>
+              <p data-i18n="check24.step1Text">Your apartments and calendars live here.</p>
+            </div>
+          </div>
+          <div class="check24-arrow" aria-hidden="true">→</div>
+          <div class="check24-step">
+            <div class="check24-step-num">2</div>
+            <div>
+              <strong data-i18n="check24.step2Title">This app</strong>
+              <p data-i18n="check24.step2Text">Copies them to CHECK24 with one click.</p>
+            </div>
+          </div>
+          <div class="check24-arrow" aria-hidden="true">→</div>
+          <div class="check24-step">
+            <div class="check24-step-num">3</div>
+            <div>
+              <strong data-i18n="check24.step3Title">CHECK24</strong>
+              <p data-i18n="check24.step3Text">Guests book there. Bookings come back to Hostaway.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="check24-actions">
+          <button type="button" id="check24-sync-btn" class="btn primary check24-primary-btn" data-i18n="check24.syncBtn">Send apartments to CHECK24</button>
+          <button type="button" id="check24-refresh-btn" class="btn ghost" data-i18n="check24.refresh">Refresh</button>
+        </div>
+        <p id="check24-action-result" class="check24-action-result"></p>
+
+        <div class="card check24-list-card">
+          <div class="check24-list-head">
+            <h3 data-i18n="check24.mappingsTitle">Apartments on CHECK24</h3>
+            <span id="check24-count-badge" class="check24-count-badge">0</span>
+          </div>
+          <p class="field-hint" data-i18n="check24.mappingsHint">Green = sent successfully. Red = needs attention.</p>
+          <div id="check24-mappings-table" class="check24-listing-list"></div>
+        </div>
+
+        <details class="check24-advanced">
+          <summary data-i18n="check24.advanced">More options</summary>
+          <div class="check24-advanced-body">
+            <button type="button" id="check24-webhook-btn" class="btn ghost" data-i18n="check24.registerWebhook">Turn on booking alerts</button>
+            <button type="button" id="check24-poll-btn" class="btn ghost" data-i18n="check24.pollBookings">Check for new bookings</button>
+            <p id="check24-status-hint" class="field-hint"></p>
+          </div>
+        </details>
+      </section>
+
       <section id="tab-users" class="tab hidden">
         <header class="page-header">
           <h2 data-i18n="users.title">Admin users</h2>
@@ -502,8 +561,8 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260730a"></script>
+  <script src="/admin/i18n.js?v=20260807c"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260804a"></script>
+  <script src="/admin/app.js?v=20260807c"></script>
 </body>
 </html>
