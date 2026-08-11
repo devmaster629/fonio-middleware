@@ -1,31 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Check24BookingService } from './check24-booking.service';
+import { Check24SyncSettingsService } from './check24-sync-settings.service';
 import { Check24SyncService } from './check24-sync.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class Check24SyncScheduler {
   private readonly logger = new Logger(Check24SyncScheduler.name);
-  private lastAriSyncAt: Date | null = null;
   private lastBookingPollAt: Date | null = null;
 
   constructor(
     private readonly config: ConfigService,
     private readonly sync: Check24SyncService,
     private readonly bookings: Check24BookingService,
+    private readonly settings: Check24SyncSettingsService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
   async tick() {
     if (!this.sync.isConfigured()) return;
 
-    const autoSync =
-      (this.config.get('CHECK24_AUTO_SYNC') ?? 'true').toLowerCase() !== 'false';
+    const settings = await this.settings.getOrCreate();
     const retryErrors =
       (this.config.get('CHECK24_RETRY_FAILED') ?? 'true').toLowerCase() !==
       'false';
-    const ariMinutes = Number(this.config.get('CHECK24_SYNC_INTERVAL_MINUTES') ?? 30);
     const retryMinutes = Number(
       this.config.get('CHECK24_RETRY_FAILED_MINUTES') ?? 10,
     );
@@ -33,22 +32,19 @@ export class Check24SyncScheduler {
       this.config.get('CHECK24_BOOKING_POLL_INTERVAL_MINUTES') ?? 10,
     );
     const now = Date.now();
+    const dueForAri =
+      !settings.lastAutoSyncAt ||
+      now - settings.lastAutoSyncAt.getTime() >=
+        settings.intervalMinutes * 60_000;
 
-    if (
-      autoSync &&
-      !this.sync.isSyncInProgress() &&
-      (!this.lastAriSyncAt ||
-        now - this.lastAriSyncAt.getTime() >= ariMinutes * 60_000)
-    ) {
-      this.lastAriSyncAt = new Date();
+    if (settings.autoSyncEnabled && !this.sync.isSyncInProgress() && dueForAri) {
       try {
-        // After first content push, keep availability/rates fresh.
         await this.sync.syncAll({
-          content: (this.config.get('CHECK24_AUTO_SYNC_CONTENT') ?? 'false')
-            .toLowerCase() === 'true',
+          content: settings.autoSyncContent,
           availability: true,
           rates: true,
         });
+        await this.settings.markAutoSyncCompleted();
       } catch (err) {
         this.logger.warn(
           `CHECK24 auto ARI sync failed: ${
@@ -58,15 +54,16 @@ export class Check24SyncScheduler {
       }
     } else if (
       retryErrors &&
+      !settings.autoSyncEnabled &&
       !this.sync.isSyncInProgress() &&
-      (!this.lastAriSyncAt ||
-        now - this.lastAriSyncAt.getTime() >= retryMinutes * 60_000)
+      (!settings.lastAutoSyncAt ||
+        now - settings.lastAutoSyncAt.getTime() >= retryMinutes * 60_000)
     ) {
       // Even with auto-sync off: re-push listings that previously failed.
       try {
         const retried = await this.sync.retryFailedListings();
         if (retried.attempted > 0) {
-          this.lastAriSyncAt = new Date();
+          await this.settings.markAutoSyncCompleted();
           this.logger.log(
             `CHECK24 error retry: ${retried.succeeded}/${retried.attempted} succeeded`,
           );

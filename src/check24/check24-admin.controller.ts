@@ -17,7 +17,9 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Check24BookingService } from './check24-booking.service';
+import { Check24SyncSettingsService } from './check24-sync-settings.service';
 import { Check24SyncService } from './check24-sync.service';
+import { UpdateCheck24SyncSettingsDto } from './dto/check24-sync-settings.dto';
 
 @ApiTags('admin-check24')
 @ApiBearerAuth()
@@ -28,13 +30,32 @@ export class Check24AdminController {
     private readonly sync: Check24SyncService,
     private readonly bookings: Check24BookingService,
     private readonly check24: Check24Client,
+    private readonly syncSettings: Check24SyncSettingsService,
   ) {}
 
   @Get('status')
   @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'CHECK24 integration status + ping' })
-  status() {
-    return this.sync.status();
+  async status() {
+    const [status, settings] = await Promise.all([
+      this.sync.status(),
+      this.syncSettings.getOrCreate(),
+    ]);
+    return { ...status, settings };
+  }
+
+  @Get('sync/settings')
+  @Permissions(AdminPermission.DASHBOARD_VIEW)
+  @ApiOperation({ summary: 'CHECK24 auto-sync settings' })
+  getSyncSettings() {
+    return this.syncSettings.getOrCreate();
+  }
+
+  @Patch('sync/settings')
+  @Permissions(AdminPermission.SYNC_SETTINGS_EDIT)
+  @ApiOperation({ summary: 'Update CHECK24 auto-sync settings' })
+  updateSyncSettings(@Body() dto: UpdateCheck24SyncSettingsDto) {
+    return this.syncSettings.update(dto);
   }
 
   @Get('mappings')

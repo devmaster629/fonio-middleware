@@ -79,10 +79,7 @@ export class Check24PropertyMapper {
         this.config.get<string>('CHECK24_HOST_NAME') ??
         'brainions Vermietung',
       spokenLanguages: ['de', 'en'],
-      checkinBegin: this.toTime(remote.checkInTimeStart) ?? '15:00',
-      checkinEnd: this.toTime(remote.checkInTimeEnd) ?? '22:00',
-      checkoutBegin: '08:00',
-      checkoutEnd: this.toTime(remote.checkOutTime) ?? '11:00',
+      ...this.mapCheckTimes(remote),
       termsConditions: terms,
       enquiryOnly,
       maxOccupancy,
@@ -227,16 +224,67 @@ export class Check24PropertyMapper {
     return Number.isFinite(n) ? n : null;
   }
 
+  /**
+   * CHECK24 requires HH:MM in 00:00–23:59 with begin < end.
+   * Hostaway sometimes stores flexible late check-in as 24–26 → that caused HTTP 500.
+   */
+  private mapCheckTimes(remote: HostawayListing): {
+    checkinBegin: string;
+    checkinEnd: string;
+    checkoutBegin: string;
+    checkoutEnd: string;
+  } {
+    const checkinBegin = this.toTime(remote.checkInTimeStart) ?? '15:00';
+    let checkinEnd = this.toTime(remote.checkInTimeEnd) ?? '22:00';
+    if (!this.isBefore(checkinBegin, checkinEnd)) {
+      checkinEnd = '22:00';
+      if (!this.isBefore(checkinBegin, checkinEnd)) {
+        return {
+          checkinBegin: '15:00',
+          checkinEnd: '22:00',
+          checkoutBegin: '08:00',
+          checkoutEnd: this.toTime(remote.checkOutTime) ?? '11:00',
+        };
+      }
+    }
+
+    const checkoutBegin = '08:00';
+    let checkoutEnd = this.toTime(remote.checkOutTime) ?? '11:00';
+    if (!this.isBefore(checkoutBegin, checkoutEnd)) {
+      checkoutEnd = '11:00';
+    }
+
+    return { checkinBegin, checkinEnd, checkoutBegin, checkoutEnd };
+  }
+
+  /** Parse to HH:MM, clamping hours ≥ 24 down to 23:59. */
   private toTime(value: unknown): string | null {
     if (value == null || value === '') return null;
+    let h: number;
+    let m: number;
     if (typeof value === 'number' && Number.isFinite(value)) {
-      const h = Math.floor(value);
-      const m = Math.round((value - h) * 60);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      h = Math.floor(value);
+      m = Math.round((value - h) * 60);
+    } else {
+      const match = String(value).match(/^(\d{1,2})(?::(\d{2}))?/);
+      if (!match) return null;
+      h = Number(match[1]);
+      m = Number(match[2] ?? 0);
     }
-    const s = String(value);
-    const match = s.match(/^(\d{1,2})(?::(\d{2}))?/);
-    if (!match) return null;
-    return `${match[1].padStart(2, '0')}:${(match[2] ?? '00').padStart(2, '0')}`;
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    if (h > 23 || (h === 23 && m > 59)) {
+      return '23:59';
+    }
+    if (h < 0 || m < 0 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  private isBefore(a: string, b: string): boolean {
+    return this.minutesOf(a) < this.minutesOf(b);
+  }
+
+  private minutesOf(hhmm: string): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
   }
 }

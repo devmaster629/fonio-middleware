@@ -8,6 +8,7 @@ import { Check24BookingService } from './check24-booking.service';
 import { Check24Client } from './check24.client';
 import { Check24PropertyMapper } from './check24-property.mapper';
 import { Check24SyncScheduler } from './check24-sync.scheduler';
+import { Check24SyncSettingsService } from './check24-sync-settings.service';
 import { Check24SyncService } from './check24-sync.service';
 import { Check24WebhookController } from './check24-webhook.controller';
 
@@ -18,6 +19,7 @@ import { Check24WebhookController } from './check24-webhook.controller';
     Check24Client,
     Check24PropertyMapper,
     Check24SyncService,
+    Check24SyncSettingsService,
     Check24BookingService,
     Check24SyncScheduler,
     PermissionsGuard,

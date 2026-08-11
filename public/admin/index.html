@@ -431,6 +431,28 @@
         </div>
         <p id="check24-action-result" class="check24-action-result"></p>
 
+        <div class="card" id="check24-sync-settings-card">
+          <h3 data-i18n="check24.autoSyncTitle">Automatic updates</h3>
+          <p class="field-hint" data-i18n="check24.autoSyncHint">Keep availability and prices on CHECK24 up to date without clicking Send every time.</p>
+          <form id="check24-sync-settings-form" class="sync-settings-form">
+            <label class="checkbox-row">
+              <input type="checkbox" id="check24-auto-sync-enabled" />
+              <span data-i18n="check24.autoSyncEnable">Auto-update availability &amp; prices</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="check24-auto-sync-content" />
+              <span data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</span>
+            </label>
+            <label>
+              <span data-i18n="check24.autoSyncInterval">Interval (minutes)</span>
+              <input type="number" id="check24-auto-sync-interval" min="5" max="1440" value="30" />
+            </label>
+            <button type="submit" class="btn primary" data-i18n="check24.autoSyncSave">Save settings</button>
+          </form>
+          <p id="check24-sync-settings-readonly-hint" class="field-hint hidden" data-i18n="check24.autoSyncReadonly">Only EDITOR or ADMIN can change these settings.</p>
+          <p id="check24-auto-sync-hint" class="field-hint"></p>
+        </div>
+
         <div class="card check24-list-card">
           <div class="check24-list-head">
             <h3 data-i18n="check24.mappingsTitle">Apartments on CHECK24</h3>

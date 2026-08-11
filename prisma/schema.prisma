@@ -422,6 +422,16 @@ model SyncSettings {
   updatedAt       DateTime  @updatedAt
 }
 
+/// CHECK24 ARI auto-sync (availability/rates). Editable in admin; seeded from env on first use.
+model Check24SyncSettings {
+  id               String    @id @default("default")
+  autoSyncEnabled  Boolean   @default(false)
+  autoSyncContent  Boolean   @default(false)
+  intervalMinutes  Int       @default(30)
+  lastAutoSyncAt   DateTime?
+  updatedAt        DateTime  @updatedAt
+}
+
 model LogSettings {
   id                       String   @id @default("default")
   debugRetentionDays       Int      @default(14)

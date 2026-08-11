@@ -34,6 +34,8 @@ CHECK24_SYNC_INTERVAL_MINUTES=30
 CHECK24_BOOKING_POLL_INTERVAL_MINUTES=10
 ```
 
+> Tip: After first boot, **Automatic updates** on the Admin CHECK24 tab overrides these env defaults (stored in the database).
+
 ## What gets synced
 
 | Direction | Data |

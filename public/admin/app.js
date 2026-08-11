@@ -249,6 +249,11 @@ function applyRoleUi() {
   $('#check24-webhook-btn')?.toggleAttribute('disabled', !canWebhooks);
   setControlsDisabled($('#sync-settings-form'), !canSyncSettings);
   $('#sync-settings-readonly-hint')?.classList.toggle('hidden', canSyncSettings);
+  setControlsDisabled($('#check24-sync-settings-form'), !canSyncSettings);
+  $('#check24-sync-settings-readonly-hint')?.classList.toggle(
+    'hidden',
+    canSyncSettings,
+  );
 
   setControlsDisabled($('#log-settings-form'), !canLogSettings);
   $('#log-purge-now-btn')?.toggleAttribute('disabled', !canLogSettings);
@@ -3636,8 +3641,60 @@ async function loadCheck24() {
     }
   }
 
+  const settings = status.settings || {};
+  const enabledEl = $('#check24-auto-sync-enabled');
+  const contentEl = $('#check24-auto-sync-content');
+  const intervalEl = $('#check24-auto-sync-interval');
+  if (enabledEl) enabledEl.checked = Boolean(settings.autoSyncEnabled);
+  if (contentEl) contentEl.checked = Boolean(settings.autoSyncContent);
+  if (intervalEl) {
+    intervalEl.value = String(settings.intervalMinutes ?? 30);
+  }
+  const autoHint = $('#check24-auto-sync-hint');
+  if (autoHint) {
+    const parts = [
+      settings.autoSyncEnabled
+        ? t('check24.autoSyncNext', {
+            minutes: String(settings.intervalMinutes ?? 30),
+          })
+        : t('check24.autoSyncOff'),
+    ];
+    const lastAuto = check24FmtTs(settings.lastAutoSyncAt);
+    if (lastAuto) {
+      parts.push(t('check24.autoSyncLast', { time: lastAuto }));
+    }
+    autoHint.textContent = parts.join(' · ');
+  }
+
   applyRoleUi();
 }
+
+$('#check24-sync-settings-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const intervalMinutes = Number($('#check24-auto-sync-interval').value);
+  if (
+    !Number.isFinite(intervalMinutes) ||
+    intervalMinutes < 5 ||
+    intervalMinutes > 1440
+  ) {
+    notify.error(t('check24.autoSyncIntervalInvalid'));
+    return;
+  }
+  try {
+    await api('/check24/sync/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        autoSyncEnabled: $('#check24-auto-sync-enabled').checked,
+        autoSyncContent: $('#check24-auto-sync-content').checked,
+        intervalMinutes,
+      }),
+    });
+    notify.success(t('check24.autoSyncSaved'));
+    await loadCheck24();
+  } catch (ex) {
+    notify.error(ex.message);
+  }
+});
 
 $('#check24-refresh-btn')?.addEventListener('click', () => {
   loadCheck24().catch((ex) => notify.error(ex.message));
