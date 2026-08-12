@@ -3546,8 +3546,6 @@ async function loadCheck24() {
     Boolean(status?.configured) &&
     Boolean(status?.ping?.ok);
   const baseUrl = String(status?.baseUrl || '');
-  const isTest =
-    /staging|test/i.test(baseUrl) || baseUrl.includes('check24-test');
   const mapCount = mappings?.length ?? status?.mappings ?? 0;
   const bookingCount = status?.bookings ?? 0;
 
@@ -3563,9 +3561,6 @@ async function loadCheck24() {
         </div>
       </div>
       <div class="check24-hero-stats">
-        <span class="check24-pill ${isTest ? 'is-test' : 'is-live'}">${esc(
-          isTest ? t('check24.modeTest') : t('check24.modeLive'),
-        )}</span>
         <span class="check24-pill">${esc(
           t('check24.statApartments', { count: String(mapCount) }),
         )}</span>
