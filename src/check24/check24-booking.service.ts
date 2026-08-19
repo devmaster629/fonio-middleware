@@ -70,17 +70,8 @@ export class Check24BookingService {
       },
     });
 
-    if (booking.status === 'declined' || booking.status === 'canceled') {
-      await this.prisma.check24Booking.update({
-        where: { check24BookingId: booking.bookingId },
-        data: { processedAt: new Date(), lastError: null },
-      });
-      return {
-        processed: true,
-        action: 'ignored_terminal_status',
-        status: booking.status,
-        hostawayReservationId: existing?.hostawayReservationId ?? null,
-      };
+    if (this.isTerminalStatus(booking.status)) {
+      return this.cancelImportedReservation(booking, existing);
     }
 
     if (existing?.hostawayReservationId) {
@@ -229,6 +220,114 @@ export class Check24BookingService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(200, Math.max(1, limit)),
     });
+  }
+
+  private async cancelImportedReservation(
+    booking: Check24Booking,
+    existing: { hostawayReservationId: number | null } | null,
+  ) {
+    const hostawayReservationId = existing?.hostawayReservationId ?? null;
+    if (!hostawayReservationId) {
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: booking.bookingId },
+        data: {
+          processedAt: new Date(),
+          lastError: null,
+          status: booking.status,
+        },
+      });
+      return {
+        processed: true,
+        action: 'ignored_terminal_status',
+        status: booking.status,
+        hostawayReservationId: null,
+      };
+    }
+
+    const local = await this.prisma.reservation.findUnique({
+      where: { hostawayId: hostawayReservationId },
+      select: { status: true },
+    });
+    if (this.isHostawayCancelled(local?.status)) {
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: booking.bookingId },
+        data: {
+          processedAt: new Date(),
+          lastError: null,
+          status: booking.status,
+        },
+      });
+      return {
+        processed: true,
+        action: 'already_cancelled',
+        status: booking.status,
+        hostawayReservationId,
+      };
+    }
+
+    try {
+      await this.hostaway.cancelReservation(hostawayReservationId);
+      await this.hostawaySync.syncSingleReservation(hostawayReservationId).catch((err) => {
+        this.logger.warn(
+          `CHECK24 booking ${booking.bookingId} cancelled Hostaway ${hostawayReservationId} but local sync failed: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: booking.bookingId },
+        data: {
+          processedAt: new Date(),
+          lastError: null,
+          status: booking.status,
+        },
+      });
+      return {
+        processed: true,
+        action: 'cancelled_in_hostaway',
+        status: booking.status,
+        hostawayReservationId,
+      };
+    } catch (err) {
+      const message = this.check24.describeError(err);
+      this.logger.warn(
+        `CHECK24 booking ${booking.bookingId} cancel in Hostaway ${hostawayReservationId} failed: ${message}`,
+      );
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: booking.bookingId },
+        data: {
+          lastError: `Hostaway cancel failed: ${message}`.slice(0, 1000),
+          status: booking.status,
+        },
+      });
+      return {
+        processed: false,
+        action: 'cancel_failed',
+        status: booking.status,
+        hostawayReservationId,
+        error: message,
+      };
+    }
+  }
+
+  private isTerminalStatus(status?: string) {
+    const normalized = (status ?? '').toLowerCase();
+    return (
+      normalized === 'declined' ||
+      normalized === 'canceled' ||
+      normalized === 'cancelled' ||
+      normalized === 'failed'
+    );
+  }
+
+  private isHostawayCancelled(status?: string | null) {
+    const normalized = (status ?? '').toLowerCase();
+    return (
+      normalized === 'cancelled' ||
+      normalized === 'canceled' ||
+      normalized === 'declined' ||
+      normalized === 'expired'
+    );
   }
 
   private countChildren(booking: Check24Booking): number {

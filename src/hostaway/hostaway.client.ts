@@ -288,6 +288,10 @@ export class HostawayClient {
     return data.result;
   }
 
+  async cancelReservation(reservationId: number): Promise<HostawayReservation> {
+    return this.updateReservation(reservationId, { status: 'cancelled' });
+  }
+
   async getGuestCharges(reservationId: number): Promise<HostawayGuestCharge[]> {
     const { data } = await this.http.get<
       HostawayListResponse<HostawayGuestCharge>

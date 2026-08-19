@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import dotenv from 'dotenv';
+dotenv.config();
+
 /** Push admin UI files to VPS host + running container (no full rebuild). */
 import { Client } from 'ssh2';
 import { readFileSync } from 'fs';
