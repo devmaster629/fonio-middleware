@@ -2789,6 +2789,10 @@ a.payment-open-hostaway[aria-disabled="true"] {
   border-left-color: var(--warn);
 }
 
+.check24-booking.check24-listing {
+  border-left-width: 4px;
+}
+
 .check24-listing-top {
   display: flex;
   align-items: flex-start;

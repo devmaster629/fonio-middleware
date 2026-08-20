@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260819b" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260820a" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -455,6 +455,15 @@
 
         <div class="card check24-list-card">
           <div class="check24-list-head">
+            <h3 data-i18n="check24.bookingsTitle">Imported bookings</h3>
+            <span id="check24-bookings-badge" class="check24-count-badge">0</span>
+          </div>
+          <p class="field-hint" data-i18n="check24.bookingsHint">Bookings received from CHECK24 and created in Hostaway.</p>
+          <div id="check24-bookings-table" class="check24-listing-list"></div>
+        </div>
+
+        <div class="card check24-list-card">
+          <div class="check24-list-head">
             <h3 data-i18n="check24.mappingsTitle">Apartments on CHECK24</h3>
             <span id="check24-count-badge" class="check24-count-badge">0</span>
           </div>
@@ -583,8 +592,8 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260818a"></script>
+  <script src="/admin/i18n.js?v=20260820a"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260818a"></script>
+  <script src="/admin/app.js?v=20260820a"></script>
 </body>
 </html>

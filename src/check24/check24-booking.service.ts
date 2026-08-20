@@ -216,9 +216,52 @@ export class Check24BookingService {
   }
 
   async listLocalBookings(limit = 50) {
-    return this.prisma.check24Booking.findMany({
+    const bookings = await this.prisma.check24Booking.findMany({
       orderBy: { createdAt: 'desc' },
       take: Math.min(200, Math.max(1, limit)),
+    });
+
+    const propertyIds = [
+      ...new Set(bookings.map((b) => b.check24PropertyId).filter(Boolean)),
+    ];
+    const mappings =
+      propertyIds.length === 0
+        ? []
+        : await this.prisma.check24PropertyMapping.findMany({
+            where: { check24PropertyId: { in: propertyIds } },
+            include: { listing: { select: { name: true, hostawayId: true } } },
+          });
+    const byPropertyId = new Map(
+      mappings.map((m) => [m.check24PropertyId, m] as const),
+    );
+
+    return bookings.map((booking) => {
+      const mapping = byPropertyId.get(booking.check24PropertyId);
+      const raw =
+        booking.rawPayload && typeof booking.rawPayload === 'object'
+          ? (booking.rawPayload as Record<string, unknown>)
+          : {};
+      const guest =
+        raw.guest && typeof raw.guest === 'object'
+          ? (raw.guest as Record<string, unknown>)
+          : {};
+      const guestName = [guest.firstName, guest.lastName]
+        .map((part) => (typeof part === 'string' ? part.trim() : ''))
+        .filter(Boolean)
+        .join(' ');
+
+      return {
+        ...booking,
+        listingName: mapping?.listing?.name ?? null,
+        listingHostawayId: mapping?.listing?.hostawayId ?? null,
+        dateFrom: typeof raw.dateFrom === 'string' ? raw.dateFrom : null,
+        dateTo: typeof raw.dateTo === 'string' ? raw.dateTo : null,
+        guestName: guestName || null,
+        totalPrice:
+          typeof raw.totalPrice === 'number' ? raw.totalPrice : null,
+        currencyCode:
+          typeof raw.currencyCode === 'string' ? raw.currencyCode : null,
+      };
     });
   }
 

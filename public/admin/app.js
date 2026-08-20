@@ -3536,9 +3536,10 @@ function check24MappingState(m) {
 }
 
 async function loadCheck24() {
-  const [status, mappings] = await Promise.all([
+  const [status, mappings, bookings] = await Promise.all([
     api('/check24/status'),
     api('/check24/mappings'),
+    api('/check24/bookings?limit=50'),
   ]);
 
   const connected =
@@ -3547,7 +3548,7 @@ async function loadCheck24() {
     Boolean(status?.ping?.ok);
   const baseUrl = String(status?.baseUrl || '');
   const mapCount = mappings?.length ?? status?.mappings ?? 0;
-  const bookingCount = status?.bookings ?? 0;
+  const bookingCount = bookings?.length ?? status?.bookings ?? 0;
 
   const hero = $('#check24-hero');
   if (hero) {
@@ -3573,6 +3574,8 @@ async function loadCheck24() {
 
   const badge = $('#check24-count-badge');
   if (badge) badge.textContent = String(mapCount);
+  const bookingsBadge = $('#check24-bookings-badge');
+  if (bookingsBadge) bookingsBadge.textContent = String(bookingCount);
 
   const job = status.lastJob;
   const jobWhen = job
@@ -3588,6 +3591,88 @@ async function loadCheck24() {
       <strong>${t('check24.lastJob')}:</strong> ${esc(jobText)}
       ${status.ping?.error ? `<br><span class="error">${esc(status.ping.error)}</span>` : ''}
     `;
+  }
+
+  const bookingsList = $('#check24-bookings-table');
+  if (bookingsList) {
+    if (!bookings?.length) {
+      bookingsList.innerHTML = `<div class="check24-empty">${esc(t('check24.bookingsNone'))}</div>`;
+    } else {
+      bookingsList.innerHTML = bookings
+        .map((b) => {
+          const propertyName =
+            b.listingName || t('check24.bookingNoProperty');
+          const propertyId = b.check24PropertyId || '—';
+          const hostawayListing =
+            b.listingHostawayId != null ? String(b.listingHostawayId) : null;
+          const dates =
+            b.dateFrom && b.dateTo
+              ? `${b.dateFrom} → ${b.dateTo}`
+              : '—';
+          const guest = b.guestName || '—';
+          const price =
+            typeof b.totalPrice === 'number'
+              ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
+              : null;
+          const statusLabel = String(b.status || 'unknown').toUpperCase();
+          const statusClass = ['booked', 'requested'].includes(
+            String(b.status || '').toLowerCase(),
+          )
+            ? 'is-ready'
+            : ['canceled', 'cancelled', 'declined', 'failed'].includes(
+                  String(b.status || '').toLowerCase(),
+                )
+              ? 'is-error'
+              : 'is-partial';
+          const imported =
+            check24FmtTs(b.processedAt || b.createdAt) || '—';
+          return `
+            <article class="check24-listing check24-booking ${statusClass}">
+              <div class="check24-listing-top">
+                <div>
+                  <h4>${esc(propertyName)}</h4>
+                  <p class="check24-listing-meta">
+                    ${esc(propertyId)}${
+                      hostawayListing
+                        ? ` · Hostaway #${esc(hostawayListing)}`
+                        : ''
+                    }
+                  </p>
+                </div>
+                <span class="check24-status-badge ${statusClass}">${esc(statusLabel)}</span>
+              </div>
+              <p class="check24-listing-sent">
+                <strong>${esc(t('check24.bookingGuest'))}:</strong> ${esc(guest)}
+                · <strong>${esc(t('check24.bookingDates'))}:</strong> ${esc(dates)}
+                ${price ? ` · ${esc(price)}` : ''}
+              </p>
+              <p class="check24-listing-meta">
+                ${esc(
+                  t('check24.bookingCheck24', {
+                    id: String(b.check24BookingId || '—'),
+                  }),
+                )}
+                ${
+                  b.hostawayReservationId
+                    ? ` · ${esc(
+                        t('check24.bookingHostaway', {
+                          id: String(b.hostawayReservationId),
+                        }),
+                      )}`
+                    : ''
+                }
+                · ${esc(t('check24.bookingImportedAt', { time: imported }))}
+              </p>
+              ${
+                b.lastError
+                  ? `<p class="check24-listing-error">${esc(b.lastError)}</p>`
+                  : ''
+              }
+            </article>
+          `;
+        })
+        .join('');
+    }
   }
 
   const list = $('#check24-mappings-table');
