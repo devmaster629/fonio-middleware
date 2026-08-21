@@ -23,6 +23,7 @@ GET /api/v1/admin/fonio-setup
 |---------------|-----|
 | Inbound webhook | `http://localhost:3000/api/v1/fonio/call-context` |
 | Availability (mid-call API) | `GET http://localhost:3000/api/v1/fonio/availability` |
+| Availability weekends (month/year) | `GET http://localhost:3000/api/v1/fonio/availability/weekends` |
 | Guest verify | `POST http://localhost:3000/api/v1/fonio/guest/verify` |
 | Guest reservation | `GET http://localhost:3000/api/v1/fonio/guest/reservation` |
 | Guest requests | `POST http://localhost:3000/api/v1/fonio/guest/requests` |
@@ -108,7 +109,9 @@ Enable/disable in **Admin → Rules & verification → Automatic booking offer (
 ## Example call flow
 
 1. **Call starts** → fonio calls `call-context` with caller phone
-2. **Availability question** → fonio says *"Einen Moment, ich schaue nach…"* → `GET /availability?city=Stuttgart&checkIn=...` (cache-first, fast)
+2. **Availability question** → fonio says *"Einen Moment, ich schaue nach…"*
+   - Exact dates → `GET /availability?city=Stuttgart&checkIn=...&checkOut=...`
+   - Vague weekend (“Wochenende im Oktober”) → `GET /availability/weekends?city=Buchenberg&year=2026&month=10&guests=2`
 3. **Existing guest** → fonio asks reservation ID + dates → `POST /guest/verify`
 4. **Guest request** (pet, extra guest) → `POST /guest/requests` with `verificationToken`
 5. **Manual requests** → posted to the Hostaway guest conversation inbox (middleware looks up conversation automatically)
@@ -129,7 +132,7 @@ Message format: `[fonio.ai – Gästeanfrage]` + request type + rule reason + gu
 
 Swagger → `GET /api/v1/admin/logs` (after admin login)
 
-Shows `call_context`, `availability_search`, `guest_verify` events without storing PII.
+Shows `call_context`, `availability_search`, `availability_weekends_search`, `guest_verify` events without storing PII.
 
 ## Test availability (local or production)
 
@@ -139,25 +142,43 @@ Shows `call_context`, `availability_search`, `guest_verify` events without stori
 # API must be running; uses FONIO_API_KEY and APP_URL from .env
 npm run test:availability
 
-# Custom search
+# Custom search (exact dates)
 npm run test:availability -- --city=Stuttgart --checkIn=2026-08-01 --checkOut=2026-08-05 --guests=4 --pets=true
+
+# All weekends in a month (fixes “weekend in October” false negatives)
+npm run test:availability -- --weekends --city=Buchenberg --year=2026 --month=10 --guests=2
 ```
 
 ### Option B — Swagger
 
 1. Open http://localhost:3000/docs (or production `/docs`)
-2. Section **fonio** → `GET /api/v1/fonio/availability`
+2. Section **fonio** → `GET /api/v1/fonio/availability` or `GET /api/v1/fonio/availability/weekends`
 3. Click **Authorize** → enter `FONIO_API_KEY` as `x-api-key`
-4. Fill `city`, `checkIn`, `checkOut`, `guests` → Execute
+4. Fill params → Execute
 
 ### Option C — curl
 
 ```bash
 curl "http://localhost:3000/api/v1/fonio/availability?city=Stuttgart&checkIn=2026-07-10&checkOut=2026-07-15&guests=2&availableOnly=true" \
   -H "x-api-key: YOUR_FONIO_API_KEY"
+
+curl "http://localhost:3000/api/v1/fonio/availability/weekends?city=Buchenberg&year=2026&month=10&guests=2" \
+  -H "x-api-key: YOUR_FONIO_API_KEY"
 ```
 
-**Before testing:** run **Hostaway Sync** in admin so listings and calendars exist in the database.
+**Weekend endpoint notes**
+
+| Param | Meaning |
+|-------|---------|
+| `year` | Required (e.g. `2026`) |
+| `month` | Optional `1–12`. Omit to scan the whole year (returns open weekends only) |
+| `nights` | Default `2` = Fri→Sun. Use `3` for Fri→Mon |
+| `city` | Use listing city (`Buchenberg`), not region nickname (`Allgäu`) |
+| `limit` | Max weekends in the response (default `8`) |
+
+Response highlights: `weekendsWithAvailability`, `weekends[].labelDe`, `weekends[].listingNames`, `summaryDe` (ready for the voicebot).
+
+After deploy, add a second fonio tool pointing at `/availability/weekends` and tell Sophie to use it whenever the guest does **not** give exact dates.
 
 ## Availability performance (phone calls)
 

@@ -24,7 +24,28 @@
         "guests": 2,
         "pets": false
       },
-      "whenToUse": "Anrufer fragt nach freien Unterkünften, Verfügbarkeit oder neuer Buchung"
+      "whenToUse": "Anrufer nennt konkrete An- und Abreise (exakte Daten)"
+    },
+    {
+      "name": "Wochenenden prüfen",
+      "method": "GET",
+      "urlPath": "/api/v1/fonio/availability/weekends",
+      "queryParams": {
+        "city": "Buchenberg",
+        "year": 2026,
+        "month": 10,
+        "guests": 2,
+        "nights": 2
+      },
+      "notes": [
+        "Für ungenaue Anfragen: „Wochenende im Oktober“, „irgendein Wochenende“, „egal welches Wochenende“",
+        "Prüft ALLE Freitag–Sonntag-Wochenenden im Monat (oder Jahr wenn month weggelassen)",
+        "city=Buchenberg für Allgäu/Bergdomizil — NICHT city=Allgäu (liefert 0 Treffer)",
+        "Antwort: weekends[] mit checkIn/checkOut, labelDe, listingNames — summaryDe vorlesen",
+        "Danach bei Buchungswunsch das konkrete Wochenende mit Verfügbarkeit prüfen / booking-offer nutzen",
+        "KEIN liveRefresh am Telefon"
+      ],
+      "whenToUse": "Anrufer will ein Wochenende in einem Monat/Jahr ohne konkrete Daten"
     },
     {
       "name": "Gast verifizieren",

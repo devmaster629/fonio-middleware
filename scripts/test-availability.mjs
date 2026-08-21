@@ -3,6 +3,7 @@
  * Quick availability API smoke test.
  * Usage: npm run test:availability
  *        npm run test:availability -- --city=Stuttgart --checkIn=2026-07-10 --checkOut=2026-07-15 --guests=2
+ *        npm run test:availability -- --weekends --city=Buchenberg --year=2026 --month=10 --guests=2
  */
 import 'dotenv/config';
 
@@ -21,18 +22,32 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const params = new URLSearchParams({
-  city: args.city ?? 'Stuttgart',
-  checkIn: args.checkIn ?? '2026-07-10',
-  checkOut: args.checkOut ?? '2026-07-15',
-  guests: args.guests ?? '2',
-});
+const weekendsMode = args.weekends === 'true';
+
+const params = new URLSearchParams();
+if (weekendsMode) {
+  params.set('year', args.year ?? '2026');
+  if (args.month) params.set('month', args.month);
+  params.set('guests', args.guests ?? '2');
+  if (args.city) params.set('city', args.city);
+  if (args.region) params.set('region', args.region);
+  if (args.nights) params.set('nights', args.nights);
+  if (args.limit) params.set('limit', args.limit);
+} else {
+  params.set('city', args.city ?? 'Stuttgart');
+  params.set('checkIn', args.checkIn ?? '2026-07-10');
+  params.set('checkOut', args.checkOut ?? '2026-07-15');
+  params.set('guests', args.guests ?? '2');
+}
 if (args.pets === 'true') params.set('pets', 'true');
 if (args.availableOnly === 'true') params.set('availableOnly', 'true');
 
-const url = `${base}/api/v1/fonio/availability?${params}`;
+const path = weekendsMode
+  ? '/api/v1/fonio/availability/weekends'
+  : '/api/v1/fonio/availability';
+const url = `${base}${path}?${params}`;
 
-console.log('Testing availability...');
+console.log(weekendsMode ? 'Testing weekend availability...' : 'Testing availability...');
 console.log('URL:', url);
 console.log('');
 
@@ -51,17 +66,30 @@ try {
       `Data source: ${body.meta.dataSource} (${body.meta.responseMs} ms, cache incomplete: ${body.meta.cacheIncomplete ?? 0})`,
     );
     if (body.meta.hint) console.log('Hint:', body.meta.hint);
+    if (body.meta.truncated) console.log('Note: response truncated by limit');
   }
-  console.log('Available count:', body.availableCount);
-  console.log('Total results:', body.results?.length ?? 0);
-  const sample = (body.results ?? []).slice(0, 5);
-  for (const r of sample) {
-    console.log(
-      `  - [${r.available ? 'YES' : 'no'}] ${r.name} (${r.city}) guests≤${r.maxGuests}${r.groupName ? ` · ${r.groupName}` : ''}`,
-    );
-  }
-  if ((body.results ?? []).length > 5) {
-    console.log(`  ... and ${body.results.length - 5} more`);
+
+  if (weekendsMode) {
+    console.log('Weekends checked:', body.weekendsChecked);
+    console.log('Weekends with availability:', body.weekendsWithAvailability);
+    if (body.summaryDe) console.log('Summary:', body.summaryDe);
+    for (const w of body.weekends ?? []) {
+      console.log(
+        `  - ${w.labelDe} (${w.checkIn} → ${w.checkOut}): ${w.availableCount} — ${(w.listingNames ?? []).join(', ') || 'none'}`,
+      );
+    }
+  } else {
+    console.log('Available count:', body.availableCount);
+    console.log('Total results:', body.results?.length ?? 0);
+    const sample = (body.results ?? []).slice(0, 5);
+    for (const r of sample) {
+      console.log(
+        `  - [${r.available ? 'YES' : 'no'}] ${r.name} (${r.city}) guests≤${r.maxGuests}${r.groupName ? ` · ${r.groupName}` : ''}`,
+      );
+    }
+    if ((body.results ?? []).length > 5) {
+      console.log(`  ... and ${body.results.length - 5} more`);
+    }
   }
 } catch (error) {
   console.error('ERROR:', error instanceof Error ? error.message : error);

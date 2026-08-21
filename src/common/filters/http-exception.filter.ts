@@ -146,6 +146,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     if (url.includes('guest/verify')) return 'guest_verify';
     if (url.includes('guest/requests')) return 'guest_request';
     if (url.includes('guest/reservation')) return 'guest_reservation';
+    if (url.includes('availability/weekends')) return 'availability_weekends';
     if (url.includes('availability')) return 'availability';
     if (url.includes('booking-offer')) return 'booking_offer';
     if (url.includes('call-context')) return 'call_context';

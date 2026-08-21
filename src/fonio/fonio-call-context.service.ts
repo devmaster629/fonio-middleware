@@ -88,6 +88,7 @@ export class FonioCallContextService {
       notes: [
         'Use x-api-key header with your fonio API key on all fonio endpoints.',
         'call-context is the inbound webhook when a call starts.',
+        'Use availability for exact dates; use availability/weekends when the guest says “a weekend in October/any weekend”.',
         'guest/verify is required before sharing full booking details.',
         'GET guest/verify/requirements returns live minMatchCount and hintDe — do not hardcode counts in fonio tools.',
         'booking-offer can be disabled in Admin → Rules & verification.',
@@ -108,6 +109,7 @@ export class FonioCallContextService {
     return {
       call_context_webhook: `${base}/api/v1/fonio/call-context`,
       availability: `${base}/api/v1/fonio/availability`,
+      availability_weekends: `${base}/api/v1/fonio/availability/weekends`,
       guest_verify: `${base}/api/v1/fonio/guest/verify`,
       guest_verify_requirements: `${base}/api/v1/fonio/guest/verify/requirements`,
       guest_reservation: `${base}/api/v1/fonio/guest/reservation`,

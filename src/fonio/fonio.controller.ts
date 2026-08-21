@@ -12,6 +12,7 @@ import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { FonioApiKeyGuard } from '../common/guards/fonio-api-key.guard';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { WeekendAvailabilityQueryDto } from './dto/weekend-availability-query.dto';
 import { FonioCallContextDto } from './dto/call-context.dto';
 import { GuestRequestDto } from './dto/guest-request.dto';
 import { GuestVerifyDto } from './dto/guest-verify.dto';
@@ -129,6 +130,54 @@ export class FonioController {
         checkOut: query.checkOut,
         guests: query.guests,
         availableCount: data.availableCount,
+        dataSource: data.meta.dataSource,
+      },
+    });
+    return data;
+  }
+
+  @Get('availability/weekends')
+  @ApiOperation({
+    summary:
+      'Check all Fri–Sun weekends in a month/year (for “a weekend in October” without inventing one date)',
+  })
+  async searchWeekendAvailability(
+    @Query() query: WeekendAvailabilityQueryDto,
+    @Req() req: Request,
+  ) {
+    const started = Date.now();
+    const data = await this.availability.searchWeekends(query);
+    const durationMs = Date.now() - started;
+    await this.activity.record({
+      action: 'availability_weekends_search',
+      method: req.method,
+      path: req.path,
+      statusCode: 200,
+      durationMs,
+      requestReceived: query,
+      middlewareAction: `Checked ${data.weekendsChecked} weekend(s) — ${data.weekendsWithAvailability} with availability`,
+      outcome: 'success',
+      outcomeDetail: `${data.weekendsWithAvailability}/${data.weekendsChecked} weekends open in ${durationMs}ms`,
+      responseRecorded: {
+        weekendsWithAvailability: data.weekendsWithAvailability,
+        weekendsChecked: data.weekendsChecked,
+        summaryDe: data.summaryDe,
+        dataSource: data.meta.dataSource,
+        responseMs: data.meta.responseMs,
+        weekends: data.weekends.slice(0, 8).map((w) => ({
+          checkIn: w.checkIn,
+          checkOut: w.checkOut,
+          availableCount: w.availableCount,
+          listingNames: w.listingNames,
+        })),
+      },
+      extra: {
+        city: query.city,
+        region: query.region,
+        year: query.year,
+        month: query.month,
+        guests: query.guests,
+        weekendsWithAvailability: data.weekendsWithAvailability,
         dataSource: data.meta.dataSource,
       },
     });
