@@ -1381,9 +1381,9 @@ body.modal-open {
 .payments-review-table.responsive-stack td[colspan] {
   width: 100% !important;
   max-width: none;
-  white-space: normal;
-  word-break: normal;
-  overflow-wrap: break-word;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
   text-align: center;
   padding: 1.25rem 1rem;
 }
