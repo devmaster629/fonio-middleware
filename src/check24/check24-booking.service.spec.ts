@@ -20,6 +20,8 @@ describe('Check24BookingService cancellations', () => {
   const hostaway = {
     cancelReservation: jest.fn(),
     createReservation: jest.fn(),
+    getCustomFields: jest.fn(),
+    updateReservation: jest.fn(),
   };
   const hostawaySync = {
     syncSingleReservation: jest.fn(),

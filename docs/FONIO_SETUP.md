@@ -111,6 +111,7 @@ Enable/disable in **Admin → Rules & verification → Automatic booking offer (
 1. **Call starts** → fonio calls `call-context` with caller phone
 2. **Availability question** → fonio says *"Einen Moment, ich schaue nach…"*
    - Exact dates → `GET /availability?city=Stuttgart&checkIn=...&checkOut=...`
+   - Nothing free, guest wants surroundings → same URL with `&nearby=true` (keep `city`; do not ask for another place name). Speak `summaryDe` / `nearbyRegions` (cities, nearest first).
    - Vague weekend (“Wochenende im Oktober”) → `GET /availability/weekends?city=Buchenberg&year=2026&month=10&guests=2`
 3. **Existing guest** → fonio asks reservation ID + dates → `POST /guest/verify`
 4. **Guest request** (pet, extra guest) → `POST /guest/requests` with `verificationToken`

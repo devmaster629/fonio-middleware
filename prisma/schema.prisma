@@ -152,6 +152,8 @@ model Listing {
   name             String
   city             String?
   region           String?
+  lat              Float?
+  lng              Float?
   personCapacity   Int            @default(1)
   bedroomsNumber   Int?
   roomType         String?

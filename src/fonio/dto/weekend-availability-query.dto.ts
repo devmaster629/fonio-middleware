@@ -79,6 +79,14 @@ export class WeekendAvailabilityQueryDto {
   @Max(53)
   limit?: number;
 
+  /**
+   * Same period, other cities (exclude `city`). Speak nearbyRegions, not apartment lists.
+   */
+  @IsOptional()
+  @Transform(({ value }) => parseQueryBoolean(value))
+  @IsBoolean()
+  nearby?: boolean;
+
   @IsOptional()
   @Transform(({ value }) => parseQueryBoolean(value))
   @IsBoolean()

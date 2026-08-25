@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   HostawayCalendarDay,
   HostawayCreateReservationResult,
+  HostawayCustomField,
   HostawayGuestCharge,
   HostawayListResponse,
   HostawayListing,
@@ -286,6 +287,13 @@ export class HostawayClient {
       payload,
     );
     return data.result;
+  }
+
+  async getCustomFields(): Promise<HostawayCustomField[]> {
+    const { data } = await this.http.get<
+      HostawayListResponse<HostawayCustomField>
+    >('/customFields');
+    return data.result ?? [];
   }
 
   async cancelReservation(reservationId: number): Promise<HostawayReservation> {

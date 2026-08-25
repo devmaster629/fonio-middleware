@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Listing, ListingStatus, Prisma } from '@prisma/client';
 import { mapWithConcurrency } from '../common/utils/concurrency.util';
 import { hashPhoneForStorage, hashValue, maskGuestName } from '../common/utils/crypto.util';
+import { parseCoord } from '../common/utils/geo.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { HostawayClient } from './hostaway.client';
 import { HostawayConversationService } from './hostaway-conversation.service';
@@ -171,6 +172,8 @@ export class HostawaySyncService implements OnModuleInit {
       const isBookable =
         status === ListingStatus.LIVE &&
         !EXCLUDED_LISTING_IDS.includes(remote.id);
+      const lat = parseCoord(remote.lat ?? remote.latitude);
+      const lng = parseCoord(remote.lng ?? remote.longitude);
 
       await this.prisma.listing.upsert({
         where: { hostawayId: remote.id },
@@ -179,6 +182,8 @@ export class HostawaySyncService implements OnModuleInit {
           name: remote.name,
           city: remote.city,
           region: remote.state,
+          lat,
+          lng,
           personCapacity: remote.personCapacity ?? 1,
           bedroomsNumber: remote.bedroomsNumber,
           roomType: remote.roomType,
@@ -194,6 +199,8 @@ export class HostawaySyncService implements OnModuleInit {
           name: remote.name,
           city: remote.city,
           region: remote.state,
+          lat,
+          lng,
           personCapacity: remote.personCapacity ?? 1,
           bedroomsNumber: remote.bedroomsNumber,
           roomType: remote.roomType,

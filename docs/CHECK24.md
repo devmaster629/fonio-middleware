@@ -25,6 +25,8 @@ CHECK24_TEST_PROPERTY=true
 CHECK24_ENQUIRY_ONLY=false
 CHECK24_AUTO_ACCEPT_ENQUIRY=true
 CHECK24_HOSTAWAY_CHANNEL_ID=2000
+# CHECK24_HOSTAWAY_CUSTOM_FIELD_ID=
+# CHECK24_HOSTAWAY_BUCHUNGSPORTAL_VALUE=CHECK24
 
 CHECK24_WEBHOOK_USERNAME=
 CHECK24_WEBHOOK_PASSWORD=
@@ -43,7 +45,7 @@ CHECK24_BOOKING_POLL_INTERVAL_MINUTES=10
 | Hostaway → CHECK24 | Property content (name, address, geo, amenities, images, cancellation/payment defaults) |
 | Hostaway → CHECK24 | Availability + min stay (from local `CalendarDay` cache) |
 | Hostaway → CHECK24 | Standard nightly rates (from `CalendarDay.price`) |
-| CHECK24 → Hostaway | Bookings / enquiries → `POST /reservations` with configurable `channelId` |
+| CHECK24 → Hostaway | Bookings / enquiries → `POST /reservations` with `channelId` (`CHECK24_HOSTAWAY_CHANNEL_ID`) plus custom field **Buchungsportal** = `CHECK24` |
 
 Property IDs are stable: `ha-{hostawayListingId}` (prefix via `CHECK24_PROPERTY_ID_PREFIX`).
 

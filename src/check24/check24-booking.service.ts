@@ -138,6 +138,7 @@ export class Check24BookingService {
     };
 
     const created = await this.hostaway.createReservation(payload);
+    await this.applyHostawayCheck24Labels(created.id, booking.bookingId);
     await this.hostawaySync.syncSingleReservation(created.id).catch((err) => {
       this.logger.warn(
         `CHECK24 booking ${booking.bookingId} created Hostaway ${created.id} but local sync failed: ${
@@ -351,6 +352,76 @@ export class Check24BookingService {
         error: message,
       };
     }
+  }
+
+  /**
+   * Hostaway UI cannot add a custom channel name. We set channelId on create
+   * (CHECK24_HOSTAWAY_CHANNEL_ID) and fill custom field "Buchungsportal".
+   */
+  private async applyHostawayCheck24Labels(
+    reservationId: number,
+    check24BookingId: string,
+  ) {
+    try {
+      const portalValue =
+        this.config.get<string>('CHECK24_HOSTAWAY_BUCHUNGSPORTAL_VALUE') ??
+        'CHECK24';
+      const configuredFieldId = Number(
+        this.config.get('CHECK24_HOSTAWAY_CUSTOM_FIELD_ID') ?? 0,
+      );
+      const fields = await this.hostaway.getCustomFields();
+      const values: Array<{ customFieldId: number; value: string }> = [];
+
+      const portalField =
+        (configuredFieldId > 0
+          ? fields.find((f) => f.id === configuredFieldId)
+          : undefined) ??
+        this.findCustomField(fields, [
+          'buchungsportal',
+          'reservation_buchungsportal',
+        ]);
+      if (portalField) {
+        values.push({ customFieldId: portalField.id, value: portalValue });
+      } else {
+        this.logger.warn(
+          `Hostaway custom field Buchungsportal not found — reservation ${reservationId} has no CHECK24 portal label`,
+        );
+      }
+
+      const externalField = this.findCustomField(fields, [
+        'externe buchungsnummer',
+        'externe_buchungsnummer',
+        'reservation_externe_buchungsnummer',
+      ]);
+      if (externalField) {
+        values.push({
+          customFieldId: externalField.id,
+          value: check24BookingId,
+        });
+      }
+
+      if (values.length === 0) return;
+
+      await this.hostaway.updateReservation(reservationId, {
+        customFieldValues: values,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not set CHECK24 Hostaway custom fields on reservation ${reservationId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
+  private findCustomField(
+    fields: Array<{ id: number; name?: string | null; varName?: string | null }>,
+    needles: string[],
+  ) {
+    return fields.find((field) => {
+      const hay = `${field.name ?? ''} ${field.varName ?? ''}`.toLowerCase();
+      return needles.some((n) => hay.includes(n.toLowerCase()));
+    });
   }
 
   private isTerminalStatus(status?: string) {

@@ -22,9 +22,10 @@
         "checkIn": "2026-07-10",
         "checkOut": "2026-07-15",
         "guests": 2,
-        "pets": false
+        "pets": false,
+        "nearby": false
       },
-      "whenToUse": "Anrufer nennt konkrete An- und Abreise (exakte Daten)"
+      "whenToUse": "Anrufer nennt konkrete An- und Abreise (exakte Daten). nearby=true nur nach Absage am Wunschort, wenn der Gast Umgebung/andere Orte an denselben Daten will — dann city beibehalten, nicht nach einem neuen Ortsnamen fragen."
     },
     {
       "name": "Wochenenden prüfen",
@@ -35,13 +36,15 @@
         "year": 2026,
         "month": 10,
         "guests": 2,
-        "nights": 2
+        "nights": 2,
+        "nearby": false
       },
       "notes": [
         "Für ungenaue Anfragen: „Wochenende im Oktober“, „irgendein Wochenende“, „egal welches Wochenende“",
         "Prüft ALLE Freitag–Sonntag-Wochenenden im Monat (oder Jahr wenn month weggelassen)",
         "city=Buchenberg für Allgäu/Bergdomizil — NICHT city=Allgäu (liefert 0 Treffer)",
         "Antwort: weekends[] mit checkIn/checkOut, labelDe, listingNames — summaryDe vorlesen",
+        "Nichts frei am Ort: zwei Optionen (andere Daten / andere Orte). Bei Umgebung: erneut mit nearby=true, gleiche city/year/month. nearbyRegions vorlesen, keine Wohnungsliste.",
         "Danach bei Buchungswunsch das konkrete Wochenende mit Verfügbarkeit prüfen / booking-offer nutzen",
         "KEIN liveRefresh am Telefon"
       ],

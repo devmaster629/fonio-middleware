@@ -2,6 +2,12 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AvailabilityMode, Listing, ListingGroup, Prisma } from '@prisma/client';
 import { mapWithConcurrency } from '../common/utils/concurrency.util';
+import {
+  centroid,
+  groupNearbyRegions,
+  NearbyRegion,
+  sameCity,
+} from '../common/utils/geo.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
@@ -19,6 +25,8 @@ export interface AvailabilityResultItem {
   /** True when calendar cache is incomplete and live refresh was not requested. */
   availabilityUnknown?: boolean;
   groupName: string | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface AvailabilitySearchResult {
@@ -27,6 +35,10 @@ export interface AvailabilitySearchResult {
   guests: number;
   results: AvailabilityResultItem[];
   availableCount: number;
+  /** German hint for the phone assistant. Prefer this over inventing copy. */
+  summaryDe: string;
+  /** Other cities with availability, nearest first (only filled for nearby search or as a miss hint). */
+  nearbyRegions: NearbyRegion[];
   meta: {
     dataSource: 'cache' | 'live';
     responseMs: number;
@@ -55,6 +67,7 @@ export interface WeekendAvailabilitySearchResult {
   weekendsWithAvailability: number;
   /** Weekends to read aloud (filtered/limited). Prefer this over inventing dates. */
   weekends: WeekendAvailabilitySlot[];
+  nearbyRegions: NearbyRegion[];
   /** One-line German hint for the assistant. */
   summaryDe: string;
   meta: {
@@ -76,6 +89,7 @@ type ListingFilterQuery = {
   pets?: boolean;
   bedrooms?: number;
   roomType?: string;
+  nearby?: boolean;
 };
 
 @Injectable()
@@ -95,10 +109,15 @@ export class FonioAvailabilityService {
       throw new BadRequestException('checkOut must be after checkIn');
     }
 
+    const nearby = query.nearby === true;
+    const originCity = query.city?.trim() || undefined;
     const liveRefresh = this.resolveLiveRefresh(query.liveRefresh);
-    const candidates = await this.loadCandidates(query);
+    const candidateQuery = nearby
+      ? { ...query, city: undefined, region: undefined }
+      : query;
+    const candidates = await this.loadCandidates(candidateQuery);
     if (candidates.length === 0) {
-      return this.wrapResponse(query, [], started, 'cache', 0);
+      return this.wrapResponse(query, [], [], started, 'cache', 0);
     }
 
     const { daysByListing } = await this.loadCalendarForRange(
@@ -116,15 +135,36 @@ export class FonioAvailabilityService {
       liveRefresh,
     );
     const cacheIncomplete = results.filter((r) => r.availabilityUnknown).length;
+    const origin = this.originFromCandidates(candidates, originCity);
 
-    const sorted = results.sort((a, b) => Number(b.available) - Number(a.available));
-    const filtered = query.availableOnly
-      ? sorted.filter((r) => r.available)
-      : sorted;
+    let working = nearby
+      ? results.filter((r) => r.available && !sameCity(r.city, originCity))
+      : [...results].sort((a, b) => Number(b.available) - Number(a.available));
+
+    if (query.availableOnly) {
+      working = working.filter((r) => r.available);
+    }
+
+    const nearbyRegions = nearby
+      ? groupNearbyRegions({
+          listings: results.map((r) => ({
+            listingId: r.listingId,
+            city: r.city,
+            available: r.available,
+            lat: r.lat ?? null,
+            lng: r.lng ?? null,
+          })),
+          origin,
+          excludeCity: originCity,
+        })
+      : [];
+
+    working = this.sortByNearbyRegions(working, nearbyRegions);
 
     return this.wrapResponse(
       query,
-      filtered,
+      working,
+      nearbyRegions,
       started,
       liveRefresh ? 'live' : 'cache',
       cacheIncomplete,
@@ -142,6 +182,8 @@ export class FonioAvailabilityService {
     const nights = query.nights ?? 2;
     const availableOnly = query.availableOnly !== false;
     const limit = query.limit ?? 8;
+    const nearby = query.nearby === true;
+    const originCity = query.city?.trim() || undefined;
     const liveRefresh = this.resolveLiveRefresh(query.liveRefresh);
 
     const weekendRanges = this.enumerateWeekends(query.year, query.month, nights);
@@ -149,13 +191,17 @@ export class FonioAvailabilityService {
       throw new BadRequestException('No weekends found for the given year/month');
     }
 
-    const candidates = await this.loadCandidates(query);
+    const candidateQuery = nearby
+      ? { ...query, city: undefined, region: undefined }
+      : query;
+    const candidates = await this.loadCandidates(candidateQuery);
     if (candidates.length === 0) {
       return this.wrapWeekendResponse({
         query,
         nights,
         weekendRanges,
         slots: [],
+        nearbyRegions: [],
         started,
         dataSource: 'cache',
         listingsChecked: 0,
@@ -178,7 +224,9 @@ export class FonioAvailabilityService {
       liveRefresh,
     );
 
+    const origin = this.originFromCandidates(candidates, originCity);
     const unknownListingIds = new Set<number>();
+    const availableAnywhere: AvailabilityResultItem[] = [];
     const slots: WeekendAvailabilitySlot[] = [];
     for (const weekend of weekendRanges) {
       const stayNights = this.enumerateDates(weekend.checkIn, weekend.checkOut);
@@ -193,19 +241,44 @@ export class FonioAvailabilityService {
       }
       const available = results
         .filter((r) => r.available)
+        .filter((r) => !nearby || !sameCity(r.city, originCity))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       if (availableOnly && available.length === 0) continue;
+
+      for (const listing of available) {
+        if (!availableAnywhere.some((x) => x.listingId === listing.listingId)) {
+          availableAnywhere.push(listing);
+        }
+      }
+
+      const listingNames = nearby
+        ? [...new Set(available.map((r) => r.city?.trim()).filter(Boolean) as string[])]
+        : available.map((r) => r.name);
 
       slots.push({
         checkIn: weekend.checkIn,
         checkOut: weekend.checkOut,
         labelDe: this.formatWeekendLabelDe(weekend.checkIn, weekend.checkOut),
         availableCount: available.length,
-        listingNames: available.map((r) => r.name),
+        listingNames,
         listings: availableOnly ? available : results,
       });
     }
+
+    const nearbyRegions = nearby
+      ? groupNearbyRegions({
+          listings: availableAnywhere.map((r) => ({
+            listingId: r.listingId,
+            city: r.city,
+            available: true,
+            lat: r.lat ?? null,
+            lng: r.lng ?? null,
+          })),
+          origin,
+          excludeCity: originCity,
+        })
+      : [];
 
     const weekendsWithAvailability = slots.filter((s) => s.availableCount > 0).length;
 
@@ -214,6 +287,7 @@ export class FonioAvailabilityService {
       nights,
       weekendRanges,
       slots,
+      nearbyRegions,
       started,
       dataSource: liveRefresh ? 'live' : 'cache',
       listingsChecked: candidates.length,
@@ -226,6 +300,7 @@ export class FonioAvailabilityService {
   private wrapResponse(
     query: AvailabilityQueryDto,
     results: AvailabilityResultItem[],
+    nearbyRegions: NearbyRegion[],
     started: number,
     dataSource: 'cache' | 'live',
     cacheIncomplete: number,
@@ -234,13 +309,16 @@ export class FonioAvailabilityService {
       dataSource === 'cache' && cacheIncomplete > 0
         ? 'Some listings have incomplete calendar cache. Run Hostaway sync or use liveRefresh=true for live Hostaway lookup (slower).'
         : undefined;
+    const availableCount = results.filter((r) => r.available).length;
 
     return {
       checkIn: query.checkIn,
       checkOut: query.checkOut,
       guests: query.guests,
       results,
-      availableCount: results.filter((r) => r.available).length,
+      availableCount,
+      summaryDe: this.buildExactDateSummaryDe(query, availableCount, nearbyRegions),
+      nearbyRegions,
       meta: {
         dataSource,
         responseMs: Date.now() - started,
@@ -256,6 +334,7 @@ export class FonioAvailabilityService {
     nights: number;
     weekendRanges: { checkIn: string; checkOut: string }[];
     slots: WeekendAvailabilitySlot[];
+    nearbyRegions: NearbyRegion[];
     started: number;
     dataSource: 'cache' | 'live';
     listingsChecked: number;
@@ -268,6 +347,7 @@ export class FonioAvailabilityService {
       nights,
       weekendRanges,
       slots,
+      nearbyRegions,
       started,
       dataSource,
       listingsChecked,
@@ -293,11 +373,13 @@ export class FonioAvailabilityService {
       weekendsChecked: weekendRanges.length,
       weekendsWithAvailability,
       weekends,
+      nearbyRegions,
       summaryDe: this.buildWeekendSummaryDe(
         query,
         weekendsWithAvailability,
         weekends,
         truncated,
+        nearbyRegions,
       ),
       meta: {
         dataSource,
@@ -435,6 +517,8 @@ export class FonioAvailabilityService {
         available,
         availabilityUnknown: !liveRefresh && !cacheComplete,
         groupName: listing.listingGroup?.name ?? null,
+        lat: listing.lat,
+        lng: listing.lng,
       };
     });
   }
@@ -573,11 +657,70 @@ export class FonioAvailabilityService {
     return `${d1}. ${months[m1 - 1]} ${y1} – ${d2}. ${months[m2 - 1]} ${y2}`;
   }
 
+  private originFromCandidates(
+    candidates: ListingWithGroup[],
+    originCity?: string,
+  ): { lat: number; lng: number } | null {
+    const pool = originCity
+      ? candidates.filter((l) => sameCity(l.city, originCity))
+      : candidates;
+    return centroid(
+      pool
+        .filter((l) => l.lat != null && l.lng != null)
+        .map((l) => ({ lat: l.lat as number, lng: l.lng as number })),
+    );
+  }
+
+  private sortByNearbyRegions(
+    listings: AvailabilityResultItem[],
+    regions: NearbyRegion[],
+  ): AvailabilityResultItem[] {
+    if (regions.length === 0) return listings;
+    const order = new Map(regions.map((r, i) => [r.city.toLowerCase(), i]));
+    return [...listings].sort((a, b) => {
+      const ai = order.get((a.city ?? '').trim().toLowerCase()) ?? 999;
+      const bi = order.get((b.city ?? '').trim().toLowerCase()) ?? 999;
+      if (ai !== bi) return ai - bi;
+      return a.name.localeCompare(b.name, 'de');
+    });
+  }
+
+  private formatRegionsDe(regions: NearbyRegion[]): string {
+    return regions
+      .map((r) =>
+        r.distanceKm != null ? `${r.city} (ca. ${r.distanceKm} km)` : r.city,
+      )
+      .join(', ');
+  }
+
+  private buildExactDateSummaryDe(
+    query: AvailabilityQueryDto,
+    availableCount: number,
+    nearbyRegions: NearbyRegion[],
+  ): string {
+    const place =
+      query.city?.trim() || query.region?.trim() || 'den gesuchten Ort';
+
+    if (query.nearby) {
+      if (nearbyRegions.length === 0) {
+        return `An denselben Daten in anderen Regionen ebenfalls nichts frei. Anderen Zeitraum in ${place} anbieten oder an Mitarbeiter weiterleiten. Regionen nennen, keine Wohnungsliste.`;
+      }
+      return `An denselben Daten nächstgelegene freie Regionen: ${this.formatRegionsDe(nearbyRegions)}. Nur Regionen nennen, keine Wohnungen vorlesen. listingId aus nearbyRegions merken, falls der Gast eine Region wählt.`;
+    }
+
+    if (availableCount > 0) {
+      return `${availableCount} Unterkunft/Unterkünfte in ${place} für diese Daten frei. Kurz nennen, keine unnötige Wohnungsliste.`;
+    }
+
+    return `In ${place} für diese Daten nichts frei. Zwei Optionen anbieten: 1) andere Daten am gleichen Ort (neuen Zeitraum fragen, nearby nicht setzen) 2) andere Orte an denselben Daten. Bei 2 NICHT fragen wo genau — sofort erneut Verfuegbarkeit_pruefen mit nearby=true und gleichen city, checkIn, checkOut, guests, pets.`;
+  }
+
   private buildWeekendSummaryDe(
     query: WeekendAvailabilityQueryDto,
     weekendsWithAvailability: number,
     weekends: WeekendAvailabilitySlot[],
     truncated: boolean,
+    nearbyRegions: NearbyRegion[],
   ): string {
     const place =
       query.city?.trim() ||
@@ -588,8 +731,15 @@ export class FonioAvailabilityService {
         ? this.monthNameDe(query.month) + ` ${query.year}`
         : `Jahr ${query.year}`;
 
+    if (query.nearby) {
+      if (nearbyRegions.length === 0) {
+        return `Keine freien Wochenenden in anderen Regionen für ${period}. Anderen Zeitraum in ${place} anbieten.`;
+      }
+      return `Freie Wochenenden in anderen Regionen, nächstgelegen zuerst: ${this.formatRegionsDe(nearbyRegions)}. Nur Regionen nennen, keine Wohnungen.`;
+    }
+
     if (weekendsWithAvailability === 0) {
-      return `Keine freien Wochenenden in ${place} für ${period} (${query.guests} Person(en)).`;
+      return `Keine freien Wochenenden in ${place} für ${period} (${query.guests} Person(en)). Zwei Optionen: anderer Zeitraum am gleichen Ort, oder andere Orte im selben Zeitraum (nearby=true, NICHT nach genauem Ort fragen).`;
     }
 
     const samples = weekends

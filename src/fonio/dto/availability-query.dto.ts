@@ -48,6 +48,15 @@ export class AvailabilityQueryDto {
   @IsBoolean()
   availableOnly?: boolean;
 
+  /**
+   * Same dates, other properties (exclude `city`). Ranked by Hostaway coordinates.
+   * Use after the requested city has no availability and the guest wants surroundings.
+   */
+  @IsOptional()
+  @Transform(({ value }) => parseQueryBoolean(value))
+  @IsBoolean()
+  nearby?: boolean;
+
   /** When true, refreshes stale calendars from Hostaway (slower). Default: cache-only for fast phone responses. */
   @IsOptional()
   @Transform(({ value }) => parseQueryBoolean(value))

@@ -21,8 +21,8 @@ export class Check24PropertyMapper {
   mapListing(local: Listing, remote: HostawayListing): Check24Property {
     const propertyId = this.propertyIdForHostaway(local.hostawayId);
     const maxOccupancy = Math.max(1, local.personCapacity || remote.personCapacity || 1);
-    const lat = this.toNumber(remote.lat ?? remote.latitude);
-    const lng = this.toNumber(remote.lng ?? remote.longitude);
+    const lat = this.toNumber(local.lat ?? remote.lat ?? remote.latitude);
+    const lng = this.toNumber(local.lng ?? remote.lng ?? remote.longitude);
     if (lat == null || lng == null) {
       throw new Error(
         `Listing ${local.hostawayId} is missing latitude/longitude required by CHECK24`,

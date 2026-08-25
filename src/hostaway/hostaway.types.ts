@@ -70,6 +70,13 @@ export interface HostawayCalendarDay {
   price: number;
 }
 
+export interface HostawayCustomField {
+  id: number;
+  name?: string | null;
+  varName?: string | null;
+  possibleValues?: string | string[] | null;
+}
+
 export interface HostawayReservation {
   id: number;
   listingMapId: number;
