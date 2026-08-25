@@ -2569,6 +2569,9 @@ async function loadPayments() {
       ${actionsCell}
     </tr>`;
   }).join('');
+  const emptyHtml = rows
+    ? ''
+    : `<p class="payments-empty">${t('payments.none')}</p>`;
   $('#payments-table').innerHTML = `
     <table class="payments-review-table"><colgroup>
       <col class="col-payment" /><col class="col-payer" /><col class="col-match" />
@@ -2580,7 +2583,8 @@ async function loadPayments() {
       <th>${t('payments.reservation')}</th>
       <th>${t('payments.actions')}</th>
     </tr></thead>
-    <tbody>${rows || `<tr class="table-empty-row"><td colspan="5">${t('payments.none')}</td></tr>`}</tbody></table>`;
+    <tbody>${rows}</tbody></table>
+    ${emptyHtml}`;
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
 
