@@ -1377,6 +1377,17 @@ body.modal-open {
   word-break: normal;
 }
 
+.payments-review-table td[colspan],
+.payments-review-table.responsive-stack td[colspan] {
+  width: 100% !important;
+  max-width: none;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  text-align: center;
+  padding: 1.25rem 1rem;
+}
+
 .payments-review-table th {
   white-space: normal;
   overflow: hidden;
@@ -2180,6 +2191,11 @@ form.is-readonly .btn.primary {
 
   .payments-review-table.responsive-stack .payment-action-btns .btn {
     flex: initial;
+  }
+
+  .payments-review-table td[colspan],
+  .payments-review-table.responsive-stack td[colspan] {
+    width: 100% !important;
   }
 }
 .expandable-full {

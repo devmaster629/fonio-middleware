@@ -2580,7 +2580,7 @@ async function loadPayments() {
       <th>${t('payments.reservation')}</th>
       <th>${t('payments.actions')}</th>
     </tr></thead>
-    <tbody>${rows || `<tr><td colspan="5">${t('payments.none')}</td></tr>`}</tbody></table>`;
+    <tbody>${rows || `<tr class="table-empty-row"><td colspan="5">${t('payments.none')}</td></tr>`}</tbody></table>`;
   renderTableInfo('#payments-info', data, data.maxTotal);
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
 
