@@ -235,6 +235,7 @@ function applyRoleUi() {
   const canRulesDelete = hasPermission('RULES_DELETE');
   const canConversationsManage = hasPermission('CONVERSATIONS_MANAGE');
   const canPaymentsReview = hasPermission('PAYMENTS_REVIEW');
+  const canPaymentsAdmin = hasPermission('PAYMENTS_ADMIN');
   const canListingsEdit = hasPermission('LISTINGS_EDIT');
   const canRequestsManage = hasPermission('REQUESTS_MANAGE');
   const canWebhooks = hasPermission('WEBHOOKS_MANAGE');
@@ -289,6 +290,8 @@ function applyRoleUi() {
     el.toggleAttribute('disabled', !canPaymentsReview);
     if (el.matches('button')) el.classList.toggle('hidden', !canPaymentsReview);
   });
+  setControlsDisabled($('#portal-rules-list'), !canPaymentsAdmin);
+  $('#portal-rules-readonly-hint')?.classList.toggle('hidden', canPaymentsAdmin);
   $$('.retry-forward-btn').forEach((btn) => {
     btn.classList.toggle('hidden', !canRequestsManage);
     btn.toggleAttribute('disabled', !canRequestsManage);
@@ -2508,6 +2511,7 @@ async function loadPayments() {
   loadPaymentsHistory();
   loadQontoStatus();
   loadPaypalStatus();
+  loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
@@ -2660,6 +2664,120 @@ async function loadPayments() {
     notify.error(ex.message);
     $('#payments-table').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
   }
+}
+
+async function loadPortalPaymentRules() {
+  const list = $('#portal-rules-list');
+  if (!list) return;
+  const rules = await api('/payments/portal-rules');
+  const canEdit = hasPermission('PAYMENTS_ADMIN');
+  list.innerHTML = (Array.isArray(rules) ? rules : [])
+    .map((rule) => {
+      const matchers = Array.isArray(rule.channelMatchers)
+        ? rule.channelMatchers.join(', ')
+        : '';
+      const unverified =
+        rule.treatAsPaidUntilDaysBeforeArrival == null
+          ? ''
+          : String(rule.treatAsPaidUntilDaysBeforeArrival);
+      const dueBy =
+        rule.hostDueByDaysBeforeArrival == null
+          ? ''
+          : String(rule.hostDueByDaysBeforeArrival);
+      const overdue =
+        rule.overdueGraceDays == null ? '' : String(rule.overdueGraceDays);
+      return `
+      <form class="portal-rule-form card-inset" data-portal-key="${esc(rule.portalKey)}">
+        <div class="portal-rule-head">
+          <strong>${esc(rule.displayName)}</strong>
+          <span class="muted">${esc(rule.portalKey)}${rule.isFallback ? ` · ${t('payments.portalFallback')}` : ''}</span>
+        </div>
+        <div class="portal-rule-grid">
+          <label class="checkbox-row">
+            <input type="checkbox" name="enabled" ${rule.enabled ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalEnabled')}</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="skipUnpaidReminder" ${rule.skipUnpaidReminder ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalSkipReminder')}</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="autoRequestInbox" ${rule.autoRequestInbox ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalAutoInbox')}</span>
+          </label>
+          <label>
+            <span>${t('payments.portalAssumed')}</span>
+            <input type="number" name="portalAssumedPaidPercent" min="0" max="100" value="${Number(rule.portalAssumedPaidPercent) || 0}" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalHostDue')}</span>
+            <input type="number" name="hostDuePercent" min="0" max="100" value="${Number(rule.hostDuePercent) || 0}" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalUnverifiedUntil')}</span>
+            <input type="number" name="treatAsPaidUntilDaysBeforeArrival" min="0" max="365" value="${esc(unverified)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalHostDueBy')}</span>
+            <input type="number" name="hostDueByDaysBeforeArrival" min="0" max="365" value="${esc(dueBy)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalOverdueGrace')}</span>
+            <input type="number" name="overdueGraceDays" min="0" max="90" value="${esc(overdue)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label class="portal-rule-matchers">
+            <span>${t('payments.portalMatchers')}</span>
+            <input type="text" name="channelMatchers" value="${esc(matchers)}" ${rule.isFallback || !canEdit ? 'disabled' : ''} />
+          </label>
+        </div>
+        ${canEdit ? `<div class="form-actions"><button type="submit" class="btn primary btn-sm">${t('payments.portalSave')}</button></div>` : ''}
+      </form>`;
+    })
+    .join('');
+
+  list.querySelectorAll('.portal-rule-form').forEach((form) => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!hasPermission('PAYMENTS_ADMIN')) return;
+      const portalKey = form.getAttribute('data-portal-key');
+      const fd = new FormData(form);
+      const optionalInt = (name) => {
+        const raw = String(fd.get(name) ?? '').trim();
+        if (!raw) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      };
+      const matchersRaw = String(fd.get('channelMatchers') ?? '');
+      const body = {
+        enabled: form.querySelector('[name="enabled"]')?.checked === true,
+        skipUnpaidReminder:
+          form.querySelector('[name="skipUnpaidReminder"]')?.checked === true,
+        autoRequestInbox:
+          form.querySelector('[name="autoRequestInbox"]')?.checked === true,
+        portalAssumedPaidPercent: Number(fd.get('portalAssumedPaidPercent')) || 0,
+        hostDuePercent: Number(fd.get('hostDuePercent')) || 0,
+        treatAsPaidUntilDaysBeforeArrival: optionalInt(
+          'treatAsPaidUntilDaysBeforeArrival',
+        ),
+        hostDueByDaysBeforeArrival: optionalInt('hostDueByDaysBeforeArrival'),
+        overdueGraceDays: optionalInt('overdueGraceDays'),
+        channelMatchers: matchersRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+      try {
+        await api(`/payments/portal-rules/${encodeURIComponent(portalKey)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        notify.success(t('payments.portalSaved'));
+        await loadPortalPaymentRules();
+      } catch (ex) {
+        notify.error(ex.message);
+      }
+    });
+  });
 }
 
 async function loadPaymentsHistory() {

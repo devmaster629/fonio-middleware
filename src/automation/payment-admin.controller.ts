@@ -4,6 +4,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -23,9 +24,11 @@ import {
   ManualPaymentIngestDto,
   SkipPaymentReviewDto,
 } from './dto/payment.dto';
+import { UpdatePortalPaymentRuleDto } from './dto/portal-payment-rule.dto';
 import { isInquiryReservationStatus } from './automation.types';
 import { detectCombinedDepositHint } from './payment-split-hint.util';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
+import { PortalPaymentRulesService } from './portal-payment-rules.service';
 import { QontoPollService } from './qonto-poll.service';
 
 @ApiTags('admin-payments')
@@ -38,7 +41,44 @@ export class PaymentAdminController {
     private readonly reconciliation: PaymentReconciliationService,
     private readonly qontoPoll: QontoPollService,
     private readonly config: ConfigService,
+    private readonly portalRules: PortalPaymentRulesService,
   ) {}
+
+  @Get('portal-rules')
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
+  @ApiOperation({ summary: 'List booking-portal payment rules' })
+  async listPortalRules() {
+    return this.portalRules.list();
+  }
+
+  @Patch('portal-rules/:portalKey')
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
+  @ApiOperation({ summary: 'Update one booking-portal payment rule' })
+  async updatePortalRule(
+    @Param('portalKey') portalKey: string,
+    @Body() dto: UpdatePortalPaymentRuleDto,
+  ) {
+    return this.portalRules.update(portalKey, {
+      displayName: dto.displayName,
+      channelMatchers: dto.channelMatchers,
+      enabled: dto.enabled,
+      portalAssumedPaidPercent: dto.portalAssumedPaidPercent,
+      treatAsPaidUntilDaysBeforeArrival:
+        dto.treatAsPaidUntilDaysBeforeArrival === undefined
+          ? undefined
+          : dto.treatAsPaidUntilDaysBeforeArrival,
+      hostDuePercent: dto.hostDuePercent,
+      hostDueByDaysBeforeArrival:
+        dto.hostDueByDaysBeforeArrival === undefined
+          ? undefined
+          : dto.hostDueByDaysBeforeArrival,
+      overdueGraceDays:
+        dto.overdueGraceDays === undefined ? undefined : dto.overdueGraceDays,
+      autoRequestInbox: dto.autoRequestInbox,
+      skipUnpaidReminder: dto.skipUnpaidReminder,
+      sortOrder: dto.sortOrder,
+    });
+  }
 
   @Get('review-queue')
   @Permissions(AdminPermission.PAYMENTS_VIEW)

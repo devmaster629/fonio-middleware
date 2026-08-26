@@ -3,8 +3,8 @@ import { Cron } from '@nestjs/schedule';
 import { PaymentAlertService } from './payment-alert.service';
 
 /**
- * Reminds the office when a booking still has an outstanding balance
- * exactly 4 weeks before arrival (Europe/Berlin calendar day).
+ * Daily (09:15 Europe/Berlin): portal-aware unpaid office reminders and
+ * optional Hostaway inbox payment requests (see Admin → Payments → Portal rules).
  */
 @Injectable()
 export class PaymentUnpaidReminderScheduler {
@@ -16,9 +16,9 @@ export class PaymentUnpaidReminderScheduler {
   async morningUnpaidReminder() {
     try {
       const result = await this.alerts.notifyUnpaidBeforeArrival();
-      if (result.sent > 0) {
+      if (result.sent > 0 || result.inboxRequested > 0) {
         this.logger.log(
-          `Unpaid-before-arrival reminders sent=${result.sent} (checked=${result.checked})`,
+          `Portal payment job: reminders=${result.sent} inboxRequests=${result.inboxRequested} (checked=${result.checked})`,
         );
       }
     } catch (error) {

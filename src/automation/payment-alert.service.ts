@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExternalPaymentSource, LogLevel } from '@prisma/client';
+import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
+import { HostawayClient } from '../hostaway/hostaway.client';
 import { AuditLogService } from '../logging/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PaymentMatchCandidate } from './automation.types';
@@ -13,6 +15,11 @@ import {
 import {
   PAYMENT_EXCLUDED_RESERVATION_STATUSES,
 } from './automation.types';
+import { PortalPaymentRulesService } from './portal-payment-rules.service';
+import { evaluatePortalBalance, matchPortalRule } from './portal-payment-rules.util';
+
+/** How far ahead (days) we scan arrivals for portal-aware unpaid / payment-request jobs. */
+const PORTAL_PAYMENT_LOOKAHEAD_DAYS = 40;
 
 @Injectable()
 export class PaymentAlertService {
@@ -22,6 +29,9 @@ export class PaymentAlertService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditLogService,
+    private readonly portalRules: PortalPaymentRulesService,
+    private readonly hostaway: HostawayClient,
+    private readonly inbox: GuestRequestInboxService,
   ) {}
 
   private isEnabled(): boolean {
@@ -293,46 +303,149 @@ export class PaymentAlertService {
   }
 
   /**
-   * Daily reminder: confirmed bookings that still have an outstanding balance
-   * exactly 4 weeks before arrival.
+   * Daily job: portal-aware unpaid office reminders + optional Hostaway inbox
+   * payment requests. Respects Hostaway Fully Paid (`isPaid`) and Admin portal rules.
    */
   async notifyUnpaidBeforeArrival(): Promise<{
     checked: number;
     sent: number;
+    inboxRequested: number;
   }> {
-    if (!this.isEnabled()) return { checked: 0, sent: 0 };
+    if (!this.isEnabled()) {
+      return { checked: 0, sent: 0, inboxRequested: 0 };
+    }
 
-    const targetYmd = berlinYmdPlusDays(28);
-    const dayStart = new Date(`${targetYmd}T00:00:00.000Z`);
-    const dayEnd = new Date(`${targetYmd}T23:59:59.999Z`);
+    const todayYmd = berlinYmdPlusDays(0);
+    const endYmd = berlinYmdPlusDays(PORTAL_PAYMENT_LOOKAHEAD_DAYS);
+    const dayStart = new Date(`${todayYmd}T00:00:00.000Z`);
+    const dayEnd = new Date(`${endYmd}T23:59:59.999Z`);
 
     const candidates = await this.prisma.reservation.findMany({
       where: {
         arrivalDate: { gte: dayStart, lte: dayEnd },
-        unpaidReminderSentAt: null,
         totalPrice: { gt: 0 },
         status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
+        OR: [
+          { unpaidReminderSentAt: null },
+          { paymentRequestSentAt: null },
+        ],
       },
       include: {
         listing: true,
         notifiedCharges: true,
       },
-      take: 200,
+      take: 400,
       orderBy: { arrivalDate: 'asc' },
     });
 
     let sent = 0;
-    for (const reservation of candidates) {
-      if (isLikelyOtaChannel(reservation.channelName)) continue;
+    let inboxRequested = 0;
+    const portalRulesList = await this.portalRules.list();
 
-      const paid = reservation.notifiedCharges.reduce(
+    for (const reservation of candidates) {
+      const daysUntilArrival = berlinDaysUntil(reservation.arrivalDate);
+      if (daysUntilArrival < 0) continue;
+
+      let isPaid = reservation.isPaid === true;
+      const matchedPaid = reservation.notifiedCharges.reduce(
         (sum, charge) => sum + (Number(charge.amount) || 0),
         0,
       );
       const total = Number(reservation.totalPrice) || 0;
-      const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
-      if (balanceDue <= 1) continue;
 
+      const rule = matchPortalRule(reservation.channelName, portalRulesList);
+      if (!rule) continue;
+
+      // Cheap pre-check before hitting Hostaway for isPaid
+      const preliminary = evaluatePortalBalance({
+        totalPrice: total,
+        matchedPaid,
+        isPaid,
+        daysUntilArrival,
+        rule,
+      });
+      const mayAct =
+        preliminary.shouldOfficeRemind || preliminary.shouldRequestInbox;
+      if (!mayAct && isPaid) continue;
+      if (
+        !isPaid &&
+        mayAct &&
+        (reservation.unpaidReminderSentAt == null ||
+          reservation.paymentRequestSentAt == null)
+      ) {
+        try {
+          const remote = await this.hostaway.getReservation(
+            reservation.hostawayId,
+          );
+          const remotePaid =
+            remote.isPaid === true || remote.isPaid === 1;
+          if (remotePaid !== (reservation.isPaid === true)) {
+            await this.prisma.reservation.update({
+              where: { id: reservation.id },
+              data: { isPaid: remotePaid },
+            });
+          }
+          isPaid = remotePaid;
+        } catch (err) {
+          this.logger.warn(
+            `Could not refresh isPaid for reservation ${reservation.hostawayId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      }
+
+      if (isPaid) continue;
+
+      const evaluation = evaluatePortalBalance({
+        totalPrice: total,
+        matchedPaid,
+        isPaid,
+        daysUntilArrival,
+        rule,
+      });
+
+      if (
+        evaluation.shouldRequestInbox &&
+        !reservation.paymentRequestSentAt &&
+        evaluation.outstanding > 1
+      ) {
+        const inboxResult = await this.inbox.requestOutstandingPayment({
+          reservationHostawayId: reservation.hostawayId,
+          amount: evaluation.outstanding,
+          currency: 'EUR',
+          portalName: evaluation.displayName,
+          dueByDaysBeforeArrival: rule.hostDueByDaysBeforeArrival,
+          paymentDeadlineDays: rule.overdueGraceDays,
+        });
+        await this.prisma.reservation.update({
+          where: { id: reservation.id },
+          data: { paymentRequestSentAt: new Date() },
+        });
+        if (inboxResult.posted) inboxRequested += 1;
+        await this.audit.log({
+          level: LogLevel.INFO,
+          source: 'payment_alert',
+          action: 'portal_payment_request',
+          metadata: {
+            reservationHostawayId: reservation.hostawayId,
+            portalKey: evaluation.portalKey,
+            outstanding: evaluation.outstanding,
+            posted: inboxResult.posted,
+            inboxPending: inboxResult.inboxPending,
+          },
+        });
+      }
+
+      if (
+        !evaluation.shouldOfficeRemind ||
+        reservation.unpaidReminderSentAt ||
+        evaluation.outstanding <= 1
+      ) {
+        continue;
+      }
+
+      const paidForEmail = Math.max(0, total - evaluation.outstanding);
       const hostawayUrl = `https://dashboard.hostaway.com/reservations/${reservation.hostawayId}`;
       const correlationId = `pay-unpaid-${reservation.hostawayId}-${Date.now()}`;
       const email = buildUnpaidReminderEmail({
@@ -343,8 +456,8 @@ export class PaymentAlertService {
         arrivalDate: reservation.arrivalDate,
         departureDate: reservation.departureDate,
         totalPrice: total,
-        paidAmount: paid,
-        balanceDue,
+        paidAmount: paidForEmail,
+        balanceDue: evaluation.outstanding,
         currency: 'EUR',
         hostawayUrl,
         dashboardUrl: this.dashboardPaymentsUrl(),
@@ -359,8 +472,10 @@ export class PaymentAlertService {
         action: 'unpaid_before_arrival',
         metadata: {
           reservationHostawayId: reservation.hostawayId,
-          balanceDue,
-          arrivalDate: targetYmd,
+          balanceDue: evaluation.outstanding,
+          daysUntilArrival,
+          portalKey: evaluation.portalKey,
+          reason: evaluation.reason,
         },
       });
 
@@ -371,7 +486,7 @@ export class PaymentAlertService {
       sent += 1;
     }
 
-    return { checked: candidates.length, sent };
+    return { checked: candidates.length, sent, inboxRequested };
   }
 }
 
@@ -389,15 +504,11 @@ function berlinYmdPlusDays(days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-function isLikelyOtaChannel(channelName: string | null | undefined): boolean {
-  const c = String(channelName || '').toLowerCase();
-  return (
-    c.includes('airbnb') ||
-    c.includes('bookingcom') ||
-    c.includes('booking.com') ||
-    c.includes('vrbo') ||
-    c.includes('homeaway') ||
-    c.includes('expedia') ||
-    c.includes('agoda')
-  );
+/** Whole calendar days from today (Berlin) until arrival date (UTC date column). */
+function berlinDaysUntil(arrivalDate: Date): number {
+  const todayYmd = berlinYmdPlusDays(0);
+  const arrivalYmd = arrivalDate.toISOString().slice(0, 10);
+  const today = Date.parse(`${todayYmd}T00:00:00.000Z`);
+  const arrival = Date.parse(`${arrivalYmd}T00:00:00.000Z`);
+  return Math.round((arrival - today) / 86_400_000);
 }

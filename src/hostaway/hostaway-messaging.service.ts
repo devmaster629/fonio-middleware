@@ -203,4 +203,50 @@ export class HostawayMessagingService {
     );
     return messageId;
   }
+
+  async requestOutstandingPaymentToInbox(params: {
+    conversationId: number;
+    amount: number;
+    currency?: string;
+    portalName?: string;
+    dueByDaysBeforeArrival?: number | null;
+    paymentDeadlineDays?: number | null;
+  }): Promise<number> {
+    const currency = params.currency ?? 'EUR';
+    const amountLabel = new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency,
+    }).format(params.amount);
+    const lines = [
+      '[Middleware – Zahlungsaufforderung]',
+      `Offener Betrag: ${amountLabel}`,
+    ];
+    if (params.portalName) {
+      lines.push(`Buchungsportal: ${params.portalName}`);
+    }
+    if (params.dueByDaysBeforeArrival != null) {
+      lines.push(
+        `Bitte den offenen Anteil spätestens ${params.dueByDaysBeforeArrival} Tage vor Anreise begleichen.`,
+      );
+    }
+    if (params.paymentDeadlineDays != null) {
+      lines.push(
+        `Zahlungsfrist: ${params.paymentDeadlineDays} Tage ab dieser Nachricht.`,
+      );
+    }
+    lines.push(
+      'Bitte senden Sie dem Gast eine Zahlungsaufforderung / den Zahlungslink über Hostaway.',
+    );
+
+    const messageId = await this.hostaway.sendConversationMessage(
+      params.conversationId,
+      lines.join('\n'),
+      'channel',
+    );
+
+    this.logger.log(
+      `Posted outstanding-payment request to conversation ${params.conversationId} (message ${messageId})`,
+    );
+    return messageId;
+  }
 }

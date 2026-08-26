@@ -93,6 +93,8 @@ export interface HostawayReservation {
   guestEmail: string | null;
   phone: string | null;
   totalPrice?: number | null;
+  /** Hostaway Fully Paid flag */
+  isPaid?: boolean | number | null;
   channelName?: string | null;
   channelId?: number | null;
   hostNote?: string | null;

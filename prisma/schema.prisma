@@ -247,6 +247,8 @@ model Reservation {
   guestNameMasked    String?
   guestFirstNameHint String?
   totalPrice         Float?
+  /// Hostaway reservation isPaid (UI: Fully Paid). Synced from API.
+  isPaid             Boolean?
   channelName        String?
   channelId          Int?
   hostNote           String?
@@ -255,6 +257,8 @@ model Reservation {
   hostawayConversationId Int?
   paymentBaselinedAt DateTime?
   unpaidReminderSentAt DateTime?
+  /// When we posted an automatic outstanding-payment request to the Hostaway inbox.
+  paymentRequestSentAt DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]
@@ -445,4 +449,35 @@ model LogSettings {
   piiAutoDelete            Boolean  @default(true)
   autoPurgeEnabled         Boolean  @default(true)
   updatedAt                DateTime @updatedAt
+}
+
+/// Per booking-portal payment expectations (HomeToGo, Travanto, Interhome, …).
+/// Editable in Admin → Payments → Portal payment rules.
+model PortalPaymentRule {
+  id                                 String   @id @default(uuid())
+  /// Stable key: hometogo, interhome, travanto, airbnb, direct, …
+  portalKey                          String   @unique
+  displayName                        String
+  /// JSON string array of channelName substrings (lowercase), e.g. ["travanto"]
+  channelMatchersJson                String   @default("[]")
+  /// Fallback rule used when no other portal matches the channel.
+  isFallback                         Boolean  @default(false)
+  enabled                            Boolean  @default(true)
+  /// Share of total assumed collected by the portal (0–100).
+  portalAssumedPaidPercent           Int      @default(0)
+  /// Until this many days before arrival, treat as paid but unverified (e.g. Interhome = 7).
+  treatAsPaidUntilDaysBeforeArrival  Int?
+  /// Share of total that must be on our account (0–100), e.g. Travanto 70.
+  hostDuePercent                     Int      @default(100)
+  /// Days before arrival by which host share is due / should be requested (e.g. 21, 28, 3).
+  hostDueByDaysBeforeArrival         Int?
+  /// Days after the due date before the booking is treated as overdue (e.g. Travanto = 7).
+  overdueGraceDays                   Int?
+  /// Post an automatic payment request to the Hostaway inbox when host share becomes due.
+  autoRequestInbox                   Boolean  @default(false)
+  /// Never send the office unpaid reminder for this portal (e.g. Airbnb, HomeToGo).
+  skipUnpaidReminder                 Boolean  @default(false)
+  sortOrder                          Int      @default(0)
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
 }

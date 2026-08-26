@@ -9,6 +9,7 @@ import { PaymentMatcherService } from './payment-matcher.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { PaymentReviewReminderScheduler } from './payment-review-reminder.scheduler';
 import { PaymentUnpaidReminderScheduler } from './payment-unpaid-reminder.scheduler';
+import { PortalPaymentRulesService } from './portal-payment-rules.service';
 import { QontoClient } from './qonto.client';
 import { QontoPollScheduler } from './qonto-poll.scheduler';
 import { QontoPollService } from './qonto-poll.service';
@@ -25,6 +26,7 @@ import { PayPalClient } from './paypal.client';
     PaymentApplyService,
     PaymentReviewReminderScheduler,
     PaymentUnpaidReminderScheduler,
+    PortalPaymentRulesService,
     QontoClient,
     QontoPollService,
     QontoPollScheduler,
@@ -37,6 +39,7 @@ import { PayPalClient } from './paypal.client';
     PaymentMatcherService,
     PaymentAlertService,
     PaymentApplyService,
+    PortalPaymentRulesService,
     QontoPollService,
     PayPalClient,
   ],

@@ -460,6 +460,7 @@ export class HostawaySyncService implements OnModuleInit {
         typeof remote.totalPrice === 'number' && Number.isFinite(remote.totalPrice)
           ? remote.totalPrice
           : null,
+      isPaid: coerceHostawayIsPaid(remote.isPaid),
       channelName: remote.channelName?.trim() || null,
       channelId:
         typeof remote.channelId === 'number' && Number.isFinite(remote.channelId)
@@ -621,4 +622,12 @@ export class HostawaySyncService implements OnModuleInit {
   private sleep(ms: number) {
     return new Promise((r) => setTimeout(r, ms));
   }
+}
+
+function coerceHostawayIsPaid(
+  value: boolean | number | null | undefined,
+): boolean | null {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  return null;
 }

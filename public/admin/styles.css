@@ -276,6 +276,49 @@ body.sidebar-open .sidebar {
   margin-bottom: 0;
 }
 
+.portal-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.portal-rule-form.card-inset {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  background: var(--surface-2, #fafafa);
+}
+
+.portal-rule-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.portal-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.portal-rule-grid label {
+  margin-bottom: 0;
+}
+
+.portal-rule-grid input[type="number"],
+.portal-rule-grid input[type="text"] {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.portal-rule-matchers {
+  grid-column: 1 / -1;
+}
+
 .log-settings-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

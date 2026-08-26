@@ -144,6 +144,32 @@ export class GuestRequestInboxService {
     );
   }
 
+  async requestOutstandingPayment(params: {
+    reservationHostawayId: number;
+    amount: number;
+    currency?: string;
+    portalName?: string;
+    dueByDaysBeforeArrival?: number | null;
+    paymentDeadlineDays?: number | null;
+  }): Promise<{
+    posted: boolean;
+    conversationId?: number;
+    messageId?: number;
+    inboxPending: boolean;
+    error?: string;
+  }> {
+    return this.postInboxMessage(params.reservationHostawayId, (conversationId) =>
+      this.messaging.requestOutstandingPaymentToInbox({
+        conversationId,
+        amount: params.amount,
+        currency: params.currency,
+        portalName: params.portalName,
+        dueByDaysBeforeArrival: params.dueByDaysBeforeArrival,
+        paymentDeadlineDays: params.paymentDeadlineDays,
+      }),
+    );
+  }
+
   async forwardGuestRequest(
     params: ForwardGuestRequestParams,
   ): Promise<{
