@@ -353,7 +353,10 @@ export class PaymentAlertService {
       );
       const total = Number(reservation.totalPrice) || 0;
 
-      const rule = matchPortalRule(reservation.channelName, portalRulesList);
+      const rule = matchPortalRule(reservation.channelName, portalRulesList, {
+        hostNote: reservation.hostNote,
+        guestEmail: reservation.guestEmail,
+      });
       if (!rule) continue;
 
       // Cheap pre-check before hitting Hostaway for isPaid

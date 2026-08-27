@@ -39,16 +39,31 @@ export function parseChannelMatchers(json: string): string[] {
   }
 }
 
+export type PortalMatchHints = {
+  hostNote?: string | null;
+  guestEmail?: string | null;
+};
+
+function buildMatchHaystack(
+  channelName: string | null | undefined,
+  hints?: PortalMatchHints,
+): string {
+  return [channelName ?? '', hints?.hostNote ?? '', hints?.guestEmail ?? '']
+    .join(' ')
+    .toLowerCase();
+}
+
 export function matchPortalRule(
   channelName: string | null | undefined,
   rules: PortalPaymentRuleLike[],
+  hints?: PortalMatchHints,
 ): PortalPaymentRuleLike | null {
-  const channel = String(channelName || '').toLowerCase();
+  const haystack = buildMatchHaystack(channelName, hints);
   const enabled = rules.filter((r) => r.enabled);
   for (const rule of enabled) {
     if (rule.isFallback) continue;
     const matchers = parseChannelMatchers(rule.channelMatchersJson);
-    if (matchers.some((m) => channel.includes(m))) return rule;
+    if (matchers.some((m) => haystack.includes(m))) return rule;
   }
   return enabled.find((r) => r.isFallback) ?? null;
 }
@@ -350,6 +365,21 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     autoRequestInbox: true,
     skipUnpaidReminder: false,
     sortOrder: 90,
+  },
+  {
+    portalKey: 'check24',
+    displayName: 'CHECK24',
+    channelMatchers: ['check24', '@check24.de', '[check24'],
+    isFallback: false,
+    enabled: true,
+    portalAssumedPaidPercent: 0,
+    treatAsPaidUntilDaysBeforeArrival: null,
+    hostDuePercent: 100,
+    hostDueByDaysBeforeArrival: 28,
+    overdueGraceDays: null,
+    autoRequestInbox: false,
+    skipUnpaidReminder: false,
+    sortOrder: 95,
   },
   {
     portalKey: 'direct',

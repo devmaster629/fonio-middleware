@@ -29,12 +29,20 @@ export class PortalPaymentRulesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async ensureDefaults(): Promise<void> {
-    const count = await this.prisma.portalPaymentRule.count();
-    if (count > 0) return;
+    const existing = await this.prisma.portalPaymentRule.findMany({
+      select: { portalKey: true },
+    });
+    const have = new Set(existing.map((row) => row.portalKey));
+    const missing = DEFAULT_PORTAL_PAYMENT_RULES.filter(
+      (rule) => !have.has(rule.portalKey),
+    );
+    if (missing.length === 0) return;
 
-    this.logger.log('Seeding default portal payment rules');
+    this.logger.log(
+      `Seeding ${missing.length} portal payment rule(s): ${missing.map((r) => r.portalKey).join(', ')}`,
+    );
     await this.prisma.portalPaymentRule.createMany({
-      data: DEFAULT_PORTAL_PAYMENT_RULES.map((rule) => ({
+      data: missing.map((rule) => ({
         portalKey: rule.portalKey,
         displayName: rule.displayName,
         channelMatchersJson: JSON.stringify(rule.channelMatchers),

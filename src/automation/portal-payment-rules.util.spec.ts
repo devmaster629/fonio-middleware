@@ -81,6 +81,14 @@ describe('portal-payment-rules.util', () => {
     expect(ev.reason).toBe('hostaway_fully_paid');
   });
 
+  it('matches CHECK24 via host note even when channel is Direct', () => {
+    const rule = matchPortalRule('Hostaway Direct', rules, {
+      hostNote: '[CHECK24 128964812] status=booked',
+      guestEmail: 'guest@check24.de',
+    })!;
+    expect(rule.portalKey).toBe('check24');
+  });
+
   it('parses channel matchers', () => {
     expect(parseChannelMatchers('["Booking.com"," Travanto "]')).toEqual([
       'booking.com',
