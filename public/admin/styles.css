@@ -2354,6 +2354,7 @@ form.is-readonly .btn.primary {
   min-width: 0;
   max-width: none;
   width: auto;
+  overflow: hidden;
 }
 
 .payment-actions-stack {
@@ -2361,6 +2362,8 @@ form.is-readonly .btn.primary {
   flex-direction: column;
   gap: 0.35rem;
   max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .payment-split-hint {
@@ -2392,6 +2395,8 @@ form.is-readonly .btn.primary {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .payment-actions-stack.is-split .payment-split-row {
@@ -2473,8 +2478,209 @@ form.is-readonly .btn.primary {
 .payment-actions-cell .payment-assign-manual,
 .payment-actions-cell .payment-note-input {
   width: 100%;
-  max-width: none;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
+  box-sizing: border-box;
+}
+
+.payment-actions-cell .payment-assign-select {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Custom assign picker — native <select> popups ignore container width on mobile */
+.payment-assign-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.payment-actions-cell:has(.payment-assign-wrap.is-open),
+.payment-actions-stack:has(.payment-assign-wrap.is-open),
+.payment-split-row:has(.payment-assign-wrap.is-open) {
+  overflow: visible;
+  z-index: 2;
+}
+
+.payment-assign-select-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.payment-assign-dropdown {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.payment-assign-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--surface2);
+  color: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.25;
+}
+
+.payment-assign-trigger:hover,
+.payment-assign-wrap.is-open .payment-assign-trigger {
+  border-color: var(--primary);
+}
+
+.payment-assign-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payment-assign-trigger-caret {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-0.1rem);
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+
+.payment-assign-wrap.is-open .payment-assign-trigger-caret {
+  transform: rotate(-135deg) translateY(0.1rem);
+}
+
+.payment-assign-panel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: min(16rem, 50vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+
+.payment-assign-panel[hidden] {
+  display: none !important;
+}
+
+.payment-assign-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.payment-assign-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  overflow: hidden;
+  font: inherit;
+  line-height: 1.25;
+}
+
+.payment-assign-choice:last-child {
+  border-bottom: 0;
+}
+
+.payment-assign-choice:hover {
+  background: var(--surface2);
+}
+
+.payment-assign-choice.is-selected {
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface2));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.payment-assign-choice-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  min-width: 0;
+}
+
+.payment-assign-choice-id {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-assign-choice-channel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.payment-assign-choice-amount {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.payment-assign-choice-guest,
+.payment-assign-choice-dates {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.payment-assign-choice-guest {
+  color: inherit;
+  font-weight: 500;
 }
 
 .payment-action-btns {

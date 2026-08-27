@@ -1561,6 +1561,34 @@ function formatReservationOption(c, currency = 'EUR') {
   ].filter(Boolean).join(' — ');
 }
 
+/**
+ * Short label for &lt;select&gt; options so the native picker does not overflow
+ * on narrow / mobile layouts (full text still available via title on the select).
+ */
+function formatReservationOptionShort(c, currency = 'EUR') {
+  const id = c.hostawayId ?? c.id;
+  const guest = String(c.guestName || '').trim();
+  const guestShort =
+    guest.length > 28 ? `${guest.slice(0, 26)}…` : guest;
+  const dates = formatStayDates(c.arrivalDate, c.departureDate);
+  const balance =
+    c.balanceDue != null
+      ? formatMoney(c.balanceDue, currency)
+      : c.totalPrice != null
+        ? formatMoney(c.totalPrice, currency)
+        : '';
+  const channel = c.channelName ? prettyChannel(c.channelName) : '';
+  return [
+    `#${id}`,
+    channel ? `[${channel}]` : '',
+    guestShort,
+    dates,
+    balance ? balance : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function paymentDecisionLabel(decision) {
   if (!decision) return '–';
   const key = `payments.decision.${decision}`;
@@ -2243,32 +2271,198 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
   const seenIds = new Set();
   const options = [];
   const preferred = selectedHostawayId != null ? Number(selectedHostawayId) : null;
+
+  const pushOption = (c, selected) => {
+    const id = Number(c.hostawayId);
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
+    const fullLabel = formatReservationOption(c, payment.currency);
+    const guest = String(c.guestName || '').trim();
+    const dates = formatStayDates(c.arrivalDate, c.departureDate);
+    const amountLabel =
+      c.balanceDue != null
+        ? formatMoney(c.balanceDue, payment.currency)
+        : c.totalPrice != null
+          ? formatMoney(c.totalPrice, payment.currency)
+          : '';
+    const channel = c.channelName ? prettyChannel(c.channelName) : '';
+    options.push(
+      `<option value="${id}"` +
+        ` title="${esc(fullLabel)}"` +
+        ` data-total-price="${c.totalPrice != null ? Number(c.totalPrice) : ''}"` +
+        ` data-guest="${esc(guest)}"` +
+        ` data-dates="${esc(dates)}"` +
+        ` data-amount-label="${esc(amountLabel)}"` +
+        ` data-channel="${esc(channel)}"` +
+        `${selected ? ' selected' : ''}>${esc(formatReservationOptionShort(c, payment.currency))}</option>`,
+    );
+  };
+
   for (const c of candidates) {
     const id = Number(c.hostawayId);
-    if (!id || seenIds.has(id)) continue;
-    seenIds.add(id);
+    if (!id) continue;
     const selected = preferred
       ? preferred === id
       : reservation?.hostawayId && Number(reservation.hostawayId) === id;
-    options.push(
-      `<option value="${id}" data-total-price="${c.totalPrice != null ? Number(c.totalPrice) : ''}"${selected ? ' selected' : ''}>${esc(formatReservationOption(c, payment.currency))}</option>`,
-    );
+    pushOption(c, selected);
   }
   if (reservation?.hostawayId && !seenIds.has(Number(reservation.hostawayId))) {
     const id = Number(reservation.hostawayId);
     const selected = preferred ? preferred === id : true;
-    options.push(
-      `<option value="${id}" data-total-price="${reservation.totalPrice != null ? Number(reservation.totalPrice) : ''}"${selected ? ' selected' : ''}>${esc(formatReservationOption({
+    pushOption(
+      {
         hostawayId: reservation.hostawayId,
         guestName: reservation.guestName,
         listingName: reservation.listing?.name,
         arrivalDate: reservation.arrivalDate,
         departureDate: reservation.departureDate,
         totalPrice: reservation.totalPrice,
-      }, payment.currency))}</option>`,
+        channelName: reservation.channelName,
+        balanceDue: reservation.balanceDue,
+      },
+      selected,
     );
   }
   return options.join('');
+}
+
+/** Native &lt;select&gt; popups overflow on mobile — custom dropdown with responsive panel. */
+let paymentAssignDropdownBound = false;
+
+function setPaymentAssignDropdownOpen(wrap, open) {
+  if (!wrap) return;
+  const trigger = wrap.querySelector('.payment-assign-trigger');
+  const panel = wrap.querySelector('.payment-assign-panel');
+  wrap.classList.toggle('is-open', open);
+  trigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (panel) panel.hidden = !open;
+}
+
+function closePaymentAssignDropdowns(exceptWrap = null) {
+  document.querySelectorAll('.payment-assign-wrap').forEach((wrap) => {
+    if (wrap === exceptWrap) return;
+    const panel = wrap.querySelector('.payment-assign-panel');
+    if (wrap.classList.contains('is-open') || (panel && !panel.hidden)) {
+      setPaymentAssignDropdownOpen(wrap, false);
+    }
+  });
+}
+
+function bindPaymentAssignDropdownGlobal() {
+  if (paymentAssignDropdownBound) return;
+  paymentAssignDropdownBound = true;
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.payment-assign-wrap')) return;
+    closePaymentAssignDropdowns();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePaymentAssignDropdowns();
+  });
+}
+
+function buildAssignChoiceButton(opt) {
+  const guest = opt.dataset.guest || '';
+  const dates = opt.dataset.dates || '';
+  const amount = opt.dataset.amountLabel || '';
+  const channel = opt.dataset.channel || '';
+  return `
+    <button type="button" class="payment-assign-choice" data-value="${esc(opt.value)}"
+      role="option" title="${esc(opt.title || opt.textContent || '')}">
+      <span class="payment-assign-choice-top">
+        <span class="payment-assign-choice-id">#${esc(opt.value)}</span>
+        ${channel ? `<span class="payment-assign-choice-channel">${esc(channel)}</span>` : ''}
+        ${amount ? `<span class="payment-assign-choice-amount">${esc(amount)}</span>` : ''}
+      </span>
+      ${guest ? `<span class="payment-assign-choice-guest">${esc(guest)}</span>` : ''}
+      ${dates ? `<span class="payment-assign-choice-dates">${esc(dates)}</span>` : ''}
+    </button>`;
+}
+
+function syncAssignDropdown(wrap, select) {
+  const label = wrap.querySelector('.payment-assign-trigger-label');
+  const selectedOpt = select.selectedOptions?.[0];
+  if (label) {
+    label.textContent = selectedOpt?.value
+      ? (selectedOpt.textContent || '').trim()
+      : t('payments.pickReservation');
+  }
+  wrap.querySelectorAll('.payment-assign-choice').forEach((btn) => {
+    const on = btn.dataset.value === select.value;
+    btn.classList.toggle('is-selected', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+function mountAssignChoices(root = document) {
+  bindPaymentAssignDropdownGlobal();
+  const selects = root.querySelectorAll
+    ? root.querySelectorAll('.payment-assign-select')
+    : [];
+  selects.forEach((select) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+
+    let wrap = select.closest('.payment-assign-wrap');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'payment-assign-wrap';
+      select.parentNode?.insertBefore(wrap, select);
+      wrap.appendChild(select);
+    }
+
+    wrap.querySelector('.payment-assign-dropdown')?.remove();
+    select.classList.add('payment-assign-select-hidden');
+    select.removeAttribute('aria-hidden');
+    select.tabIndex = -1;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'payment-assign-dropdown';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'payment-assign-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.innerHTML = `
+      <span class="payment-assign-trigger-label">${esc(t('payments.pickReservation'))}</span>
+      <span class="payment-assign-trigger-caret" aria-hidden="true"></span>
+    `;
+
+    const panel = document.createElement('div');
+    panel.className = 'payment-assign-panel';
+    panel.hidden = true;
+
+    const list = document.createElement('div');
+    list.className = 'payment-assign-choices';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', t('payments.pickReservation'));
+    list.innerHTML = [...select.options]
+      .filter((opt) => opt.value)
+      .map((opt) => buildAssignChoiceButton(opt))
+      .join('');
+
+    panel.appendChild(list);
+    dropdown.appendChild(trigger);
+    dropdown.appendChild(panel);
+    wrap.appendChild(dropdown);
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = wrap.classList.contains('is-open') && !panel.hidden;
+      closePaymentAssignDropdowns();
+      if (!open) setPaymentAssignDropdownOpen(wrap, true);
+    });
+
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.payment-assign-choice');
+      if (!btn) return;
+      select.value = btn.dataset.value;
+      syncAssignDropdown(wrap, select);
+      setPaymentAssignDropdownOpen(wrap, false);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    syncAssignDropdown(wrap, select);
+  });
 }
 
 function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selectedHostawayId, percent) {
@@ -2295,10 +2489,12 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
         <label class="payment-field-label">${t('payments.assignLabel')} ${rowIndex + 1}</label>
         <button type="button" class="btn ghost btn-sm payment-split-remove" data-payment-id="${paymentId}" data-row-index="${rowIndex}" title="${t('payments.splitRemove')}">${t('payments.splitRemove')}</button>
       </div>
+      <div class="payment-assign-wrap">
       <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
         <option value="">${t('payments.pickReservation')}</option>
         ${options}
       </select>
+      </div>
       <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
         list="${listId}" autocomplete="off"
         placeholder="${t('payments.manualReservationId')}"
@@ -2385,6 +2581,7 @@ function initPaymentSplitRows(paymentId, paymentAmount, optionsHtml, rows) {
       applySplitRowPercentage(paymentId, row);
     }
   });
+  mountAssignChoices(container);
   updatePaymentSplitUi(paymentId);
 }
 
@@ -2467,6 +2664,7 @@ function bindPaymentSplitControls(paymentItems) {
           remaining >= 0.01 ? remaining : '',
         ),
       );
+      mountAssignChoices(container);
       updatePaymentSplitUi(paymentId);
       bindReservationSearchInputs();
       bindPaymentHostawayOpeners();
