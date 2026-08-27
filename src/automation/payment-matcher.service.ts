@@ -11,6 +11,7 @@ import {
   PAYMENT_EXCLUDED_RESERVATION_STATUSES,
   PaymentMatchCandidate,
   PaymentMatchResult,
+  isOtaPaymentChannel,
 } from './automation.types';
 
 @Injectable()
@@ -54,8 +55,25 @@ export class PaymentMatcherService {
       .map((reservation) =>
         this.scoreReservation(reservation, payment, referenceText, reservationIdsInReference),
       )
-      .filter((candidate) => candidate.score > 0)
-      .sort((a, b) => b.score - a.score);
+      .filter((candidate) => {
+        if (candidate.score <= 0) return false;
+        // Guest bank/PayPal payments are never assigned to portal-collected stays
+        // (Booking.com, Airbnb, …). Exception: reservation # is in the bank reference.
+        if (
+          isOtaPaymentChannel(candidate.channelName) &&
+          !reservationIdsInReference.includes(candidate.hostawayId)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        // Prefer direct / non-OTA when scores are equal
+        const aOta = isOtaPaymentChannel(a.channelName) ? 1 : 0;
+        const bOta = isOtaPaymentChannel(b.channelName) ? 1 : 0;
+        return aOta - bOta;
+      });
 
     if (candidates.length === 0) {
       return {
@@ -202,7 +220,8 @@ export class PaymentMatcherService {
     const amountMatches =
       reasons.includes('outstanding balance') ||
       reasons.includes('reservation total') ||
-      reasons.includes('deposit share') ||
+      reasons.includes('deposit') ||
+      reasons.includes('installment') ||
       reasons.includes('payment amount aligns');
     if (!amountMatches) {
       const amountLabel = `${payment.amount.toFixed(2)} ${payment.currency}`;
@@ -325,7 +344,7 @@ export class PaymentMatcherService {
       reasons.push('Payment amount aligns with reference');
     }
 
-    const balanceScore = this.scoreBalanceDue(payment.amount, reservation);
+    const balanceScore = this.scoreBalanceDue(payment.amount, reservation, payment);
     if (balanceScore.score > 0) {
       score += balanceScore.score;
       reasons.push(balanceScore.reason);
@@ -394,7 +413,9 @@ export class PaymentMatcherService {
     reservation: {
       totalPrice: number | null;
       notifiedCharges: { amount: number }[];
+      guestName?: string | null;
     },
+    payment?: NormalizedExternalPayment,
   ): { score: number; reason: string } {
     const total = reservation.totalPrice;
     if (!total || total <= 0) return { score: 0, reason: '' };
@@ -417,7 +438,7 @@ export class PaymentMatcherService {
         reason: `Amount equals reservation total (${total.toFixed(2)})`,
       };
     }
-    // Common deposit / installment patterns (30%, 50%, 70%)
+    // Common deposit / installment patterns (30%, 50%, 70%) — tight match
     if (
       this.amountsMatch(amount, total * 0.7) ||
       this.amountsMatch(amount, total * 0.5) ||
@@ -428,7 +449,38 @@ export class PaymentMatcherService {
         reason: 'Amount matches a typical deposit/installment share of the total',
       };
     }
+    // Wider deposit bands (e.g. 475.25 on a 1500 booking ≈ 32%) when the
+    // payer name matches the guest — avoids missing real Anzahlungen that
+    // are not exactly 30/50/70%.
+    const guestMatched =
+      !!payment?.payerName &&
+      !!reservation.guestName &&
+      this.namesMatch(payment.payerName, reservation.guestName);
+    if (guestMatched && this.looksLikeDepositShare(amount, total)) {
+      return {
+        score: 20,
+        reason: 'Amount matches a likely deposit/installment share of the total',
+      };
+    }
+    if (
+      guestMatched &&
+      balanceDue > 0 &&
+      balanceDue < total &&
+      this.looksLikeDepositShare(amount, balanceDue)
+    ) {
+      return {
+        score: 20,
+        reason: 'Amount matches a likely deposit/installment share of the outstanding balance',
+      };
+    }
     return { score: 0, reason: '' };
+  }
+
+  /** True when amount is roughly 20–80% of a total (typical Anzahlung range). */
+  private looksLikeDepositShare(amount: number, total: number): boolean {
+    if (total <= 0 || amount <= 0) return false;
+    const ratio = amount / total;
+    return ratio >= 0.2 && ratio <= 0.8;
   }
 
   /**

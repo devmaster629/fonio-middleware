@@ -71,3 +71,29 @@ export function isInquiryReservationStatus(
     normalized.startsWith('inquiry')
   );
 }
+
+/**
+ * Channels where the base stay is collected by the portal (not via our
+ * Qonto/PayPal guest payments). Excluded from payment match candidates.
+ * Direct / bookingengine / CHECK24-style imports are kept.
+ */
+export function isOtaPaymentChannel(
+  channelName: string | null | undefined,
+): boolean {
+  const c = String(channelName || '').toLowerCase();
+  if (!c) return false;
+  if (c.includes('bookingengine')) return false;
+  return (
+    c.includes('airbnb') ||
+    c.includes('bookingcom') ||
+    c.includes('booking.com') ||
+    c.includes('vrbo') ||
+    c.includes('homeaway') ||
+    c.includes('expedia') ||
+    c.includes('agoda') ||
+    c.includes('hometogo') ||
+    c.includes('home to go') ||
+    c.includes('interhome') ||
+    c.includes('atraveo')
+  );
+}

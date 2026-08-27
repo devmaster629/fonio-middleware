@@ -253,7 +253,8 @@ describe('PaymentMatcherService', () => {
     const payment: NormalizedExternalPayment = {
       source: 'QONTO',
       externalId: 'qonto-name-only',
-      amount: 960.05,
+      // Tiny amount — not a plausible deposit share of 1461.50
+      amount: 55,
       currency: 'EUR',
       occurredAt: new Date(),
       payerName: 'ROBERT UND ELISABETH BRAUN',
@@ -336,7 +337,8 @@ describe('PaymentMatcherService', () => {
     const payment: NormalizedExternalPayment = {
       source: 'QONTO',
       externalId: 'qonto-altmann-partial',
-      amount: 894.13,
+      // Far from a deposit share of 2583 (~3%)
+      amount: 80,
       currency: 'EUR',
       occurredAt: new Date(),
       payerName: 'Tobias Altmann',
@@ -346,6 +348,73 @@ describe('PaymentMatcherService', () => {
 
     const result = await service.match(payment);
     expect(result.decision).toBe('PARTIAL_UNCLEAR');
+  });
+
+  it('excludes Booking.com / Airbnb amount coincidences from suggestions', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-maveo',
+        hostawayId: 64501796,
+        guestName: 'MAVEO GmbH',
+        guestEmail: null,
+        arrivalDate: new Date('2026-12-17'),
+        departureDate: new Date('2026-12-20'),
+        totalPrice: 1500,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Wiesenblick', aliases: [] },
+      },
+      {
+        id: 'res-bcom',
+        hostawayId: 65287790,
+        guestName: 'Wim Verheyen',
+        guestEmail: null,
+        arrivalDate: new Date('2026-08-28'),
+        departureDate: new Date('2026-08-31'),
+        totalPrice: 473.85,
+        channelName: 'bookingcom',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Other', aliases: [] },
+      },
+      {
+        id: 'res-airbnb',
+        hostawayId: 63595295,
+        guestName: 'Britta Ifsen',
+        guestEmail: null,
+        arrivalDate: new Date('2026-07-28'),
+        departureDate: new Date('2026-07-31'),
+        totalPrice: 477.38,
+        channelName: 'airbnbOfficial',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        listing: { name: 'Airbnb stay', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-maveo',
+      amount: 475.25,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'MAVEO GmbH',
+      reference: 'RE-2026-23-128 | MAVEO GmbH | income',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.best?.hostawayId).toBe(64501796);
+    expect(result.candidates.every((c) => c.hostawayId === 64501796)).toBe(true);
+    expect(result.best?.reasons.join(' ')).toMatch(/deposit|installment/i);
+    expect(result.decision).toBe('UNAMBIGUOUS');
   });
 
   it('loads candidate reservations up to 2 years ahead', async () => {
