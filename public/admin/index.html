@@ -266,59 +266,69 @@
       </section>
 
       <section id="tab-payments" class="tab hidden">
-        <header class="page-header">
+        <header class="page-header payments-page-header">
           <h2 data-i18n="payments.title">Payment reconciliation</h2>
         </header>
-        <div class="payment-import-grid" id="payment-import-status">
-          <div class="payment-import-card" id="qonto-status-card">
-            <div class="payment-import-card-top">
-              <div>
-                <div class="payment-import-source">Qonto</div>
-                <div class="payment-import-caption" data-i18n="payments.qontoCaption">Bank transfers</div>
+
+        <nav class="payments-subnav" aria-label="Payments views">
+          <button type="button" class="payments-subnav-btn active" data-payments-view="reconcile" data-i18n="payments.subnavReconcile">Reconciliation</button>
+          <button type="button" class="payments-subnav-btn" data-payments-view="portal" data-i18n="payments.subnavPortalRules">Portal settings</button>
+        </nav>
+
+        <div id="payments-view-reconcile" class="payments-view">
+          <div class="payment-import-grid" id="payment-import-status">
+            <div class="payment-import-card" id="qonto-status-card">
+              <div class="payment-import-card-top">
+                <div>
+                  <div class="payment-import-source">Qonto</div>
+                  <div class="payment-import-caption" data-i18n="payments.qontoCaption">Bank transfers</div>
+                </div>
+                <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import now</button>
               </div>
-              <button type="button" id="qonto-poll-btn" class="btn primary btn-sm" data-i18n="payments.qontoPollBtn">Import now</button>
+              <div class="payment-import-time" id="qonto-status-when">–</div>
+              <div class="payment-import-meta-row">
+                <span id="qonto-status-ago"></span>
+                <span id="qonto-status-line"></span>
+              </div>
+              <div id="qonto-poll-result" class="payment-import-flash"></div>
             </div>
-            <div class="payment-import-time" id="qonto-status-when">–</div>
-            <div class="payment-import-meta-row">
-              <span id="qonto-status-ago"></span>
-              <span id="qonto-status-line"></span>
-            </div>
-            <div id="qonto-poll-result" class="payment-import-flash"></div>
-          </div>
-          <div class="payment-import-card is-paypal" id="paypal-status-card">
-            <div class="payment-import-card-top">
-              <div>
-                <div class="payment-import-source">PayPal</div>
-                <div class="payment-import-caption" data-i18n="payments.paypalCaption">Webhook only</div>
+            <div class="payment-import-card is-paypal" id="paypal-status-card">
+              <div class="payment-import-card-top">
+                <div>
+                  <div class="payment-import-source">PayPal</div>
+                  <div class="payment-import-caption" data-i18n="payments.paypalCaption">Webhook only</div>
+                </div>
+              </div>
+              <div class="payment-import-time" id="paypal-status-when">–</div>
+              <div class="payment-import-meta-row">
+                <span id="paypal-status-ago"></span>
+                <span id="paypal-status-line"></span>
               </div>
             </div>
-            <div class="payment-import-time" id="paypal-status-when">–</div>
-            <div class="payment-import-meta-row">
-              <span id="paypal-status-ago"></span>
-              <span id="paypal-status-line"></span>
-            </div>
           </div>
+
+          <h3 data-i18n="payments.viewQueue">Review queue</h3>
+          <div id="payments-toolbar" class="table-toolbar"></div>
+          <div class="table-wrap" id="payments-table"></div>
+          <div id="payments-info" class="table-info"></div>
+          <div id="payments-pagination" class="table-pagination"></div>
+          <h3 data-i18n="payments.viewHistory">History</h3>
+          <div id="payments-history-toolbar" class="table-toolbar"></div>
+          <div class="table-wrap" id="payments-history-table"></div>
+          <div id="payments-history-info" class="table-info"></div>
+          <div id="payments-history-pagination" class="table-pagination"></div>
         </div>
 
-        <div class="card" id="portal-rules-card">
-          <h3 data-i18n="payments.portalRulesTitle">Portal payment rules</h3>
-          <p class="field-hint" data-i18n="payments.portalRulesHint">
-            Per booking portal: share assumed paid via the portal, when our share is due, and whether to request outstanding amounts via the Hostaway inbox. Fully Paid reservations in Hostaway are never reminded.
-          </p>
-          <div id="portal-rules-list" class="portal-rules-list"></div>
-          <p id="portal-rules-readonly-hint" class="field-hint hidden" data-i18n="payments.portalRulesReadonly">Only users with Payments admin permission can edit these rules.</p>
+        <div id="payments-view-portal" class="payments-view hidden">
+          <div class="card" id="portal-rules-card">
+            <h3 data-i18n="payments.portalRulesTitle">Portal payment rules</h3>
+            <p class="field-hint" data-i18n="payments.portalRulesHint">
+              Per booking portal: share assumed paid via the portal, when our share is due, and whether to request outstanding amounts via the Hostaway inbox. Fully Paid reservations in Hostaway are never reminded.
+            </p>
+            <div id="portal-rules-list" class="portal-rules-list"></div>
+            <p id="portal-rules-readonly-hint" class="field-hint hidden" data-i18n="payments.portalRulesReadonly">Only users with Payments admin permission can edit these rules.</p>
+          </div>
         </div>
-
-        <h3 data-i18n="payments.viewQueue">Review queue</h3>
-        <div id="payments-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="payments-table"></div>
-        <div id="payments-info" class="table-info"></div>
-        <div id="payments-pagination" class="table-pagination"></div>
-        <h3 data-i18n="payments.viewHistory">History</h3>
-        <div id="payments-history-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="payments-history-table"></div>
-        <div id="payments-history-info" class="table-info"></div>
-        <div id="payments-history-pagination" class="table-pagination"></div>
       </section>
 
       <section id="tab-logs" class="tab hidden">

@@ -10,6 +10,7 @@ try {
   adminPermissions = [];
 }
 let activeTab = 'dashboard';
+let paymentsView = 'reconcile';
 let cachedRules = [];
 let cachedListings = [];
 let cachedConditionSchema = null;
@@ -804,6 +805,12 @@ initMobileNav();
 $$('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     activateTab(btn.dataset.tab);
+  });
+});
+
+$$('.payments-subnav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    activatePaymentsView(btn.dataset.paymentsView);
   });
 });
 
@@ -2165,6 +2172,40 @@ $('#qonto-poll-btn')?.addEventListener('click', async () => {
   }
 });
 
+function activatePaymentsView(view) {
+  const next = view === 'portal' ? 'portal' : 'reconcile';
+  paymentsView = next;
+  $$('.payments-subnav-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.paymentsView === next);
+  });
+  $('#payments-view-reconcile')?.classList.toggle('hidden', next !== 'reconcile');
+  $('#payments-view-portal')?.classList.toggle('hidden', next !== 'portal');
+  if (activeTab === 'payments') {
+    try {
+      const url = new URL(window.location.href);
+      if (next === 'reconcile') url.searchParams.delete('paymentsView');
+      else url.searchParams.set('paymentsView', next);
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      /* ignore */
+    }
+    if (next === 'portal') {
+      loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
+    } else {
+      loadPaymentsReconcile();
+    }
+  }
+}
+
+function applyPaymentsViewFromUrl() {
+  try {
+    const view = new URLSearchParams(window.location.search).get('paymentsView');
+    activatePaymentsView(view === 'portal' ? 'portal' : 'reconcile');
+  } catch {
+    activatePaymentsView('reconcile');
+  }
+}
+
 function activateTab(tab) {
   if (!tab) return;
   const btn = $(`.nav-btn[data-tab="${tab}"]`);
@@ -2178,10 +2219,12 @@ function activateTab(tab) {
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
+    if (tab !== 'payments') url.searchParams.delete('paymentsView');
     window.history.replaceState({}, '', url.toString());
   } catch {
     /* ignore */
   }
+  if (tab === 'payments') applyPaymentsViewFromUrl();
   refreshActiveTab();
 }
 
@@ -2508,10 +2551,16 @@ function bindPaymentSplitControls(paymentItems) {
 }
 
 async function loadPayments() {
+  if (paymentsView === 'portal') {
+    return loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
+  }
+  return loadPaymentsReconcile();
+}
+
+async function loadPaymentsReconcile() {
   loadPaymentsHistory();
   loadQontoStatus();
   loadPaypalStatus();
-  loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
@@ -2687,12 +2736,13 @@ async function loadPortalPaymentRules() {
       const overdue =
         rule.overdueGraceDays == null ? '' : String(rule.overdueGraceDays);
       return `
-      <form class="portal-rule-form card-inset" data-portal-key="${esc(rule.portalKey)}">
-        <div class="portal-rule-head">
-          <strong>${esc(rule.displayName)}</strong>
-          <span class="muted">${esc(rule.portalKey)}${rule.isFallback ? ` · ${t('payments.portalFallback')}` : ''}</span>
-        </div>
-        <div class="portal-rule-grid">
+      <details class="portal-rule-details">
+        <summary class="portal-rule-summary">
+          <span class="portal-rule-summary-title">${esc(rule.displayName)}</span>
+          <span class="portal-rule-summary-meta">${esc(rule.portalKey)}${rule.isFallback ? ` · ${t('payments.portalFallback')}` : ''}</span>
+        </summary>
+      <form class="portal-rule-form" data-portal-key="${esc(rule.portalKey)}">
+        <div class="portal-rule-toggles">
           <label class="checkbox-row">
             <input type="checkbox" name="enabled" ${rule.enabled ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
             <span>${t('payments.portalEnabled')}</span>
@@ -2705,6 +2755,8 @@ async function loadPortalPaymentRules() {
             <input type="checkbox" name="autoRequestInbox" ${rule.autoRequestInbox ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
             <span>${t('payments.portalAutoInbox')}</span>
           </label>
+        </div>
+        <div class="portal-rule-grid">
           <label>
             <span>${t('payments.portalAssumed')}</span>
             <input type="number" name="portalAssumedPaidPercent" min="0" max="100" value="${Number(rule.portalAssumedPaidPercent) || 0}" ${canEdit ? '' : 'disabled'} />
@@ -2731,7 +2783,8 @@ async function loadPortalPaymentRules() {
           </label>
         </div>
         ${canEdit ? `<div class="form-actions"><button type="submit" class="btn primary btn-sm">${t('payments.portalSave')}</button></div>` : ''}
-      </form>`;
+      </form>
+      </details>`;
     })
     .join('');
 
