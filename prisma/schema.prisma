@@ -259,6 +259,19 @@ model Reservation {
   unpaidReminderSentAt DateTime?
   /// When we posted an automatic outstanding-payment request to the Hostaway inbox.
   paymentRequestSentAt DateTime?
+  /// Hostaway reservation created/booked time (insertedOn), for deposit deadlines.
+  bookedAt               DateTime?
+  /// When we sent the guest a payment request (channel message + due charge).
+  guestPaymentRequestSentAt DateTime?
+  /// Second guest reminder before auto-cancel or overdue deposit.
+  guestPaymentReminderSentAt DateTime?
+  /// Payment deadline for the current guest payment phase.
+  paymentDeadlineAt      DateTime?
+  /// Hostaway guest charge id for the outstanding payment request.
+  pendingPaymentChargeId Int?
+  /// Current automation phase: deposit | balance | full
+  paymentPhase           String?
+  autoCanceledAt         DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]
@@ -475,6 +488,19 @@ model PortalPaymentRule {
   overdueGraceDays                   Int?
   /// Post an automatic payment request to the Hostaway inbox when host share becomes due.
   autoRequestInbox                   Boolean  @default(false)
+  /// Deposit share due within N days of booking (direct bookings).
+  depositDuePercent                  Int?
+  depositDueDaysAfterBooking         Int?
+  /// Send guest payment request immediately after import (e.g. CHECK24).
+  autoRequestOnImport                Boolean  @default(false)
+  /// Days after first guest payment request until deadline / auto-cancel.
+  paymentDeadlineDays                Int?
+  /// Send guest a channel message with guest-portal payment link.
+  autoSendGuestPaymentLink           Boolean  @default(false)
+  /// Send guest reminder this many days before paymentDeadlineAt.
+  guestReminderDaysBeforeDeadline    Int?
+  /// Cancel reservation in Hostaway if still unpaid after deadline (+ reminder).
+  autoCancelIfUnpaid                 Boolean  @default(false)
   /// Never send the office unpaid reminder for this portal (e.g. Airbnb, HomeToGo).
   skipUnpaidReminder                 Boolean  @default(false)
   sortOrder                          Int      @default(0)

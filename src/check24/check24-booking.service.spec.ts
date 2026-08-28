@@ -26,6 +26,9 @@ describe('Check24BookingService cancellations', () => {
   const hostawaySync = {
     syncSingleReservation: jest.fn(),
   };
+  const guestPayments = {
+    requestPaymentOnImport: jest.fn().mockResolvedValue({ ok: false }),
+  };
 
   const service = new Check24BookingService(
     prisma as never,
@@ -33,6 +36,7 @@ describe('Check24BookingService cancellations', () => {
     check24 as never,
     hostaway as never,
     hostawaySync as never,
+    guestPayments as never,
   );
 
   const canceledBooking: Check24Booking = {

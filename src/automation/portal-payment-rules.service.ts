@@ -19,6 +19,13 @@ export type PortalPaymentRuleUpdate = {
   overdueGraceDays?: number | null;
   autoRequestInbox?: boolean;
   skipUnpaidReminder?: boolean;
+  depositDuePercent?: number | null;
+  depositDueDaysAfterBooking?: number | null;
+  autoRequestOnImport?: boolean;
+  paymentDeadlineDays?: number | null;
+  autoSendGuestPaymentLink?: boolean;
+  guestReminderDaysBeforeDeadline?: number | null;
+  autoCancelIfUnpaid?: boolean;
   sortOrder?: number;
 };
 
@@ -56,6 +63,13 @@ export class PortalPaymentRulesService {
         overdueGraceDays: rule.overdueGraceDays,
         autoRequestInbox: rule.autoRequestInbox,
         skipUnpaidReminder: rule.skipUnpaidReminder,
+        depositDuePercent: rule.depositDuePercent,
+        depositDueDaysAfterBooking: rule.depositDueDaysAfterBooking,
+        autoRequestOnImport: rule.autoRequestOnImport,
+        paymentDeadlineDays: rule.paymentDeadlineDays,
+        autoSendGuestPaymentLink: rule.autoSendGuestPaymentLink,
+        guestReminderDaysBeforeDeadline: rule.guestReminderDaysBeforeDeadline,
+        autoCancelIfUnpaid: rule.autoCancelIfUnpaid,
         sortOrder: rule.sortOrder,
       })),
     });
@@ -133,6 +147,31 @@ export class PortalPaymentRulesService {
     }
     if (data.skipUnpaidReminder !== undefined) {
       patch.skipUnpaidReminder = data.skipUnpaidReminder;
+    }
+    if (data.depositDuePercent !== undefined) {
+      patch.depositDuePercent =
+        data.depositDuePercent == null
+          ? null
+          : clampPercent(data.depositDuePercent);
+    }
+    if (data.depositDueDaysAfterBooking !== undefined) {
+      patch.depositDueDaysAfterBooking = data.depositDueDaysAfterBooking;
+    }
+    if (data.autoRequestOnImport !== undefined) {
+      patch.autoRequestOnImport = data.autoRequestOnImport;
+    }
+    if (data.paymentDeadlineDays !== undefined) {
+      patch.paymentDeadlineDays = data.paymentDeadlineDays;
+    }
+    if (data.autoSendGuestPaymentLink !== undefined) {
+      patch.autoSendGuestPaymentLink = data.autoSendGuestPaymentLink;
+    }
+    if (data.guestReminderDaysBeforeDeadline !== undefined) {
+      patch.guestReminderDaysBeforeDeadline =
+        data.guestReminderDaysBeforeDeadline;
+    }
+    if (data.autoCancelIfUnpaid !== undefined) {
+      patch.autoCancelIfUnpaid = data.autoCancelIfUnpaid;
     }
     if (data.sortOrder !== undefined) patch.sortOrder = data.sortOrder;
 

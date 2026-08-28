@@ -76,6 +76,23 @@ export class PaymentAdminController {
         dto.overdueGraceDays === undefined ? undefined : dto.overdueGraceDays,
       autoRequestInbox: dto.autoRequestInbox,
       skipUnpaidReminder: dto.skipUnpaidReminder,
+      depositDuePercent:
+        dto.depositDuePercent === undefined ? undefined : dto.depositDuePercent,
+      depositDueDaysAfterBooking:
+        dto.depositDueDaysAfterBooking === undefined
+          ? undefined
+          : dto.depositDueDaysAfterBooking,
+      autoRequestOnImport: dto.autoRequestOnImport,
+      paymentDeadlineDays:
+        dto.paymentDeadlineDays === undefined
+          ? undefined
+          : dto.paymentDeadlineDays,
+      autoSendGuestPaymentLink: dto.autoSendGuestPaymentLink,
+      guestReminderDaysBeforeDeadline:
+        dto.guestReminderDaysBeforeDeadline === undefined
+          ? undefined
+          : dto.guestReminderDaysBeforeDeadline,
+      autoCancelIfUnpaid: dto.autoCancelIfUnpaid,
       sortOrder: dto.sortOrder,
     });
   }

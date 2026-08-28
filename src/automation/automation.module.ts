@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { HostawayModule } from '../hostaway/hostaway.module';
+import { GuestPaymentAutomationService } from './guest-payment-automation.service';
+import { GuestPaymentDeadlineScheduler } from './guest-payment-deadline.scheduler';
 import { PaymentAdminController } from './payment-admin.controller';
 import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
@@ -26,6 +28,8 @@ import { PayPalClient } from './paypal.client';
     PaymentApplyService,
     PaymentReviewReminderScheduler,
     PaymentUnpaidReminderScheduler,
+    GuestPaymentAutomationService,
+    GuestPaymentDeadlineScheduler,
     PortalPaymentRulesService,
     QontoClient,
     QontoPollService,
@@ -39,6 +43,7 @@ import { PayPalClient } from './paypal.client';
     PaymentMatcherService,
     PaymentAlertService,
     PaymentApplyService,
+    GuestPaymentAutomationService,
     PortalPaymentRulesService,
     QontoPollService,
     PayPalClient,

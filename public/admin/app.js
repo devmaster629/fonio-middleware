@@ -2933,6 +2933,18 @@ async function loadPortalPaymentRules() {
           : String(rule.hostDueByDaysBeforeArrival);
       const overdue =
         rule.overdueGraceDays == null ? '' : String(rule.overdueGraceDays);
+      const depositPct =
+        rule.depositDuePercent == null ? '' : String(rule.depositDuePercent);
+      const depositDays =
+        rule.depositDueDaysAfterBooking == null
+          ? ''
+          : String(rule.depositDueDaysAfterBooking);
+      const paymentDeadline =
+        rule.paymentDeadlineDays == null ? '' : String(rule.paymentDeadlineDays);
+      const guestReminder =
+        rule.guestReminderDaysBeforeDeadline == null
+          ? ''
+          : String(rule.guestReminderDaysBeforeDeadline);
       return `
       <details class="portal-rule-details">
         <summary class="portal-rule-summary">
@@ -2953,11 +2965,31 @@ async function loadPortalPaymentRules() {
             <input type="checkbox" name="autoRequestInbox" ${rule.autoRequestInbox ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
             <span>${t('payments.portalAutoInbox')}</span>
           </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="autoRequestOnImport" ${rule.autoRequestOnImport ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalAutoImport')}</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="autoSendGuestPaymentLink" ${rule.autoSendGuestPaymentLink ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalGuestPayLink')}</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="autoCancelIfUnpaid" ${rule.autoCancelIfUnpaid ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
+            <span>${t('payments.portalAutoCancel')}</span>
+          </label>
         </div>
         <div class="portal-rule-grid">
           <label>
             <span>${t('payments.portalAssumed')}</span>
             <input type="number" name="portalAssumedPaidPercent" min="0" max="100" value="${Number(rule.portalAssumedPaidPercent) || 0}" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalDepositPercent')}</span>
+            <input type="number" name="depositDuePercent" min="0" max="100" value="${esc(depositPct)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalDepositDays')}</span>
+            <input type="number" name="depositDueDaysAfterBooking" min="0" max="365" value="${esc(depositDays)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
           </label>
           <label>
             <span>${t('payments.portalHostDue')}</span>
@@ -2974,6 +3006,14 @@ async function loadPortalPaymentRules() {
           <label>
             <span>${t('payments.portalOverdueGrace')}</span>
             <input type="number" name="overdueGraceDays" min="0" max="90" value="${esc(overdue)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalPaymentDeadline')}</span>
+            <input type="number" name="paymentDeadlineDays" min="0" max="365" value="${esc(paymentDeadline)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalGuestReminder')}</span>
+            <input type="number" name="guestReminderDaysBeforeDeadline" min="0" max="90" value="${esc(guestReminder)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
           </label>
           <label class="portal-rule-matchers">
             <span>${t('payments.portalMatchers')}</span>
@@ -3005,8 +3045,18 @@ async function loadPortalPaymentRules() {
           form.querySelector('[name="skipUnpaidReminder"]')?.checked === true,
         autoRequestInbox:
           form.querySelector('[name="autoRequestInbox"]')?.checked === true,
+        autoRequestOnImport:
+          form.querySelector('[name="autoRequestOnImport"]')?.checked === true,
+        autoSendGuestPaymentLink:
+          form.querySelector('[name="autoSendGuestPaymentLink"]')?.checked === true,
+        autoCancelIfUnpaid:
+          form.querySelector('[name="autoCancelIfUnpaid"]')?.checked === true,
         portalAssumedPaidPercent: Number(fd.get('portalAssumedPaidPercent')) || 0,
         hostDuePercent: Number(fd.get('hostDuePercent')) || 0,
+        depositDuePercent: optionalInt('depositDuePercent'),
+        depositDueDaysAfterBooking: optionalInt('depositDueDaysAfterBooking'),
+        paymentDeadlineDays: optionalInt('paymentDeadlineDays'),
+        guestReminderDaysBeforeDeadline: optionalInt('guestReminderDaysBeforeDeadline'),
         treatAsPaidUntilDaysBeforeArrival: optionalInt(
           'treatAsPaidUntilDaysBeforeArrival',
         ),

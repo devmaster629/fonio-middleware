@@ -249,4 +249,61 @@ export class HostawayMessagingService {
     );
     return messageId;
   }
+
+  async sendGuestPaymentRequestToGuest(params: {
+    conversationId: number;
+    amount: number;
+    currency?: string;
+    guestPortalUrl: string;
+    deadlineAt?: Date | null;
+    isReminder?: boolean;
+    phaseLabel?: string;
+  }): Promise<number> {
+    const currency = params.currency ?? 'EUR';
+    const amountLabel = new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency,
+    }).format(params.amount);
+    const deadlineLabel = params.deadlineAt
+      ? new Intl.DateTimeFormat('de-DE', {
+          timeZone: 'Europe/Berlin',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }).format(params.deadlineAt)
+      : null;
+    const phase = params.phaseLabel ? `${params.phaseLabel}: ` : '';
+    const lines = params.isReminder
+      ? [
+          'Erinnerung an Ihre ausstehende Zahlung',
+          '',
+          `${phase}Der offene Betrag von ${amountLabel} ist noch nicht bei uns eingegangen.`,
+        ]
+      : [
+          'Zahlungsaufforderung für Ihre Buchung',
+          '',
+          `${phase}Bitte begleichen Sie den offenen Betrag von ${amountLabel}.`,
+        ];
+    if (deadlineLabel) {
+      lines.push(`Zahlungsfrist: ${deadlineLabel}`);
+    }
+    lines.push(
+      '',
+      'Sie können bequem online über unser Gästeportal bezahlen:',
+      params.guestPortalUrl,
+      '',
+      'Bei Fragen melden Sie sich gerne.',
+    );
+
+    const messageId = await this.hostaway.sendConversationMessage(
+      params.conversationId,
+      lines.join('\n'),
+      'channel',
+    );
+
+    this.logger.log(
+      `Posted guest payment ${params.isReminder ? 'reminder' : 'request'} to conversation ${params.conversationId} (message ${messageId})`,
+    );
+    return messageId;
+  }
 }

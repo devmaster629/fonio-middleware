@@ -100,6 +100,9 @@ export interface HostawayReservation {
   hostNote?: string | null;
   guestNote?: string | null;
   comment?: string | null;
+  guestPortalUrl?: string | null;
+  insertedOn?: string | null;
+  remainingBalance?: number | null;
 }
 
 export interface HostawayConversation {
@@ -177,4 +180,5 @@ export interface HostawayGuestCharge {
   paymentMethod?: string;
   chargeDate?: string | null;
   scheduledDate?: string | null;
+  paymentLink?: string | null;
 }

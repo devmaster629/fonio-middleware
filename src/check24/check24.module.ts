@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { AutomationModule } from '../automation/automation.module';
 import { HostawayModule } from '../hostaway/hostaway.module';
 import { LoggingModule } from '../logging/logging.module';
 import { Check24AdminController } from './check24-admin.controller';
@@ -13,7 +14,7 @@ import { Check24SyncService } from './check24-sync.service';
 import { Check24WebhookController } from './check24-webhook.controller';
 
 @Module({
-  imports: [HostawayModule, LoggingModule],
+  imports: [HostawayModule, LoggingModule, forwardRef(() => AutomationModule)],
   controllers: [Check24AdminController, Check24WebhookController],
   providers: [
     Check24Client,

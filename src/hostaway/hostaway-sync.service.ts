@@ -470,6 +470,9 @@ export class HostawaySyncService implements OnModuleInit {
       guestNote: remote.guestNote?.trim() || null,
       comment: remote.comment?.trim() || null,
       lastSyncedAt: new Date(),
+      ...(remote.insertedOn
+        ? { bookedAt: new Date(remote.insertedOn) }
+        : {}),
     };
 
     return {

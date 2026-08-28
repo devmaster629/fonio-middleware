@@ -80,6 +80,50 @@ export class UpdatePortalPaymentRuleDto {
   skipUnpaidReminder?: boolean;
 
   @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  depositDuePercent?: number | null;
+
+  @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  depositDueDaysAfterBooking?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  autoRequestOnImport?: boolean;
+
+  @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  paymentDeadlineDays?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  autoSendGuestPaymentLink?: boolean;
+
+  @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  guestReminderDaysBeforeDeadline?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  autoCancelIfUnpaid?: boolean;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)

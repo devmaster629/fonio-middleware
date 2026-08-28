@@ -296,6 +296,22 @@ export class HostawayClient {
     return data.result ?? [];
   }
 
+  async createDueCharge(
+    reservationId: number,
+    payload: {
+      title: string;
+      description?: string;
+      amount: number;
+      scheduledDate?: string;
+    },
+  ): Promise<HostawayGuestCharge> {
+    return this.createOfflineCharge(reservationId, {
+      ...payload,
+      paymentMethod: 'credit_card',
+      status: 'awaiting',
+    });
+  }
+
   async cancelReservation(reservationId: number): Promise<HostawayReservation> {
     return this.updateReservation(reservationId, { status: 'cancelled' });
   }
@@ -316,7 +332,7 @@ export class HostawayClient {
       description?: string;
       amount: number;
       paymentMethod: string;
-      status: 'paid' | 'due';
+      status: 'paid' | 'awaiting';
       scheduledDate?: string;
     },
   ): Promise<HostawayGuestCharge> {

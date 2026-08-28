@@ -11,6 +11,13 @@ export type PortalPaymentRuleLike = {
   overdueGraceDays: number | null;
   autoRequestInbox: boolean;
   skipUnpaidReminder: boolean;
+  depositDuePercent: number | null;
+  depositDueDaysAfterBooking: number | null;
+  autoRequestOnImport: boolean;
+  paymentDeadlineDays: number | null;
+  autoSendGuestPaymentLink: boolean;
+  guestReminderDaysBeforeDeadline: number | null;
+  autoCancelIfUnpaid: boolean;
 };
 
 export type PortalBalanceEvaluation = {
@@ -225,6 +232,19 @@ function clampPercent(n: number): number {
   return Math.min(100, Math.max(0, Math.round(n)));
 }
 
+function automationDefaults(overrides: Partial<PortalPaymentRuleLike> = {}) {
+  return {
+    depositDuePercent: null as number | null,
+    depositDueDaysAfterBooking: null as number | null,
+    autoRequestOnImport: false,
+    paymentDeadlineDays: null as number | null,
+    autoSendGuestPaymentLink: false,
+    guestReminderDaysBeforeDeadline: null as number | null,
+    autoCancelIfUnpaid: false,
+    ...overrides,
+  };
+}
+
 export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
   Omit<PortalPaymentRuleLike, 'channelMatchersJson'> & {
     channelMatchers: string[];
@@ -244,6 +264,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 10,
   },
   {
@@ -259,6 +280,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 20,
   },
   {
@@ -274,6 +296,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 30,
   },
   {
@@ -289,6 +312,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 40,
   },
   {
@@ -304,6 +328,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 50,
   },
   {
@@ -319,6 +344,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: true,
+    ...automationDefaults(),
     sortOrder: 60,
   },
   {
@@ -334,6 +360,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: false,
+    ...automationDefaults(),
     sortOrder: 70,
   },
   {
@@ -349,6 +376,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: false,
+    ...automationDefaults(),
     sortOrder: 80,
   },
   {
@@ -364,6 +392,7 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: 7,
     autoRequestInbox: true,
     skipUnpaidReminder: false,
+    ...automationDefaults(),
     sortOrder: 90,
   },
   {
@@ -379,6 +408,13 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: false,
+    ...automationDefaults({
+      autoRequestOnImport: true,
+      autoSendGuestPaymentLink: true,
+      paymentDeadlineDays: 7,
+      guestReminderDaysBeforeDeadline: 2,
+      autoCancelIfUnpaid: true,
+    }),
     sortOrder: 95,
   },
   {
@@ -389,11 +425,16 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     enabled: true,
     portalAssumedPaidPercent: 0,
     treatAsPaidUntilDaysBeforeArrival: null,
-    hostDuePercent: 100,
+    hostDuePercent: 70,
     hostDueByDaysBeforeArrival: 28,
     overdueGraceDays: null,
     autoRequestInbox: false,
     skipUnpaidReminder: false,
+    ...automationDefaults({
+      depositDuePercent: 30,
+      depositDueDaysAfterBooking: 7,
+      autoSendGuestPaymentLink: true,
+    }),
     sortOrder: 100,
   },
 ];

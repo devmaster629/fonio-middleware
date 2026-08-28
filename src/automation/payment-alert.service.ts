@@ -359,6 +359,27 @@ export class PaymentAlertService {
       });
       if (!rule) continue;
 
+      // Always refresh Hostaway Fully Paid before evaluating outstanding balance.
+      try {
+        const remote = await this.hostaway.getReservation(reservation.hostawayId);
+        const remotePaid = remote.isPaid === true || remote.isPaid === 1;
+        if (remotePaid !== (reservation.isPaid === true)) {
+          await this.prisma.reservation.update({
+            where: { id: reservation.id },
+            data: { isPaid: remotePaid },
+          });
+        }
+        isPaid = remotePaid;
+      } catch (err) {
+        this.logger.warn(
+          `Could not refresh isPaid for reservation ${reservation.hostawayId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+
+      if (isPaid) continue;
+
       // Cheap pre-check before hitting Hostaway for isPaid
       const preliminary = evaluatePortalBalance({
         totalPrice: total,
@@ -369,36 +390,7 @@ export class PaymentAlertService {
       });
       const mayAct =
         preliminary.shouldOfficeRemind || preliminary.shouldRequestInbox;
-      if (!mayAct && isPaid) continue;
-      if (
-        !isPaid &&
-        mayAct &&
-        (reservation.unpaidReminderSentAt == null ||
-          reservation.paymentRequestSentAt == null)
-      ) {
-        try {
-          const remote = await this.hostaway.getReservation(
-            reservation.hostawayId,
-          );
-          const remotePaid =
-            remote.isPaid === true || remote.isPaid === 1;
-          if (remotePaid !== (reservation.isPaid === true)) {
-            await this.prisma.reservation.update({
-              where: { id: reservation.id },
-              data: { isPaid: remotePaid },
-            });
-          }
-          isPaid = remotePaid;
-        } catch (err) {
-          this.logger.warn(
-            `Could not refresh isPaid for reservation ${reservation.hostawayId}: ${
-              err instanceof Error ? err.message : err
-            }`,
-          );
-        }
-      }
-
-      if (isPaid) continue;
+      if (!mayAct) continue;
 
       const evaluation = evaluatePortalBalance({
         totalPrice: total,

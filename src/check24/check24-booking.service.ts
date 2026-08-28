@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,6 +17,7 @@ export class Check24BookingService {
     private readonly check24: Check24Client,
     private readonly hostaway: HostawayClient,
     private readonly hostawaySync: HostawaySyncService,
+    private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
   async handleWebhookNotification(notification: Check24WebhookNotification) {
@@ -146,6 +148,25 @@ export class Check24BookingService {
         }`,
       );
     });
+
+    const paymentResult = await this.guestPayments
+      .requestPaymentOnImport(created.id, {
+        hostNote: String(payload.hostNote ?? ''),
+        guestEmail: guest.email?.trim() || undefined,
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `CHECK24 payment request failed for Hostaway ${created.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+        return { ok: false, reason: 'error' };
+      });
+    if (paymentResult.ok) {
+      this.logger.log(
+        `CHECK24 guest payment request sent for Hostaway ${created.id}`,
+      );
+    }
 
     await this.prisma.check24Booking.update({
       where: { check24BookingId: booking.bookingId },
