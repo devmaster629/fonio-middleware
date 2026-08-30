@@ -90,10 +90,6 @@ export function isOtaPaymentChannel(
     c.includes('vrbo') ||
     c.includes('homeaway') ||
     c.includes('expedia') ||
-    c.includes('agoda') ||
-    c.includes('hometogo') ||
-    c.includes('home to go') ||
-    c.includes('interhome') ||
-    c.includes('atraveo')
+    c.includes('agoda')
   );
 }

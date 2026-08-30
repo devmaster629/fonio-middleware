@@ -2931,6 +2931,14 @@ async function loadPortalPaymentRules() {
         rule.hostDueByDaysBeforeArrival == null
           ? ''
           : String(rule.hostDueByDaysBeforeArrival);
+      const unverifiedAfter =
+        rule.treatAsPaidUntilDaysAfterDeparture == null
+          ? ''
+          : String(rule.treatAsPaidUntilDaysAfterDeparture);
+      const dueByAfter =
+        rule.hostDueByDaysAfterDeparture == null
+          ? ''
+          : String(rule.hostDueByDaysAfterDeparture);
       const overdue =
         rule.overdueGraceDays == null ? '' : String(rule.overdueGraceDays);
       const depositPct =
@@ -3000,8 +3008,16 @@ async function loadPortalPaymentRules() {
             <input type="number" name="treatAsPaidUntilDaysBeforeArrival" min="0" max="365" value="${esc(unverified)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
           </label>
           <label>
+            <span>${t('payments.portalUnverifiedAfterCheckout')}</span>
+            <input type="number" name="treatAsPaidUntilDaysAfterDeparture" min="0" max="365" value="${esc(unverifiedAfter)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
             <span>${t('payments.portalHostDueBy')}</span>
             <input type="number" name="hostDueByDaysBeforeArrival" min="0" max="365" value="${esc(dueBy)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
+          </label>
+          <label>
+            <span>${t('payments.portalHostDueByAfterCheckout')}</span>
+            <input type="number" name="hostDueByDaysAfterDeparture" min="0" max="365" value="${esc(dueByAfter)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
           </label>
           <label>
             <span>${t('payments.portalOverdueGrace')}</span>
@@ -3060,7 +3076,11 @@ async function loadPortalPaymentRules() {
         treatAsPaidUntilDaysBeforeArrival: optionalInt(
           'treatAsPaidUntilDaysBeforeArrival',
         ),
+        treatAsPaidUntilDaysAfterDeparture: optionalInt(
+          'treatAsPaidUntilDaysAfterDeparture',
+        ),
         hostDueByDaysBeforeArrival: optionalInt('hostDueByDaysBeforeArrival'),
+        hostDueByDaysAfterDeparture: optionalInt('hostDueByDaysAfterDeparture'),
         overdueGraceDays: optionalInt('overdueGraceDays'),
         channelMatchers: matchersRaw
           .split(',')

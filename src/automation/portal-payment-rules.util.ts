@@ -6,8 +6,10 @@ export type PortalPaymentRuleLike = {
   enabled: boolean;
   portalAssumedPaidPercent: number;
   treatAsPaidUntilDaysBeforeArrival: number | null;
+  treatAsPaidUntilDaysAfterDeparture: number | null;
   hostDuePercent: number;
   hostDueByDaysBeforeArrival: number | null;
+  hostDueByDaysAfterDeparture: number | null;
   overdueGraceDays: number | null;
   autoRequestInbox: boolean;
   skipUnpaidReminder: boolean;
@@ -82,17 +84,20 @@ function roundMoney(n: number): number {
 /**
  * Decide how much is still outstanding for a reservation under a portal rule.
  * `daysUntilArrival` uses the Berlin calendar day difference (arrival − today).
+ * `daysSinceDeparture` uses Berlin calendar days since departure (today − departure); negative while guest is still in stay.
  */
 export function evaluatePortalBalance(params: {
   totalPrice: number;
   matchedPaid: number;
   isPaid?: boolean | null;
   daysUntilArrival: number;
+  daysSinceDeparture?: number;
   rule: PortalPaymentRuleLike;
 }): PortalBalanceEvaluation {
   const total = Number(params.totalPrice) || 0;
   const matchedPaid = Number(params.matchedPaid) || 0;
   const days = params.daysUntilArrival;
+  const daysSinceDeparture = params.daysSinceDeparture ?? -1;
   const rule = params.rule;
 
   const base = {
@@ -124,6 +129,91 @@ export function evaluatePortalBalance(params: {
       shouldOfficeRemind: false,
       shouldRequestInbox: false,
       reason: 'no_total',
+    };
+  }
+
+  // HomeToGo-style: portal payout verified after guest checkout
+  if (rule.treatAsPaidUntilDaysAfterDeparture != null) {
+    const assumedPortalPaid = roundMoney(
+      (total * clampPercent(rule.portalAssumedPaidPercent)) / 100,
+    );
+    const hostRequired = roundMoney(
+      (total * clampPercent(rule.hostDuePercent || 100)) / 100,
+    );
+
+    if (daysSinceDeparture < 0) {
+      return {
+        ...base,
+        outstanding: 0,
+        hostRequired,
+        assumedPortalPaid,
+        paidUnverified: true,
+        shouldOfficeRemind: false,
+        shouldRequestInbox: false,
+        reason: 'payout_unverified_before_checkout',
+      };
+    }
+
+    if (daysSinceDeparture <= rule.treatAsPaidUntilDaysAfterDeparture) {
+      return {
+        ...base,
+        outstanding: 0,
+        hostRequired,
+        assumedPortalPaid,
+        paidUnverified: true,
+        shouldOfficeRemind: false,
+        shouldRequestInbox: false,
+        reason: 'payout_unverified_after_checkout',
+      };
+    }
+
+    const outstanding = roundMoney(hostRequired - matchedPaid);
+    if (outstanding <= 1) {
+      return {
+        ...base,
+        outstanding: 0,
+        hostRequired,
+        assumedPortalPaid,
+        paidUnverified: false,
+        shouldOfficeRemind: false,
+        shouldRequestInbox: false,
+        reason: 'payout_received',
+      };
+    }
+
+    if (rule.skipUnpaidReminder) {
+      return {
+        ...base,
+        outstanding,
+        hostRequired,
+        assumedPortalPaid,
+        paidUnverified: false,
+        shouldOfficeRemind: false,
+        shouldRequestInbox: false,
+        reason: 'portal_skip_reminder',
+      };
+    }
+
+    const dueByAfter = rule.hostDueByDaysAfterDeparture;
+    let shouldOfficeRemind = false;
+    let reason = 'payout_awaiting_after_checkout';
+    if (dueByAfter != null && daysSinceDeparture > dueByAfter) {
+      shouldOfficeRemind = true;
+      reason = 'payout_overdue_after_checkout';
+    } else if (dueByAfter == null) {
+      shouldOfficeRemind = true;
+      reason = 'payout_due_after_checkout';
+    }
+
+    return {
+      ...base,
+      outstanding,
+      hostRequired,
+      assumedPortalPaid,
+      paidUnverified: false,
+      shouldOfficeRemind,
+      shouldRequestInbox: false,
+      reason,
     };
   }
 
@@ -234,6 +324,8 @@ function clampPercent(n: number): number {
 
 function automationDefaults(overrides: Partial<PortalPaymentRuleLike> = {}) {
   return {
+    treatAsPaidUntilDaysAfterDeparture: null as number | null,
+    hostDueByDaysAfterDeparture: null as number | null,
     depositDuePercent: null as number | null,
     depositDueDaysAfterBooking: null as number | null,
     autoRequestOnImport: false,
@@ -339,12 +431,15 @@ export const DEFAULT_PORTAL_PAYMENT_RULES: Array<
     enabled: true,
     portalAssumedPaidPercent: 100,
     treatAsPaidUntilDaysBeforeArrival: null,
-    hostDuePercent: 0,
+    hostDuePercent: 100,
     hostDueByDaysBeforeArrival: null,
     overdueGraceDays: null,
     autoRequestInbox: false,
-    skipUnpaidReminder: true,
-    ...automationDefaults(),
+    skipUnpaidReminder: false,
+    ...automationDefaults({
+      treatAsPaidUntilDaysAfterDeparture: 7,
+      hostDueByDaysAfterDeparture: 14,
+    }),
     sortOrder: 60,
   },
   {

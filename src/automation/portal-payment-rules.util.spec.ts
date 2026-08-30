@@ -11,17 +11,40 @@ describe('portal-payment-rules.util', () => {
     channelMatchersJson: JSON.stringify(r.channelMatchers),
   }));
 
-  it('matches HomeToGo and skips reminders', () => {
+  it('treats HomeToGo as paid unverified until payout grace after checkout', () => {
     const rule = matchPortalRule('HomeToGo', rules)!;
     expect(rule.portalKey).toBe('hometogo');
-    const ev = evaluatePortalBalance({
+
+    const beforeCheckout = evaluatePortalBalance({
       totalPrice: 500,
       matchedPaid: 0,
-      daysUntilArrival: 28,
+      daysUntilArrival: -2,
+      daysSinceDeparture: -1,
       rule,
     });
-    expect(ev.shouldOfficeRemind).toBe(false);
-    expect(ev.reason).toBe('portal_skip_reminder');
+    expect(beforeCheckout.paidUnverified).toBe(true);
+    expect(beforeCheckout.shouldOfficeRemind).toBe(false);
+
+    const grace = evaluatePortalBalance({
+      totalPrice: 500,
+      matchedPaid: 0,
+      daysUntilArrival: -5,
+      daysSinceDeparture: 3,
+      rule,
+    });
+    expect(grace.paidUnverified).toBe(true);
+    expect(grace.shouldOfficeRemind).toBe(false);
+
+    const overdue = evaluatePortalBalance({
+      totalPrice: 500,
+      matchedPaid: 0,
+      daysUntilArrival: -20,
+      daysSinceDeparture: 15,
+      rule,
+    });
+    expect(overdue.shouldOfficeRemind).toBe(true);
+    expect(overdue.outstanding).toBe(500);
+    expect(overdue.reason).toBe('payout_overdue_after_checkout');
   });
 
   it('treats Interhome as paid unverified until 7 days before arrival', () => {

@@ -49,6 +49,14 @@ export class UpdatePortalPaymentRuleDto {
   treatAsPaidUntilDaysBeforeArrival?: number | null;
 
   @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  treatAsPaidUntilDaysAfterDeparture?: number | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -62,6 +70,14 @@ export class UpdatePortalPaymentRuleDto {
   @Min(0)
   @Max(365)
   hostDueByDaysBeforeArrival?: number | null;
+
+  @IsOptional()
+  @Transform(optionalNullableInt)
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  hostDueByDaysAfterDeparture?: number | null;
 
   @IsOptional()
   @Transform(optionalNullableInt)

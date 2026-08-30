@@ -20,6 +20,8 @@ import { evaluatePortalBalance, matchPortalRule } from './portal-payment-rules.u
 
 /** How far ahead (days) we scan arrivals for portal-aware unpaid / payment-request jobs. */
 const PORTAL_PAYMENT_LOOKAHEAD_DAYS = 40;
+/** How far back (days) we scan departures for post-checkout payout verification (e.g. HomeToGo). */
+const PORTAL_PAYOUT_LOOKBACK_DAYS = 90;
 
 @Injectable()
 export class PaymentAlertService {
@@ -317,17 +319,28 @@ export class PaymentAlertService {
 
     const todayYmd = berlinYmdPlusDays(0);
     const endYmd = berlinYmdPlusDays(PORTAL_PAYMENT_LOOKAHEAD_DAYS);
+    const pastDepartureYmd = berlinYmdPlusDays(-PORTAL_PAYOUT_LOOKBACK_DAYS);
     const dayStart = new Date(`${todayYmd}T00:00:00.000Z`);
     const dayEnd = new Date(`${endYmd}T23:59:59.999Z`);
+    const pastDepartureStart = new Date(`${pastDepartureYmd}T00:00:00.000Z`);
 
     const candidates = await this.prisma.reservation.findMany({
       where: {
-        arrivalDate: { gte: dayStart, lte: dayEnd },
         totalPrice: { gt: 0 },
         status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
-        OR: [
-          { unpaidReminderSentAt: null },
-          { paymentRequestSentAt: null },
+        AND: [
+          {
+            OR: [
+              { arrivalDate: { gte: dayStart, lte: dayEnd } },
+              { departureDate: { gte: pastDepartureStart, lte: dayEnd } },
+            ],
+          },
+          {
+            OR: [
+              { unpaidReminderSentAt: null },
+              { paymentRequestSentAt: null },
+            ],
+          },
         ],
       },
       include: {
@@ -344,7 +357,9 @@ export class PaymentAlertService {
 
     for (const reservation of candidates) {
       const daysUntilArrival = berlinDaysUntil(reservation.arrivalDate);
-      if (daysUntilArrival < 0) continue;
+      const daysSinceDeparture = berlinDaysSinceDeparture(
+        reservation.departureDate,
+      );
 
       let isPaid = reservation.isPaid === true;
       const matchedPaid = reservation.notifiedCharges.reduce(
@@ -358,6 +373,14 @@ export class PaymentAlertService {
         guestEmail: reservation.guestEmail,
       });
       if (!rule) continue;
+
+      const usesPostCheckoutPayout =
+        rule.treatAsPaidUntilDaysAfterDeparture != null;
+      if (daysUntilArrival < 0 && !usesPostCheckoutPayout) continue;
+      if (usesPostCheckoutPayout && daysSinceDeparture < 0) {
+        // Guest still in stay — no payout verification yet.
+        continue;
+      }
 
       // Always refresh Hostaway Fully Paid before evaluating outstanding balance.
       try {
@@ -386,6 +409,7 @@ export class PaymentAlertService {
         matchedPaid,
         isPaid,
         daysUntilArrival,
+        daysSinceDeparture,
         rule,
       });
       const mayAct =
@@ -397,6 +421,7 @@ export class PaymentAlertService {
         matchedPaid,
         isPaid,
         daysUntilArrival,
+        daysSinceDeparture,
         rule,
       });
 
@@ -469,6 +494,7 @@ export class PaymentAlertService {
           reservationHostawayId: reservation.hostawayId,
           balanceDue: evaluation.outstanding,
           daysUntilArrival,
+          daysSinceDeparture,
           portalKey: evaluation.portalKey,
           reason: evaluation.reason,
         },
@@ -506,4 +532,13 @@ function berlinDaysUntil(arrivalDate: Date): number {
   const today = Date.parse(`${todayYmd}T00:00:00.000Z`);
   const arrival = Date.parse(`${arrivalYmd}T00:00:00.000Z`);
   return Math.round((arrival - today) / 86_400_000);
+}
+
+/** Whole calendar days since departure (Berlin today − departure date). Negative while guest is still in stay. */
+function berlinDaysSinceDeparture(departureDate: Date): number {
+  const todayYmd = berlinYmdPlusDays(0);
+  const departureYmd = departureDate.toISOString().slice(0, 10);
+  const today = Date.parse(`${todayYmd}T00:00:00.000Z`);
+  const departure = Date.parse(`${departureYmd}T00:00:00.000Z`);
+  return Math.round((today - departure) / 86_400_000);
 }

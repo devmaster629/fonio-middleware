@@ -14,8 +14,10 @@ export type PortalPaymentRuleUpdate = {
   enabled?: boolean;
   portalAssumedPaidPercent?: number;
   treatAsPaidUntilDaysBeforeArrival?: number | null;
+  treatAsPaidUntilDaysAfterDeparture?: number | null;
   hostDuePercent?: number;
   hostDueByDaysBeforeArrival?: number | null;
+  hostDueByDaysAfterDeparture?: number | null;
   overdueGraceDays?: number | null;
   autoRequestInbox?: boolean;
   skipUnpaidReminder?: boolean;
@@ -58,8 +60,11 @@ export class PortalPaymentRulesService {
         portalAssumedPaidPercent: rule.portalAssumedPaidPercent,
         treatAsPaidUntilDaysBeforeArrival:
           rule.treatAsPaidUntilDaysBeforeArrival,
+        treatAsPaidUntilDaysAfterDeparture:
+          rule.treatAsPaidUntilDaysAfterDeparture,
         hostDuePercent: rule.hostDuePercent,
         hostDueByDaysBeforeArrival: rule.hostDueByDaysBeforeArrival,
+        hostDueByDaysAfterDeparture: rule.hostDueByDaysAfterDeparture,
         overdueGraceDays: rule.overdueGraceDays,
         autoRequestInbox: rule.autoRequestInbox,
         skipUnpaidReminder: rule.skipUnpaidReminder,
@@ -133,11 +138,18 @@ export class PortalPaymentRulesService {
       patch.treatAsPaidUntilDaysBeforeArrival =
         data.treatAsPaidUntilDaysBeforeArrival;
     }
+    if (data.treatAsPaidUntilDaysAfterDeparture !== undefined) {
+      patch.treatAsPaidUntilDaysAfterDeparture =
+        data.treatAsPaidUntilDaysAfterDeparture;
+    }
     if (data.hostDuePercent !== undefined) {
       patch.hostDuePercent = clampPercent(data.hostDuePercent);
     }
     if (data.hostDueByDaysBeforeArrival !== undefined) {
       patch.hostDueByDaysBeforeArrival = data.hostDueByDaysBeforeArrival;
+    }
+    if (data.hostDueByDaysAfterDeparture !== undefined) {
+      patch.hostDueByDaysAfterDeparture = data.hostDueByDaysAfterDeparture;
     }
     if (data.overdueGraceDays !== undefined) {
       patch.overdueGraceDays = data.overdueGraceDays;

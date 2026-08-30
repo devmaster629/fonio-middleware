@@ -480,10 +480,14 @@ model PortalPaymentRule {
   portalAssumedPaidPercent           Int      @default(0)
   /// Until this many days before arrival, treat as paid but unverified (e.g. Interhome = 7).
   treatAsPaidUntilDaysBeforeArrival  Int?
+  /// Until this many days after departure, treat portal payout as paid but unverified (e.g. HomeToGo = 7).
+  treatAsPaidUntilDaysAfterDeparture Int?
   /// Share of total that must be on our account (0–100), e.g. Travanto 70.
   hostDuePercent                     Int      @default(100)
   /// Days before arrival by which host share is due / should be requested (e.g. 21, 28, 3).
   hostDueByDaysBeforeArrival         Int?
+  /// Days after departure by which portal payout must be on our account (e.g. HomeToGo = 14).
+  hostDueByDaysAfterDeparture        Int?
   /// Days after the due date before the booking is treated as overdue (e.g. Travanto = 7).
   overdueGraceDays                   Int?
   /// Post an automatic payment request to the Hostaway inbox when host share becomes due.
