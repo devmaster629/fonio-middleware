@@ -5,6 +5,7 @@ import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Check24Client } from './check24.client';
+import { Check24SyncService } from './check24-sync.service';
 import { Check24Booking, Check24WebhookNotification } from './check24.types';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class Check24BookingService {
     private readonly check24: Check24Client,
     private readonly hostaway: HostawayClient,
     private readonly hostawaySync: HostawaySyncService,
+    private readonly check24Sync: Check24SyncService,
     private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
@@ -206,6 +208,12 @@ export class Check24BookingService {
       }
     }
 
+    await this.pushAvailabilityAfterBookingChange(
+      mapping.listing.id,
+      mapping.listing.hostawayId,
+      booking.bookingId,
+    );
+
     return {
       processed: true,
       action: 'imported',
@@ -347,6 +355,19 @@ export class Check24BookingService {
           status: booking.status,
         },
       });
+
+      const mapping = await this.prisma.check24PropertyMapping.findUnique({
+        where: { check24PropertyId: booking.propertyId },
+        include: { listing: true },
+      });
+      if (mapping?.listing) {
+        await this.pushAvailabilityAfterBookingChange(
+          mapping.listing.id,
+          mapping.listing.hostawayId,
+          booking.bookingId,
+        );
+      }
+
       return {
         processed: true,
         action: 'cancelled_in_hostaway',
@@ -379,6 +400,28 @@ export class Check24BookingService {
    * Hostaway UI cannot add a custom channel name. We set channelId on create
    * (CHECK24_HOSTAWAY_CHANNEL_ID) and fill custom field "Buchungsportal".
    */
+  private async pushAvailabilityAfterBookingChange(
+    listingId: string,
+    hostawayListingId: number,
+    check24BookingId: string,
+  ) {
+    const result = await this.check24Sync
+      .refreshAndPushAvailability(listingId, hostawayListingId)
+      .catch((err) => {
+        this.logger.warn(
+          `CHECK24 availability push after booking ${check24BookingId} failed: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+        return { pushed: false, reason: 'error' };
+      });
+    if (!result.pushed) {
+      this.logger.warn(
+        `CHECK24 dates not pushed for booking ${check24BookingId} (listing ${hostawayListingId}): ${result.reason ?? 'unknown'}`,
+      );
+    }
+  }
+
   private async applyHostawayCheck24Labels(
     reservationId: number,
     check24BookingId: string,

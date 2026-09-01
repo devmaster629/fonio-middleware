@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { ListingStatus } from '@prisma/client';
 import { mapWithConcurrency } from '../common/utils/concurrency.util';
 import { HostawayClient } from '../hostaway/hostaway.client';
+import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildAvailabilityRanges,
@@ -27,6 +28,7 @@ export class Check24SyncService {
     private readonly config: ConfigService,
     private readonly check24: Check24Client,
     private readonly hostaway: HostawayClient,
+    private readonly hostawaySync: HostawaySyncService,
     private readonly mapper: Check24PropertyMapper,
   ) {}
 
@@ -260,6 +262,44 @@ export class Check24SyncService {
       lastError: null,
     });
     return property.propertyId;
+  }
+
+  /**
+   * After a booking is imported or cancelled, refresh the Hostaway calendar
+   * and push updated availability to CHECK24 immediately.
+   */
+  async refreshAndPushAvailability(
+    listingId: string,
+    hostawayListingId: number,
+  ): Promise<{ pushed: boolean; reason?: string }> {
+    if (!this.isConfigured()) {
+      return { pushed: false, reason: 'check24_not_configured' };
+    }
+
+    const daysAhead = Number(this.config.get('CALENDAR_SYNC_DAYS') ?? 365);
+    const today = new Date();
+    const end = new Date(today);
+    end.setUTCDate(end.getUTCDate() + daysAhead);
+    const format = (d: Date) => d.toISOString().slice(0, 10);
+
+    try {
+      await this.hostawaySync.syncListingCalendar(
+        hostawayListingId,
+        format(today),
+        format(end),
+      );
+      await this.syncListingAvailability(listingId);
+      this.logger.log(
+        `Pushed CHECK24 availability for listing ${hostawayListingId} after booking change`,
+      );
+      return { pushed: true };
+    } catch (err) {
+      const message = this.check24.describeError(err);
+      this.logger.warn(
+        `CHECK24 availability push failed for listing ${hostawayListingId}: ${message}`,
+      );
+      return { pushed: false, reason: message };
+    }
   }
 
   async syncListingAvailability(listingId: string) {

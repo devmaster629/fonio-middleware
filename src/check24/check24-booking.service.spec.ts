@@ -11,6 +11,9 @@ describe('Check24BookingService cancellations', () => {
     reservation: {
       findUnique: jest.fn(),
     },
+    check24PropertyMapping: {
+      findUnique: jest.fn(),
+    },
   };
   const config = { get: jest.fn() };
   const check24 = {
@@ -29,6 +32,9 @@ describe('Check24BookingService cancellations', () => {
   const guestPayments = {
     requestPaymentOnImport: jest.fn().mockResolvedValue({ ok: false }),
   };
+  const check24Sync = {
+    refreshAndPushAvailability: jest.fn().mockResolvedValue({ pushed: true }),
+  };
 
   const service = new Check24BookingService(
     prisma as never,
@@ -36,6 +42,7 @@ describe('Check24BookingService cancellations', () => {
     check24 as never,
     hostaway as never,
     hostawaySync as never,
+    check24Sync as never,
     guestPayments as never,
   );
 
@@ -72,12 +79,19 @@ describe('Check24BookingService cancellations', () => {
       hostawayReservationId: 62144308,
     });
     prisma.reservation.findUnique.mockResolvedValue({ status: 'new' });
+    prisma.check24PropertyMapping.findUnique.mockResolvedValue({
+      listing: { id: 'listing-1', hostawayId: 172749 },
+    });
     hostaway.cancelReservation.mockResolvedValue({ status: 'cancelled' });
 
     const result = await service.processBooking(canceledBooking);
 
     expect(hostaway.cancelReservation).toHaveBeenCalledWith(62144308);
     expect(hostawaySync.syncSingleReservation).toHaveBeenCalledWith(62144308);
+    expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
+      'listing-1',
+      172749,
+    );
     expect(result).toMatchObject({
       processed: true,
       action: 'cancelled_in_hostaway',
