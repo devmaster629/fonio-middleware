@@ -90,7 +90,7 @@ function updateMobilePageTitle(tab) {
   const titleEl = $('#mobile-page-title');
   const btn = $(`.nav-btn[data-tab="${tab}"]`);
   if (!titleEl || !btn) return;
-  const key = btn.dataset.i18n;
+  const key = btn.querySelector('.nav-label[data-i18n]')?.dataset.i18n || btn.dataset.i18n;
   titleEl.textContent = key ? t(key) : btn.textContent.trim();
 }
 
