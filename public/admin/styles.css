@@ -1380,7 +1380,7 @@ body.modal-open {
 
 .verification-card {
   margin-bottom: 1.5rem;
-  border-color: var(--accent);
+  border: none;
 }
 
 .verification-form fieldset {
