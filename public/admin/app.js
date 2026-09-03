@@ -1596,6 +1596,66 @@ function paymentDecisionLabel(decision) {
   return label === key ? decision : label;
 }
 
+/** Map backend matcher reason strings (always English) to the active UI language. */
+function translatePaymentMatchReason(reason) {
+  const r = String(reason || '').trim();
+  if (!r) return '';
+  if (r.includes('; ')) {
+    return r
+      .split('; ')
+      .map((part) => translatePaymentMatchReason(part))
+      .filter(Boolean)
+      .join('; ');
+  }
+
+  const rules = [
+    { re: /^Guest email matches$/, key: 'payments.reason.guestEmail' },
+    { re: /^Guest name matches$/, key: 'payments.reason.guestName' },
+    { re: /^Guest name appears in reference$/, key: 'payments.reason.guestNameInRef' },
+    { re: /^Listing name appears in reference$/, key: 'payments.reason.listingInRef' },
+    { re: /^Stay dates appear in reference$/, key: 'payments.reason.datesInRef' },
+    { re: /^Payment amount aligns with reference$/, key: 'payments.reason.amountInRef' },
+    {
+      re: /^Amount matches a typical deposit\/installment share of the total$/,
+      key: 'payments.reason.depositShareTypical',
+    },
+    {
+      re: /^Amount matches a likely deposit\/installment share of the total$/,
+      key: 'payments.reason.depositShareLikely',
+    },
+    {
+      re: /^Amount matches a likely deposit\/installment share of the outstanding balance$/,
+      key: 'payments.reason.depositShareBalance',
+    },
+    { re: /^Payment amount appears in reservation notes$/, key: 'payments.reason.amountInNotes' },
+    {
+      re: /^Reservation notes mention a deposit or remaining balance$/,
+      key: 'payments.reason.depositMentionedInNotes',
+    },
+    {
+      re: /^Reservation #(\d+) in reference$/,
+      key: 'payments.reason.reservationInRef',
+      pick: (m) => ({ id: m[1] }),
+    },
+    {
+      re: /^Amount equals outstanding balance \(([0-9.]+)\)$/,
+      key: 'payments.reason.amountEqualsBalance',
+      pick: (m) => ({ amount: m[1] }),
+    },
+    {
+      re: /^Amount equals reservation total \(([0-9.]+)\)$/,
+      key: 'payments.reason.amountEqualsTotal',
+      pick: (m) => ({ amount: m[1] }),
+    },
+  ];
+
+  for (const rule of rules) {
+    const m = r.match(rule.re);
+    if (m) return t(rule.key, rule.pick ? rule.pick(m) : undefined);
+  }
+  return r;
+}
+
 /**
  * Build a reviewer-friendly explanation without internal match scores.
  * Works for already-stored queue items too (recomputes from candidates).
@@ -1662,14 +1722,9 @@ function explainWhyNotAutoMatched(payment) {
     return t('payments.why.noMatch');
   }
 
-  // Prefer a freshly built plain-language explanation over old "score 40" text.
-  const stored = String(payment.matchReason || '');
-  const looksLikeScoreJargon =
-    /score|threshold|confidence too low|auto-apply/i.test(stored);
-  if (stored && !looksLikeScoreJargon) return stored;
-
-  const found = reasons.length
-    ? t('payments.why.matchedOn', { signals: reasons.join('; ') })
+  const translatedReasons = reasons.map(translatePaymentMatchReason);
+  const found = translatedReasons.length
+    ? t('payments.why.matchedOn', { signals: translatedReasons.join('; ') })
     : t('payments.why.weakMatch');
   const missingText = missing.length
     ? ` ${t('payments.why.missingBecause', { missing: missing.join('; ') })}`
