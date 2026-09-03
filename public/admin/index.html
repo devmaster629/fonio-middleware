@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260903a" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260903d" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -34,22 +34,40 @@
     <aside class="sidebar" id="sidebar" aria-label="Navigation">
       <div class="brand">
         <img src="/admin/logo.png" alt="" class="brand-logo" />
-        <span>brainions Admin</span>
+        <div class="brand-text">
+          <span class="brand-name">brainions</span>
+          <span class="brand-sub">Admin</span>
+        </div>
       </div>
       <nav class="sidebar-nav">
-        <button data-tab="dashboard" class="nav-btn active" data-i18n="nav.dashboard">Dashboard</button>
-        <button data-tab="listings" class="nav-btn" data-i18n="nav.listings">Listings</button>
-        <button data-tab="groups" class="nav-btn" data-i18n="nav.groups">Groups</button>
-        <button data-tab="reservations" class="nav-btn" data-i18n="nav.reservations">Reservations</button>
-        <button data-tab="conversations" class="nav-btn" data-i18n="nav.conversations">Conversations</button>
-        <button data-tab="rules" class="nav-btn" data-i18n="nav.rules">Rules</button>
-        <button data-tab="requests" class="nav-btn" data-i18n="nav.requests">Guest requests</button>
-        <button data-tab="payments" class="nav-btn" data-i18n="nav.payments">Payments</button>
-        <button data-tab="logs" class="nav-btn" data-i18n="nav.logs">Audit log</button>
-        <button data-tab="fonioActivity" class="nav-btn" data-i18n="nav.fonioActivity">fonio Activity</button>
-        <button data-tab="fonio" class="nav-btn" data-i18n="nav.fonio">fonio Setup</button>
-        <button data-tab="check24" class="nav-btn" data-i18n="nav.check24">CHECK24</button>
-        <button data-tab="users" class="nav-btn hidden" id="nav-users" data-i18n="nav.users">Users</button>
+        <div class="nav-section" data-nav-section="overview">
+          <div class="nav-section-label" data-i18n="nav.section.overview">Overview</div>
+          <button data-tab="dashboard" class="nav-btn active" data-i18n="nav.dashboard">Dashboard</button>
+        </div>
+        <div class="nav-section" data-nav-section="operations">
+          <div class="nav-section-label" data-i18n="nav.section.operations">Operations</div>
+          <button data-tab="listings" class="nav-btn" data-i18n="nav.listings">Listings</button>
+          <button data-tab="groups" class="nav-btn" data-i18n="nav.groups">Groups</button>
+          <button data-tab="reservations" class="nav-btn" data-i18n="nav.reservations">Reservations</button>
+          <button data-tab="conversations" class="nav-btn" data-i18n="nav.conversations">Conversations</button>
+        </div>
+        <div class="nav-section" data-nav-section="automation">
+          <div class="nav-section-label" data-i18n="nav.section.automation">Automation</div>
+          <button data-tab="rules" class="nav-btn" data-i18n="nav.rules">Rules</button>
+          <button data-tab="requests" class="nav-btn" data-i18n="nav.requests">Guest requests</button>
+          <button data-tab="payments" class="nav-btn" data-i18n="nav.payments">Payments</button>
+        </div>
+        <div class="nav-section" data-nav-section="integrations">
+          <div class="nav-section-label" data-i18n="nav.section.integrations">Integrations</div>
+          <button data-tab="fonioActivity" class="nav-btn" data-i18n="nav.fonioActivity">fonio Activity</button>
+          <button data-tab="fonio" class="nav-btn" data-i18n="nav.fonio">fonio Setup</button>
+          <button data-tab="check24" class="nav-btn" data-i18n="nav.check24">CHECK24</button>
+        </div>
+        <div class="nav-section" data-nav-section="administration">
+          <div class="nav-section-label" data-i18n="nav.section.administration">Administration</div>
+          <button data-tab="logs" class="nav-btn" data-i18n="nav.logs">Audit log</button>
+          <button data-tab="users" class="nav-btn hidden" id="nav-users" data-i18n="nav.users">Users</button>
+        </div>
         <div class="lang-bar sidebar-lang">
           <label for="lang-app" data-i18n="lang.label">Language</label>
           <div class="lang-select-wrap">
@@ -85,35 +103,119 @@
 
     <main class="content">
       <section id="tab-dashboard" class="tab active">
-        <header class="page-header">
+        <header class="page-header dashboard-header">
           <h2 data-i18n="nav.dashboard">Dashboard</h2>
-          <button id="sync-btn" class="btn primary" data-i18n="dashboard.syncBtn">Hostaway Sync</button>
+          <div class="dashboard-header-actions">
+            <div class="dashboard-sync-meta">
+              <span id="dashboard-sync-status" class="sync-status-pill"></span>
+              <span id="dashboard-last-sync" class="dashboard-last-sync"></span>
+            </div>
+            <button id="sync-btn" class="btn primary sync-now-btn" type="button">
+              <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+              <span data-i18n="dashboard.syncBtn">Sync now</span>
+            </button>
+          </div>
         </header>
         <div class="stats" id="stats"></div>
-        <div class="card" id="sync-settings-card">
-          <h3 data-i18n="dashboard.autoSync">Auto sync</h3>
-          <form id="sync-settings-form" class="sync-settings-form">
-            <label class="checkbox-row">
-              <input type="checkbox" id="auto-sync-enabled" />
-              <span data-i18n="dashboard.autoSyncEnable">Enable automatic Hostaway sync</span>
-            </label>
-            <label>
-              <span data-i18n="dashboard.autoSyncInterval">Interval (minutes)</span>
-              <input type="number" id="auto-sync-interval" min="5" max="1440" value="30" />
-            </label>
-            <button type="submit" class="btn primary" data-i18n="dashboard.autoSyncSave">Save settings</button>
-          </form>
-          <p id="sync-settings-readonly-hint" class="field-hint hidden" data-i18n="dashboard.autoSyncReadonly">Only EDITOR or ADMIN can change sync settings.</p>
-          <p id="auto-sync-hint" class="field-hint"></p>
+        <div class="dashboard-mid-grid">
+          <div class="card dash-panel" id="sync-settings-card">
+            <div class="dash-panel-header">
+              <span class="dash-panel-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+              </span>
+              <h3 data-i18n="dashboard.hostawaySync">Hostaway synchronization</h3>
+            </div>
+            <div class="dash-panel-body">
+              <form id="sync-settings-form" class="sync-settings-form-v2">
+                <div class="setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title" data-i18n="dashboard.autoSyncEnable">Automatic synchronization</div>
+                    <div class="setting-desc" data-i18n="dashboard.autoSyncEnableHint">Keep data in sync automatically</div>
+                  </div>
+                  <label class="toggle-switch" aria-label="Automatic synchronization">
+                    <input type="checkbox" id="auto-sync-enabled" />
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                  </label>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title" data-i18n="dashboard.autoSyncInterval">Sync interval</div>
+                    <div class="setting-desc" data-i18n="dashboard.autoSyncIntervalHint">How often data is synchronized</div>
+                  </div>
+                  <select id="auto-sync-interval" class="setting-control"></select>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title" data-i18n="dashboard.nextSync">Next sync</div>
+                    <div class="setting-desc" data-i18n="dashboard.nextSyncHint">Upcoming automatic synchronization</div>
+                  </div>
+                  <div id="auto-sync-hint" class="setting-value"></div>
+                </div>
+                <button type="submit" class="btn primary" data-i18n="dashboard.autoSyncSave">Save settings</button>
+              </form>
+              <p id="sync-settings-readonly-hint" class="field-hint hidden" data-i18n="dashboard.autoSyncReadonly">Only EDITOR or ADMIN can change sync settings.</p>
+            </div>
+          </div>
+          <div class="card dash-panel" id="system-health-card">
+            <div class="dash-panel-header">
+              <span class="dash-panel-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+              </span>
+              <h3 data-i18n="dashboard.systemHealth">System health</h3>
+            </div>
+            <div class="dash-panel-body">
+              <div id="system-health-list" class="health-list"></div>
+            </div>
+          </div>
         </div>
-        <div class="card" id="sync-result"></div>
-        <div class="card">
-          <h3 data-i18n="dashboard.webhookActivity">Hostaway webhook activity</h3>
-          <p class="field-hint" data-i18n="dashboard.webhookHint">When Hostaway sends reservation/listing events, the middleware syncs in the background. Shown here — no popup notification.</p>
-          <div id="webhooks-toolbar" class="table-toolbar"></div>
-          <div class="table-wrap" id="webhook-activity"></div>
-          <div id="webhooks-info" class="table-info"></div>
-          <div id="webhooks-pagination" class="table-pagination"></div>
+        <div id="sync-result" class="hidden" aria-live="polite"></div>
+        <div class="dashboard-bottom-grid">
+          <div class="card dash-panel dashboard-webhooks-card">
+            <div class="dash-panel-header">
+              <span class="dash-panel-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51 15.42 17.49"/><path d="m15.41 6.51-6.82 3.98"/></svg>
+              </span>
+              <h3 data-i18n="dashboard.webhookActivity">Recent webhook activity</h3>
+            </div>
+            <div class="dash-panel-body">
+              <div class="webhook-filters" id="webhooks-filters">
+                <select id="webhook-filter-range" aria-label="Time range">
+                  <option value="24h" data-i18n="dashboard.filter.24h">Last 24 hours</option>
+                  <option value="7d" data-i18n="dashboard.filter.7d">Last 7 days</option>
+                  <option value="all" data-i18n="dashboard.filter.allTime">All time</option>
+                </select>
+                <select id="webhook-filter-event" aria-label="Events">
+                  <option value="all" data-i18n="dashboard.filter.allEvents">All events</option>
+                </select>
+                <select id="webhook-filter-result" aria-label="Results">
+                  <option value="all" data-i18n="dashboard.filter.allResults">All results</option>
+                  <option value="success" data-i18n="dashboard.filter.success">Success</option>
+                  <option value="failed" data-i18n="dashboard.filter.failed">Failed</option>
+                  <option value="warning" data-i18n="dashboard.filter.warning">Warnings</option>
+                </select>
+                <button type="button" class="btn ghost btn-sm" id="webhook-refresh-btn" data-i18n="dashboard.refresh">Refresh</button>
+              </div>
+              <div class="table-wrap" id="webhook-activity"></div>
+              <div class="card-footer-row">
+                <div id="webhooks-info" class="table-info"></div>
+                <div id="webhooks-pagination" class="table-pagination"></div>
+              </div>
+            </div>
+          </div>
+          <div class="card dash-panel dashboard-trend-card">
+            <div class="dash-panel-header">
+              <h3 data-i18n="dashboard.webhookTrend">Webhook activity trend</h3>
+              <div class="trend-legend">
+                <span class="legend-item legend-success" data-i18n="dashboard.trend.success">Success</span>
+                <span class="legend-item legend-failed" data-i18n="dashboard.trend.failed">Failed</span>
+                <span class="legend-item legend-warning" data-i18n="dashboard.trend.warning">Warnings</span>
+              </div>
+            </div>
+            <div class="dash-panel-body">
+              <div id="webhook-trend-chart" class="trend-chart"></div>
+              <div id="webhook-trend-totals" class="trend-totals"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -615,9 +717,9 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260902f"></script>
-  <script src="/admin/nav-icons.js?v=20260902a"></script>
+  <script src="/admin/i18n.js?v=20260903c"></script>
+  <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260903a"></script>
+  <script src="/admin/app.js?v=20260903d"></script>
 </body>
 </html>

@@ -20,6 +20,9 @@ let editingListingAliases = null;
 let dashboardPoll = null;
 let paymentsStatusPoll = null;
 let syncSettingsDirty = false;
+let cachedWebhookJobs = [];
+const webhookFilters = { range: '24h', event: 'all', result: 'all' };
+const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
   listings: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' },
@@ -46,6 +49,32 @@ function formatDateTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function formatDashboardDateTime(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  try {
+    return d.toLocaleString(typeof locale === 'function' ? locale() : 'en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return formatDateTime(value);
+  }
+}
+
+function formatCount(n) {
+  const num = Number(n) || 0;
+  try {
+    return num.toLocaleString(typeof locale === 'function' ? locale() : 'en-GB');
+  } catch {
+    return String(num);
+  }
 }
 
 function formatDate(value) {
@@ -309,6 +338,13 @@ function applyRoleUi() {
     const perm = NAV_PERMISSIONS[tab];
     const allowed = !perm || hasPermission(perm);
     btn.classList.toggle('hidden', !allowed);
+  });
+
+  $$('.nav-section').forEach((section) => {
+    const anyVisible = [...section.querySelectorAll('.nav-btn')].some(
+      (b) => !b.classList.contains('hidden'),
+    );
+    section.classList.toggle('hidden', !anyVisible);
   });
 
   if (!hasPermission(NAV_PERMISSIONS[activeTab] || 'DASHBOARD_VIEW')) {
@@ -801,6 +837,7 @@ $('#login-form').addEventListener('submit', async (e) => {
 $('#logout-btn').addEventListener('click', logout);
 
 initMobileNav();
+fillSyncIntervalOptions(30);
 
 $$('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -817,7 +854,7 @@ $$('.payments-subnav-btn').forEach((btn) => {
 $('#auto-sync-enabled')?.addEventListener('change', () => {
   syncSettingsDirty = true;
 });
-$('#auto-sync-interval')?.addEventListener('input', () => {
+$('#auto-sync-interval')?.addEventListener('change', () => {
   syncSettingsDirty = true;
 });
 
@@ -846,25 +883,391 @@ $('#sync-settings-form').addEventListener('submit', async (e) => {
 
 $('#sync-btn').addEventListener('click', async () => {
   const el = $('#sync-result');
-  el.innerHTML = `<p>${t('dashboard.syncRunning')}</p>`;
+  if (el) el.innerHTML = `<p>${t('dashboard.syncRunning')}</p>`;
   $('#sync-btn').disabled = true;
   try {
     const data = await api('/sync', { method: 'POST' });
     if (!data.started) {
-      el.innerHTML = `<p class="field-hint">${t('dashboard.syncAlreadyRunning')}</p>`;
+      if (el) el.innerHTML = `<p class="field-hint">${t('dashboard.syncAlreadyRunning')}</p>`;
       notify.info(t('dashboard.syncAlreadyRunning'));
     } else {
-      el.innerHTML = `<p>${t('dashboard.syncStarted')}</p>`;
+      if (el) el.innerHTML = `<p>${t('dashboard.syncStarted')}</p>`;
       notify.success(t('dashboard.syncStarted'));
     }
     loadDashboard();
   } catch (ex) {
-    el.innerHTML = `<p class="error">${t('dashboard.syncError', { message: ex.message })}</p>`;
+    if (el) el.innerHTML = `<p class="error">${t('dashboard.syncError', { message: ex.message })}</p>`;
     notify.error(t('dashboard.syncError', { message: ex.message }));
   } finally {
     $('#sync-btn').disabled = !hasPermission('SYNC_RUN');
   }
 });
+
+$('#webhook-refresh-btn')?.addEventListener('click', () => loadDashboard());
+
+['webhook-filter-range', 'webhook-filter-event', 'webhook-filter-result'].forEach((id) => {
+  $(`#${id}`)?.addEventListener('change', (e) => {
+    if (id === 'webhook-filter-range') webhookFilters.range = e.target.value;
+    if (id === 'webhook-filter-event') webhookFilters.event = e.target.value;
+    if (id === 'webhook-filter-result') webhookFilters.result = e.target.value;
+    tableState.webhooks.page = 1;
+    renderWebhookDashboard(cachedWebhookJobs);
+  });
+});
+
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('[data-dash-nav]');
+  if (!link) return;
+  e.preventDefault();
+  activateTab(link.dataset.dashNav);
+});
+
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('[data-dash-scroll]');
+  if (!link) return;
+  e.preventDefault();
+  $(link.dataset.dashScroll)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function fillSyncIntervalOptions(selected) {
+  const sel = $('#auto-sync-interval');
+  if (!sel) return;
+  const value = Number(selected) || 30;
+  const opts = SYNC_INTERVAL_OPTIONS.includes(value)
+    ? SYNC_INTERVAL_OPTIONS
+    : [...SYNC_INTERVAL_OPTIONS, value].sort((a, b) => a - b);
+  sel.innerHTML = opts
+    .map((n) => `<option value="${n}"${n === value ? ' selected' : ''}>${t('dashboard.intervalOption', { n })}</option>`)
+    .join('');
+}
+
+function webhookEventName(job) {
+  return String(job.jobType || '').replace(/^webhook:/, '') || 'event';
+}
+
+function classifyWebhookStatus(job) {
+  if (job.status === 'completed') return 'success';
+  if (job.status === 'failed') return 'failed';
+  if (job.status === 'running') return 'running';
+  return 'warning';
+}
+
+function webhookStatusBadge(kind) {
+  if (kind === 'success') return `<span class="status-badge ok">✓ ${t('dashboard.status.success')}</span>`;
+  if (kind === 'failed') return `<span class="status-badge err">✕ ${t('dashboard.status.failed')}</span>`;
+  if (kind === 'running') return `<span class="status-badge run">${t('dashboard.status.running')}</span>`;
+  return `<span class="status-badge warn">! ${t('dashboard.status.warning')}</span>`;
+}
+
+function filterWebhookJobs(jobs) {
+  const now = Date.now();
+  const rangeMs =
+    webhookFilters.range === '24h'
+      ? 24 * 60 * 60 * 1000
+      : webhookFilters.range === '7d'
+        ? 7 * 24 * 60 * 60 * 1000
+        : null;
+  return jobs.filter((w) => {
+    const started = new Date(w.startedAt).getTime();
+    if (rangeMs != null && Number.isFinite(started) && now - started > rangeMs) return false;
+    const event = webhookEventName(w);
+    if (webhookFilters.event !== 'all' && event !== webhookFilters.event) return false;
+    const kind = classifyWebhookStatus(w);
+    if (webhookFilters.result === 'success' && kind !== 'success') return false;
+    if (webhookFilters.result === 'failed' && kind !== 'failed') return false;
+    if (webhookFilters.result === 'warning' && kind !== 'warning' && kind !== 'running') return false;
+    return true;
+  });
+}
+
+function populateWebhookEventFilter(jobs) {
+  const sel = $('#webhook-filter-event');
+  if (!sel) return;
+  const current = webhookFilters.event;
+  const events = [...new Set(jobs.map(webhookEventName))].sort();
+  sel.innerHTML =
+    `<option value="all">${t('dashboard.filter.allEvents')}</option>` +
+    events.map((ev) => `<option value="${esc(ev)}">${esc(ev)}</option>`).join('');
+  sel.value = events.includes(current) ? current : 'all';
+  webhookFilters.event = sel.value;
+}
+
+function renderWebhookTrend(jobs) {
+  const chartEl = $('#webhook-trend-chart');
+  const totalsEl = $('#webhook-trend-totals');
+  if (!chartEl || !totalsEl) return;
+
+  let success = 0;
+  let failed = 0;
+  let warning = 0;
+  jobs.forEach((w) => {
+    const kind = classifyWebhookStatus(w);
+    if (kind === 'success') success += 1;
+    else if (kind === 'failed') failed += 1;
+    else warning += 1;
+  });
+
+  totalsEl.innerHTML = `
+    <div class="trend-total ok"><span class="num">${formatCount(success)}</span><span class="lbl">${t('dashboard.trend.success')}</span></div>
+    <div class="trend-total err"><span class="num">${formatCount(failed)}</span><span class="lbl">${t('dashboard.trend.failed')}</span></div>
+    <div class="trend-total warn"><span class="num">${formatCount(warning)}</span><span class="lbl">${t('dashboard.trend.warning')}</span></div>
+  `;
+
+  if (!jobs.length) {
+    chartEl.innerHTML = `<p class="field-hint">${t('dashboard.trend.empty')}</p>`;
+    return;
+  }
+
+  const buckets = 12;
+  const times = jobs
+    .map((w) => new Date(w.startedAt).getTime())
+    .filter((n) => Number.isFinite(n));
+  const maxT = Math.max(...times, Date.now());
+  const minT = Math.min(...times, maxT - 60 * 60 * 1000);
+  const span = Math.max(maxT - minT, 1);
+  const series = {
+    success: Array(buckets).fill(0),
+    failed: Array(buckets).fill(0),
+    warning: Array(buckets).fill(0),
+  };
+  jobs.forEach((w) => {
+    const ts = new Date(w.startedAt).getTime();
+    if (!Number.isFinite(ts)) return;
+    const idx = Math.min(buckets - 1, Math.max(0, Math.floor(((ts - minT) / span) * buckets)));
+    const kind = classifyWebhookStatus(w);
+    if (kind === 'success') series.success[idx] += 1;
+    else if (kind === 'failed') series.failed[idx] += 1;
+    else series.warning[idx] += 1;
+  });
+  const peak = Math.max(1, ...series.success, ...series.failed, ...series.warning);
+  const w = 320;
+  const h = 160;
+  const pad = 12;
+  const toPoints = (arr) =>
+    arr
+      .map((v, i) => {
+        const x = pad + (i / Math.max(buckets - 1, 1)) * (w - pad * 2);
+        const y = h - pad - (v / peak) * (h - pad * 2);
+        return `${x},${y}`;
+      })
+      .join(' ');
+
+  chartEl.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline fill="none" stroke="#22c55e" stroke-width="2.5" points="${toPoints(series.success)}" />
+      <polyline fill="none" stroke="#ef4444" stroke-width="2" points="${toPoints(series.failed)}" />
+      <polyline fill="none" stroke="#f59e0b" stroke-width="2" points="${toPoints(series.warning)}" />
+    </svg>
+  `;
+}
+
+function renderWebhookDashboard(allJobs) {
+  populateWebhookEventFilter(allJobs);
+  const filtered = filterWebhookJobs(allJobs);
+  renderWebhookTrend(filtered);
+
+  const webhookData = paginateClient(filtered, 'webhooks', (w) =>
+    [w.startedAt, w.jobType, w.status, JSON.stringify(w.metadata || {}), w.error || ''].join(' '),
+  );
+  const whRows = webhookData.items
+    .map((w) => {
+      const meta = w.metadata || {};
+      const kind = classifyWebhookStatus(w);
+      const result =
+        kind === 'success'
+          ? `${meta.listings ?? 0} ${t('dashboard.listings')}, ${meta.reservations ?? 0} ${t('dashboard.reservations')}`
+          : w.error || w.status;
+      const resId = meta.reservationId || meta.hostawayReservationId;
+      const eventLabel = resId
+        ? `${webhookEventName(w)} · #${resId}`
+        : webhookEventName(w);
+      return `<tr>
+      <td>${formatDashboardDateTime(w.startedAt)}</td>
+      <td>${esc(eventLabel)}</td>
+      <td>${esc(String(result))}</td>
+      <td>${webhookStatusBadge(kind)}</td>
+    </tr>`;
+    })
+    .join('');
+  $('#webhook-activity').innerHTML = `
+    <table><thead><tr>
+      <th>${t('dashboard.webhookCol.time')}</th>
+      <th>${t('dashboard.webhookCol.event')}</th>
+      <th>${t('dashboard.webhookCol.result')}</th>
+      <th>${t('dashboard.webhookCol.status')}</th>
+    </tr></thead>
+    <tbody>${whRows || `<tr><td colspan="4">${t('dashboard.webhookEmpty')}</td></tr>`}</tbody></table>`;
+  renderTableInfo('#webhooks-info', webhookData, webhookData.maxTotal);
+  renderPagination('#webhooks-pagination', webhookData, 'webhooks', () =>
+    renderWebhookDashboard(cachedWebhookJobs),
+  );
+  scheduleEnhanceResponsiveTables();
+}
+
+function healthBadge(state) {
+  if (state === 'ok') return `<span class="health-badge ok">✓ ${t('dashboard.health.healthy')}</span>`;
+  if (state === 'warn') return `<span class="health-badge warn">! ${t('dashboard.health.degraded')}</span>`;
+  return `<span class="health-badge err">✕ ${t('dashboard.health.down')}</span>`;
+}
+
+function dashStatIcon(kind) {
+  const attrs = 'xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  if (kind === 'listings') {
+    return `<svg ${attrs}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+  }
+  if (kind === 'reservations') {
+    return `<svg ${attrs}><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
+  }
+  if (kind === 'sync') {
+    return `<svg ${attrs}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+  }
+  return `<svg ${attrs}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+}
+
+async function loadDashboard() {
+  const [status, webhooks, healthRes, check24Res] = await Promise.all([
+    api('/sync/status'),
+    api('/sync/webhook-activity'),
+    fetch('/health').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    hasPermission('DASHBOARD_VIEW')
+      ? api('/check24/status').catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const last = status.last;
+  const settings = status.settings;
+  const inProgress = !!status.inProgress || last?.status === 'running';
+  const syncOk = !inProgress && last?.status === 'completed';
+  const syncFailed = !inProgress && last?.status === 'failed';
+  const syncLabel = inProgress
+    ? formatSyncPhase(last, true)
+    : syncOk
+      ? t('dashboard.syncComplete')
+      : syncFailed
+        ? t('dashboard.syncFailed')
+        : t('dashboard.syncIdle');
+  const syncTime = formatDashboardDateTime(
+    last?.finishedAt || last?.startedAt || null,
+  );
+
+  const statusEl = $('#dashboard-sync-status');
+  if (statusEl) {
+    statusEl.className = `sync-status-pill ${inProgress ? 'is-running' : syncOk ? 'is-ok' : syncFailed ? 'is-error' : 'is-idle'}`;
+    statusEl.textContent = inProgress
+      ? `⟳ ${syncLabel}`
+      : syncOk
+        ? `✓ ${t('dashboard.syncComplete')}`
+        : syncFailed
+          ? `✕ ${t('dashboard.syncFailed')}`
+          : syncLabel;
+  }
+  const lastSyncEl = $('#dashboard-last-sync');
+  if (lastSyncEl) {
+    lastSyncEl.textContent = last
+      ? t('dashboard.lastSyncLabel', { time: syncTime })
+      : '';
+  }
+
+  $('#stats').innerHTML = `
+    <div class="stat-card dash-stat">
+      <div class="dash-stat-top">
+        <div class="dash-stat-text">
+          <div class="value">${formatCount(status.listingCount)}</div>
+          <div class="label">${t('dashboard.listingsLabel')}</div>
+        </div>
+        <span class="dash-stat-icon listings">${dashStatIcon('listings')}</span>
+      </div>
+      <button type="button" class="link-btn" data-dash-nav="listings">${t('dashboard.viewListings')}</button>
+    </div>
+    <div class="stat-card dash-stat">
+      <div class="dash-stat-top">
+        <div class="dash-stat-text">
+          <div class="value">${formatCount(status.reservationCount)}</div>
+          <div class="label">${t('dashboard.reservationsLabel')}</div>
+        </div>
+        <span class="dash-stat-icon reservations">${dashStatIcon('reservations')}</span>
+      </div>
+      <button type="button" class="link-btn" data-dash-nav="reservations">${t('dashboard.viewReservations')}</button>
+    </div>
+    <div class="stat-card dash-stat">
+      <div class="dash-stat-top">
+        <div class="dash-stat-text">
+          <div class="value">${esc(syncLabel)}</div>
+          <div class="label">${syncOk ? t('dashboard.allSystemsOk') : formatSyncPhase(last, inProgress)}</div>
+        </div>
+        <span class="dash-stat-icon sync">${dashStatIcon('sync')}</span>
+      </div>
+      <button type="button" class="link-btn" data-dash-scroll="#system-health-card">${t('dashboard.viewDetails')}</button>
+    </div>
+    <div class="stat-card dash-stat">
+      <div class="dash-stat-top">
+        <div class="dash-stat-text">
+          <div class="label">${t('dashboard.lastSync')}</div>
+          <div class="value value-sm">${syncTime}</div>
+        </div>
+        <span class="dash-stat-icon time">${dashStatIcon('time')}</span>
+      </div>
+      <button type="button" class="link-btn" data-dash-scroll="#webhook-activity">${t('dashboard.viewSyncHistory')}</button>
+    </div>
+  `;
+
+  if (!syncSettingsDirty) {
+    $('#auto-sync-enabled').checked = settings?.autoSyncEnabled ?? true;
+    fillSyncIntervalOptions(settings?.intervalMinutes ?? 30);
+  } else {
+    fillSyncIntervalOptions(Number($('#auto-sync-interval').value) || settings?.intervalMinutes || 30);
+  }
+
+  if (settings?.autoSyncEnabled) {
+    const base = last?.finishedAt || last?.startedAt;
+    const intervalMs = (settings.intervalMinutes || 30) * 60 * 1000;
+    const nextAt = base ? new Date(new Date(base).getTime() + intervalMs) : null;
+    $('#auto-sync-hint').textContent = nextAt
+      ? formatDashboardDateTime(nextAt)
+      : `~${settings.intervalMinutes} min`;
+  } else {
+    $('#auto-sync-hint').textContent = t('dashboard.autoSyncOff');
+  }
+
+  const recentWebhookOk = (Array.isArray(webhooks) ? webhooks : [])
+    .slice(0, 10)
+    .some((w) => w.status === 'completed');
+  const recentWebhookFail = (Array.isArray(webhooks) ? webhooks : [])
+    .slice(0, 5)
+    .every((w) => w.status === 'failed') && (webhooks?.length || 0) > 0;
+  const hostawayState = syncFailed ? 'err' : healthRes?.checks?.database === 'ok' ? 'ok' : 'warn';
+  const webhookState = recentWebhookFail ? 'err' : recentWebhookOk || (webhooks?.length || 0) === 0 ? 'ok' : 'warn';
+  const fonioState = healthRes?.checks?.database === 'ok' ? 'ok' : 'warn';
+  let check24State = 'warn';
+  if (check24Res) {
+    if (!check24Res.configured || !check24Res.enabled) check24State = 'warn';
+    else if (check24Res.ping?.ok) check24State = 'ok';
+    else check24State = 'err';
+  }
+
+  $('#system-health-list').innerHTML = [
+    ['hostaway', hostawayState],
+    ['webhooks', webhookState],
+    ['fonio', fonioState],
+    ['check24', check24State],
+  ]
+    .map(
+      ([key, state]) => `
+    <div class="health-row">
+      <div class="health-copy">
+        <div class="health-name">${t(`dashboard.health.${key}`)}</div>
+        <div class="health-desc">${t(`dashboard.health.${key}Desc`)}</div>
+      </div>
+      ${healthBadge(state)}
+    </div>`,
+    )
+    .join('');
+
+  cachedWebhookJobs = Array.isArray(webhooks) ? webhooks : [];
+  if ($('#webhook-filter-range')) $('#webhook-filter-range').value = webhookFilters.range;
+  if ($('#webhook-filter-result')) $('#webhook-filter-result').value = webhookFilters.result;
+  renderWebhookDashboard(cachedWebhookJobs);
+  applyRoleUi();
+}
 
 $('#rule-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -976,67 +1379,6 @@ function bindRuleRowClicks() {
       if (rule) loadRuleIntoForm(rule);
     });
   });
-}
-
-async function loadDashboard() {
-  const [status, webhooks] = await Promise.all([
-    api('/sync/status'),
-    api('/sync/webhook-activity'),
-  ]);
-  const last = status.last;
-  const settings = status.settings;
-  const syncLabel = formatSyncPhase(last, status.inProgress);
-  const syncTime = formatSyncTime(last, status.inProgress);
-  $('#stats').innerHTML = `
-    <div class="stat-card"><div class="value">${status.listingCount}</div><div class="label">${t('dashboard.listings')}</div></div>
-    <div class="stat-card"><div class="value">${status.reservationCount}</div><div class="label">${t('dashboard.reservations')}</div></div>
-    <div class="stat-card"><div class="value">${esc(syncLabel)}</div><div class="label">${t('dashboard.lastSync')}</div></div>
-    <div class="stat-card"><div class="value">${syncTime}</div><div class="label">${t('dashboard.syncTime')}</div></div>
-  `;
-  if (last?.status === 'completed' && last.metadata) {
-    const meta = last.metadata;
-    $('#sync-result').innerHTML = `<p class="success">✓ ${t('dashboard.syncDone', {
-      listings: meta.listings ?? status.listingCount,
-      reservations: meta.reservations ?? status.reservationCount,
-    })}</p>`;
-  }
-  if (!syncSettingsDirty) {
-    $('#auto-sync-enabled').checked = settings?.autoSyncEnabled ?? true;
-    $('#auto-sync-interval').value = settings?.intervalMinutes ?? 30;
-  }
-  $('#auto-sync-hint').textContent = settings?.autoSyncEnabled
-    ? t('dashboard.autoSyncNext', { minutes: settings.intervalMinutes })
-    : t('dashboard.autoSyncOff');
-
-  ensureTableToolbar('#webhooks-toolbar', 'webhooks', loadDashboard);
-  const webhookData = paginateClient(webhooks, 'webhooks', (w) => [
-    w.startedAt,
-    w.jobType,
-    w.status,
-    JSON.stringify(w.metadata || {}),
-    w.error || '',
-  ].join(' '));
-  const whRows = webhookData.items.map((w) => {
-    const meta = w.metadata || {};
-    const result = w.status === 'completed'
-      ? `${meta.listings ?? 0} ${t('dashboard.listings')}, ${meta.reservations ?? 0} ${t('dashboard.reservations')}`
-      : w.error || w.status;
-    return `<tr>
-      <td>${formatDateTime(w.startedAt)}</td>
-      <td>${esc(w.jobType.replace('webhook:', ''))}</td>
-      <td>${esc(String(result))}</td>
-    </tr>`;
-  }).join('');
-  $('#webhook-activity').innerHTML = `
-    <table><thead><tr>
-      <th>${t('dashboard.webhookCol.time')}</th>
-      <th>${t('dashboard.webhookCol.event')}</th>
-      <th>${t('dashboard.webhookCol.result')}</th>
-    </tr></thead>
-    <tbody>${whRows || `<tr><td colspan="3">${t('dashboard.webhookEmpty')}</td></tr>`}</tbody></table>`;
-  renderTableInfo('#webhooks-info', webhookData, webhookData.maxTotal);
-  renderPagination('#webhooks-pagination', webhookData, 'webhooks', loadDashboard);
-  applyRoleUi();
 }
 
 async function loadListings() {

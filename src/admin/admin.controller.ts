@@ -173,9 +173,13 @@ export class AdminController {
   @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'Recent Hostaway webhook-triggered sync activity' })
   listWebhookActivity() {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     return this.prisma.syncJob.findMany({
-      where: { jobType: { startsWith: 'webhook:' } },
-      take: 20,
+      where: {
+        jobType: { startsWith: 'webhook:' },
+        startedAt: { gte: since },
+      },
+      take: 500,
       orderBy: { startedAt: 'desc' },
     });
   }
