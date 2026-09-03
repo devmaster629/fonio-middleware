@@ -203,6 +203,7 @@ export class AdminController {
         orderBy,
         include: {
           listing: { include: { listingGroup: true } },
+          notifiedCharges: { select: { amount: true } },
         },
       }),
     ]);
@@ -211,9 +212,10 @@ export class AdminController {
       (req.user.permissions ?? []).includes(
         AdminPermission.RESERVATIONS_VIEW_PII,
       );
+    const withAmounts = items.map((r) => this.withReservationAmounts(r));
     const sanitized = canSeePii
-      ? items
-      : items.map((r) => maskReservationForViewer(r));
+      ? withAmounts
+      : withAmounts.map((r) => maskReservationForViewer(r));
     return paginated(sanitized, total, page, pageSize);
   }
 
@@ -674,8 +676,35 @@ export class AdminController {
         return { status: dir };
       case 'listingName':
         return { listing: { name: dir } };
+      case 'totalPrice':
+        return { totalPrice: dir };
       default:
         return { arrivalDate: dir };
     }
+  }
+
+  /** Booking total from Hostaway; paid from recorded charges, or full total when Hostaway is Fully Paid. */
+  private withReservationAmounts<
+    T extends {
+      totalPrice: number | null;
+      isPaid: boolean | null;
+      notifiedCharges?: { amount: number }[];
+    },
+  >(reservation: T): Omit<T, 'notifiedCharges'> & { paidAmount: number | null } {
+    const { notifiedCharges = [], ...rest } = reservation;
+    const fromCharges = notifiedCharges.reduce(
+      (sum, charge) => sum + (Number(charge.amount) > 0 ? Number(charge.amount) : 0),
+      0,
+    );
+    const total =
+      rest.totalPrice != null && Number.isFinite(rest.totalPrice)
+        ? rest.totalPrice
+        : null;
+    let paidAmount =
+      fromCharges > 0 ? Math.round(fromCharges * 100) / 100 : null;
+    if (rest.isPaid === true && total != null) {
+      paidAmount = Math.max(paidAmount ?? 0, total);
+    }
+    return { ...rest, paidAmount };
   }
 }

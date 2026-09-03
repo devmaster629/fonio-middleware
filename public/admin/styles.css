@@ -808,6 +808,12 @@ th {
   font-weight: 600;
 }
 
+.cell-money {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 tr:last-child td { border-bottom: none; }
 
 .badge {

@@ -1163,6 +1163,8 @@ async function loadReservations() {
       <td>${esc(r.guestPhone || '–')}</td>
       <td>${esc(r.guestEmail || '–')}</td>
       <td>${esc(r.listing?.name || '–')}</td>
+      <td class="cell-money">${esc(formatMoney(r.totalPrice))}</td>
+      <td class="cell-money">${esc(formatMoney(reservationPaidAmount(r)))}</td>
       <td>${esc(r.listing?.listingGroup?.name || '–')}</td>
       <td>${formatDate(r.arrivalDate)}</td>
       <td>${formatDate(r.departureDate)}</td>
@@ -1175,11 +1177,13 @@ async function loadReservations() {
       ${sortTh('reservations', 'guestName', t('listings.guest'))}
       <th>${t('listings.phone')}</th><th>${t('listings.email')}</th>
       ${sortTh('reservations', 'listingName', t('listings.name'))}
+      ${sortTh('reservations', 'totalPrice', t('listings.totalAmount'))}
+      <th>${t('listings.paidAmount')}</th>
       <th>${t('listings.group')}</th>
       ${sortTh('reservations', 'arrivalDate', t('listings.arrival'))}
       ${sortTh('reservations', 'departureDate', t('listings.departure'))}
       ${sortTh('reservations', 'status', t('listings.status'))}
-    </tr></thead><tbody>${rows || `<tr><td colspan="9">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+    </tr></thead><tbody>${rows || `<tr><td colspan="11">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#reservations-table', 'reservations', loadReservations);
   renderTableInfo('#reservations-info', data);
   renderPagination('#reservations-pagination', data, 'reservations', loadReservations);
@@ -1489,6 +1493,21 @@ function paymentStatusBadge(status) {
           : 'auto';
   const label = t(`payments.status.${status}`) || status;
   return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function reservationPaidAmount(reservation) {
+  if (reservation?.paidAmount != null && Number.isFinite(Number(reservation.paidAmount))) {
+    return Number(reservation.paidAmount);
+  }
+  const charges = Array.isArray(reservation?.notifiedCharges) ? reservation.notifiedCharges : [];
+  const fromCharges = charges.reduce(
+    (sum, charge) => sum + (Number(charge?.amount) > 0 ? Number(charge.amount) : 0),
+    0,
+  );
+  if (reservation?.isPaid === true && reservation?.totalPrice != null) {
+    return Math.max(fromCharges, Number(reservation.totalPrice) || 0);
+  }
+  return fromCharges > 0 ? fromCharges : null;
 }
 
 function formatMoney(amount, currency = 'EUR') {
