@@ -2079,34 +2079,309 @@ function renderPayerCell(payment) {
 }
 
 const reservationSearchCache = new Map();
+let paymentResSearchBound = false;
+
+function isActiveStayReservation(r) {
+  const status = String(r?.status || '').toLowerCase();
+  if (/cancel|inquiry|ownerstay|owner.?stay/.test(status)) return false;
+  if (!r?.departureDate) return true;
+  const dep = new Date(r.departureDate);
+  if (Number.isNaN(dep.getTime())) return true;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dep >= today;
+}
+
+function filterReservationSearchItems(items, channelFilter, stayFilter) {
+  return (items || []).filter((r) => {
+    if (stayFilter === 'active' && !isActiveStayReservation(r)) return false;
+    if (channelFilter && channelFilter !== 'all') {
+      const pretty = prettyChannel(r.channelName || '').toLowerCase();
+      if (channelFilter === 'direct') {
+        return pretty === prettyChannel('direct').toLowerCase()
+          || /direct|bookingengine|website|manual|partner/i.test(String(r.channelName || ''));
+      }
+      if (channelFilter === 'airbnb') return /airbnb/i.test(String(r.channelName || ''));
+      if (channelFilter === 'booking') return /booking/i.test(String(r.channelName || '')) && !/bookingengine/i.test(String(r.channelName || ''));
+    }
+    return true;
+  });
+}
+
+function buildReservationSearchResultButton(r, currency) {
+  const id = r.hostawayId;
+  const guest = r.guestName || '–';
+  const listing = r.listing?.name || r.listingName || '';
+  const dates = formatStayDates(r.arrivalDate, r.departureDate);
+  const totalLabel = r.totalPrice != null ? formatMoney(r.totalPrice, currency) : '';
+  const paid = reservationPaidAmount(r);
+  const paidLabel = paid != null ? formatMoney(paid, currency) : '';
+  const meta = [listing, dates].filter(Boolean).join(' · ');
+  return `
+    <button type="button" class="payment-res-result" data-hostaway-id="${id}" role="option">
+      <span class="payment-res-result-main">
+        <span class="payment-res-result-title">#${esc(String(id))} — ${esc(guest)}</span>
+        ${meta ? `<span class="payment-res-result-meta">${esc(meta)}</span>` : ''}
+      </span>
+      <span class="payment-res-result-side">
+        ${r.channelName ? renderChannelBadge(r.channelName) : ''}
+        <span class="payment-res-result-amounts">
+          ${totalLabel ? `<span class="payment-res-result-total">${esc(totalLabel)}</span>` : ''}
+          ${paidLabel ? `<span class="payment-res-result-paid">${esc(t('listings.paidAmount'))}: ${esc(paidLabel)}</span>` : `<span class="payment-res-result-paid">${esc(t('listings.paidAmount'))}: –</span>`}
+        </span>
+      </span>
+    </button>`;
+}
+
+function closeReservationSearchPanels(except = null) {
+  document.querySelectorAll('.payment-res-search').forEach((wrap) => {
+    if (wrap === except) return;
+    wrap.classList.remove('is-open');
+    const panel = wrap.querySelector('.payment-res-search-panel');
+    if (panel) panel.hidden = true;
+  });
+}
+
+function ensureSelectHasReservationOption(select, reservation, currency) {
+  if (!select || !reservation?.hostawayId) return;
+  const id = String(reservation.hostawayId);
+  let opt = select.querySelector(`option[value="${id}"]`);
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = id;
+    select.appendChild(opt);
+  }
+  const guest = String(reservation.guestName || '').trim();
+  const dates = formatStayDates(reservation.arrivalDate, reservation.departureDate);
+  const listing = reservation.listing?.name || reservation.listingName || '';
+  const paid = reservationPaidAmount(reservation);
+  const amountLabel =
+    reservation.totalPrice != null
+      ? formatMoney(reservation.totalPrice, currency)
+      : '';
+  const paidLabel = paid != null ? formatMoney(paid, currency) : '';
+  opt.dataset.guest = guest;
+  opt.dataset.dates = dates;
+  opt.dataset.listing = listing;
+  opt.dataset.amountLabel = amountLabel;
+  opt.dataset.paidLabel = paidLabel;
+  opt.dataset.channel = reservation.channelName ? prettyChannel(reservation.channelName) : '';
+  opt.dataset.channelRaw = reservation.channelName || '';
+  opt.dataset.totalPrice = reservation.totalPrice != null ? String(Number(reservation.totalPrice)) : '';
+  opt.title = formatReservationOption(reservation, currency);
+  opt.textContent = formatReservationOptionShort(reservation, currency);
+}
+
+function applyReservationSearchPick(wrap, reservation) {
+  const row = wrap.closest('.payment-split-row');
+  const select = row?.querySelector('.payment-assign-select');
+  const manual = wrap.querySelector('.payment-assign-manual');
+  const stack = wrap.closest('.payment-actions-stack');
+  const currency = stack?.dataset.currency || 'EUR';
+  const paymentId = wrap.dataset.paymentId || select?.dataset.paymentId;
+  if (!select || !reservation?.hostawayId) return;
+
+  ensureSelectHasReservationOption(select, reservation, currency);
+  select.value = String(reservation.hostawayId);
+  if (manual) manual.value = `#${reservation.hostawayId}`;
+  const assignWrap = select.closest('.payment-assign-wrap');
+  if (assignWrap) {
+    const list = assignWrap.querySelector('.payment-assign-choices');
+    if (list) {
+      const existing = [...list.querySelectorAll('.payment-assign-choice')]
+        .find((btn) => btn.dataset.value === String(reservation.hostawayId));
+      if (!existing) {
+        const opt = select.querySelector(`option[value="${reservation.hostawayId}"]`);
+        if (opt) list.insertAdjacentHTML('afterbegin', buildAssignChoiceButton(opt));
+      }
+    }
+    syncAssignDropdown(assignWrap, select);
+  }
+  closeReservationSearchPanels();
+  closePaymentAssignDropdowns();
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  if (row && paymentId) {
+    applySplitRowPercentage(paymentId, row);
+    updatePaymentSplitUi(paymentId);
+  }
+}
+
+function renderReservationSearchPanel(wrap) {
+  const panel = wrap.querySelector('.payment-res-search-panel');
+  const resultsEl = wrap.querySelector('.payment-res-search-results');
+  const countEl = wrap.querySelector('.payment-res-search-count');
+  const moreBtn = wrap.querySelector('.payment-res-search-more');
+  if (!panel || !resultsEl) return;
+
+  const state = wrap._resSearch || { items: [], page: 1, pageSize: 20, total: 0, q: '' };
+  const channelFilter = wrap.querySelector('.payment-res-filter-channel')?.value || 'all';
+  const stayFilter = wrap.querySelector('.payment-res-filter-stay')?.value || 'active';
+  const stack = wrap.closest('.payment-actions-stack');
+  const currency = stack?.dataset.currency || 'EUR';
+  const filtered = filterReservationSearchItems(state.items, channelFilter, stayFilter);
+  const visible = filtered;
+
+  if (countEl) {
+    countEl.textContent = t('payments.searchMatchCount', { count: filtered.length });
+  }
+  if (!visible.length) {
+    resultsEl.innerHTML = `<div class="payment-res-search-empty">${esc(t('payments.searchNoResults'))}</div>`;
+  } else {
+    resultsEl.innerHTML = visible
+      .map((r) => buildReservationSearchResultButton(r, currency))
+      .join('');
+  }
+  if (moreBtn) {
+    const hasMore = Number(state.total) > Number(state.items.length);
+    moreBtn.classList.toggle('hidden', !hasMore);
+  }
+  closePaymentAssignDropdowns();
+  wrap.classList.add('is-open');
+  panel.hidden = false;
+}
+
+async function runReservationSearch(wrap, { loadMore = false } = {}) {
+  const input = wrap.querySelector('.payment-assign-manual');
+  const q = String(input?.value || '').trim();
+  if (q.length < 2) {
+    closeReservationSearchPanels();
+    return;
+  }
+  if (/^#?\d{5,10}$/.test(q) && !loadMore) {
+    closeReservationSearchPanels();
+    return;
+  }
+
+  const state = wrap._resSearch || { items: [], page: 1, pageSize: 20, total: 0, q: '' };
+  const nextPage = loadMore ? state.page + 1 : 1;
+  const cacheKey = `${q}|p${nextPage}`;
+
+  try {
+    let pageData = reservationSearchCache.get(cacheKey);
+    if (!pageData) {
+      const res = await api(`/reservations?search=${encodeURIComponent(q)}&pageSize=20&page=${nextPage}`);
+      pageData = {
+        items: res.items || [],
+        total: res.total ?? (res.items || []).length,
+      };
+      reservationSearchCache.set(cacheKey, pageData);
+    }
+    const merged = loadMore
+      ? [...(state.items || []), ...pageData.items]
+      : pageData.items;
+    wrap._resSearch = {
+      items: merged,
+      page: nextPage,
+      pageSize: 20,
+      total: pageData.total,
+      q,
+    };
+    renderReservationSearchPanel(wrap);
+  } catch {
+    /* search is best-effort */
+  }
+}
 
 function bindReservationSearchInputs() {
   $$('.payment-assign-manual').forEach((input) => {
+    if (input.dataset.searchBound) return;
+    input.dataset.searchBound = '1';
+
+    let wrap = input.closest('.payment-res-search');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'payment-res-search';
+      wrap.dataset.paymentId = input.dataset.paymentId || '';
+      wrap.dataset.rowIndex = input.dataset.rowIndex || '0';
+      input.parentNode?.insertBefore(wrap, input);
+      const inputWrap = document.createElement('div');
+      inputWrap.className = 'payment-res-search-input-wrap';
+      inputWrap.innerHTML = '<span class="payment-res-search-icon" aria-hidden="true"></span>';
+      wrap.appendChild(inputWrap);
+      inputWrap.appendChild(input);
+    }
+    wrap.dataset.paymentId = input.dataset.paymentId || wrap.dataset.paymentId || '';
+    wrap.dataset.rowIndex = input.dataset.rowIndex || wrap.dataset.rowIndex || '0';
+    input.removeAttribute('list');
+    if (!input.closest('.payment-res-search-input-wrap')) {
+      const inputWrap = document.createElement('div');
+      inputWrap.className = 'payment-res-search-input-wrap';
+      inputWrap.innerHTML = '<span class="payment-res-search-icon" aria-hidden="true"></span>';
+      input.parentNode?.insertBefore(inputWrap, input);
+      inputWrap.appendChild(input);
+    }
+    if (!wrap.querySelector('.payment-res-search-panel')) {
+      const panel = document.createElement('div');
+      panel.className = 'payment-res-search-panel';
+      panel.hidden = true;
+      panel.innerHTML = `
+        <div class="payment-res-search-meta">
+          <span class="payment-res-search-count"></span>
+          <div class="payment-res-search-filters">
+            <select class="payment-res-filter payment-res-filter-channel" aria-label="${esc(t('payments.searchFilterChannel'))}">
+              <option value="all">${esc(t('payments.searchAllChannels'))}</option>
+              <option value="direct">${esc(t('payments.channelDirect'))}</option>
+              <option value="airbnb">Airbnb</option>
+              <option value="booking">Booking.com</option>
+            </select>
+            <select class="payment-res-filter payment-res-filter-stay" aria-label="${esc(t('payments.searchFilterStay'))}">
+              <option value="active">${esc(t('payments.searchActiveStays'))}</option>
+              <option value="all">${esc(t('payments.searchAllStays'))}</option>
+            </select>
+          </div>
+        </div>
+        <div class="payment-res-search-results" role="listbox"></div>
+        <div class="payment-res-search-footer">
+          <span class="payment-res-search-hint">${esc(t('payments.searchNavHint'))}</span>
+          <button type="button" class="payment-res-search-more hidden">${esc(t('payments.searchLoadMore'))}</button>
+        </div>`;
+      wrap.appendChild(panel);
+    }
+
+    const timerKey = `res-search-${wrap.dataset.paymentId}-${wrap.dataset.rowIndex}`;
     input.addEventListener('input', () => {
-      const q = input.value.trim();
-      const listId = input.getAttribute('list');
-      const datalist = listId ? document.getElementById(listId) : null;
-      if (!datalist || q.length < 2 || /^#?\d+$/.test(q)) return;
-      clearTimeout(searchTimers[`res-search-${listId}`]);
-      searchTimers[`res-search-${listId}`] = setTimeout(async () => {
-        try {
-          let items = reservationSearchCache.get(q);
-          if (!items) {
-            const res = await api(`/reservations?search=${encodeURIComponent(q)}&pageSize=20`);
-            items = res.items || [];
-            reservationSearchCache.set(q, items);
-          }
-          datalist.innerHTML = items.map((r) => {
-            const total = r.totalPrice != null ? ` · ${formatMoney(r.totalPrice)}` : '';
-            const dates = formatStayDates(r.arrivalDate, r.departureDate);
-            const channel = r.channelName ? ` [${prettyChannel(r.channelName)}]` : '';
-            return `<option value="#${r.hostawayId}${esc(channel)} — ${esc(r.guestName || '')} — ${esc(r.listing?.name || '')} — ${esc(dates)}${esc(total)}"></option>`;
-          }).join('');
-        } catch {
-          /* search is best-effort */
-        }
-      }, 300);
+      clearTimeout(searchTimers[timerKey]);
+      searchTimers[timerKey] = setTimeout(() => {
+        runReservationSearch(wrap).catch(() => {});
+      }, 280);
     });
+    input.addEventListener('focus', () => {
+      if (String(input.value || '').trim().length >= 2 && wrap._resSearch?.items?.length) {
+        renderReservationSearchPanel(wrap);
+      }
+    });
+  });
+
+  if (paymentResSearchBound) return;
+  paymentResSearchBound = true;
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.payment-res-search')) return;
+    closeReservationSearchPanels();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeReservationSearchPanels();
+  });
+  document.addEventListener('change', (e) => {
+    const filter = e.target.closest('.payment-res-filter');
+    if (!filter) return;
+    const wrap = filter.closest('.payment-res-search');
+    if (wrap?._resSearch) renderReservationSearchPanel(wrap);
+  });
+  document.addEventListener('click', (e) => {
+    const more = e.target.closest('.payment-res-search-more');
+    if (more) {
+      const wrap = more.closest('.payment-res-search');
+      if (!wrap) return;
+      e.preventDefault();
+      runReservationSearch(wrap, { loadMore: true }).catch(() => {});
+      return;
+    }
+    const result = e.target.closest('.payment-res-result');
+    if (!result) return;
+    const wrap = result.closest('.payment-res-search');
+    const id = Number(result.dataset.hostawayId);
+    const reservation = wrap?._resSearch?.items?.find((r) => Number(r.hostawayId) === id);
+    if (wrap && reservation) applyReservationSearchPick(wrap, reservation);
   });
 }
 
@@ -2353,21 +2628,34 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
     const fullLabel = formatReservationOption(c, payment.currency);
     const guest = String(c.guestName || '').trim();
     const dates = formatStayDates(c.arrivalDate, c.departureDate);
-    const amountLabel =
-      c.balanceDue != null
-        ? formatMoney(c.balanceDue, payment.currency)
-        : c.totalPrice != null
-          ? formatMoney(c.totalPrice, payment.currency)
-          : '';
-    const channel = c.channelName ? prettyChannel(c.channelName) : '';
+    const listing = c.listingName || c.listing?.name || '';
+    const totalLabel =
+      c.totalPrice != null ? formatMoney(c.totalPrice, payment.currency) : '';
+    let paidLabel = '';
+    if (c.paidAmount != null && Number.isFinite(Number(c.paidAmount))) {
+      paidLabel = formatMoney(c.paidAmount, payment.currency);
+    } else if (
+      c.totalPrice != null &&
+      c.balanceDue != null &&
+      Number.isFinite(Number(c.totalPrice)) &&
+      Number.isFinite(Number(c.balanceDue))
+    ) {
+      const paid = Math.max(0, Math.round((Number(c.totalPrice) - Number(c.balanceDue)) * 100) / 100);
+      if (paid > 0) paidLabel = formatMoney(paid, payment.currency);
+    }
+    const channelRaw = c.channelName || '';
+    const channel = channelRaw ? prettyChannel(channelRaw) : '';
     options.push(
       `<option value="${id}"` +
         ` title="${esc(fullLabel)}"` +
         ` data-total-price="${c.totalPrice != null ? Number(c.totalPrice) : ''}"` +
         ` data-guest="${esc(guest)}"` +
         ` data-dates="${esc(dates)}"` +
-        ` data-amount-label="${esc(amountLabel)}"` +
+        ` data-listing="${esc(listing)}"` +
+        ` data-amount-label="${esc(totalLabel)}"` +
+        ` data-paid-label="${esc(paidLabel)}"` +
         ` data-channel="${esc(channel)}"` +
+        ` data-channel-raw="${esc(channelRaw)}"` +
         `${selected ? ' selected' : ''}>${esc(formatReservationOptionShort(c, payment.currency))}</option>`,
     );
   };
@@ -2391,6 +2679,7 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
         arrivalDate: reservation.arrivalDate,
         departureDate: reservation.departureDate,
         totalPrice: reservation.totalPrice,
+        paidAmount: reservation.paidAmount,
         channelName: reservation.channelName,
         balanceDue: reservation.balanceDue,
       },
@@ -2402,25 +2691,6 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
 
 /** Native &lt;select&gt; popups overflow on mobile — custom dropdown with responsive panel. */
 let paymentAssignDropdownBound = false;
-
-function setPaymentAssignDropdownOpen(wrap, open) {
-  if (!wrap) return;
-  const trigger = wrap.querySelector('.payment-assign-trigger');
-  const panel = wrap.querySelector('.payment-assign-panel');
-  wrap.classList.toggle('is-open', open);
-  trigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (panel) panel.hidden = !open;
-}
-
-function closePaymentAssignDropdowns(exceptWrap = null) {
-  document.querySelectorAll('.payment-assign-wrap').forEach((wrap) => {
-    if (wrap === exceptWrap) return;
-    const panel = wrap.querySelector('.payment-assign-panel');
-    if (wrap.classList.contains('is-open') || (panel && !panel.hidden)) {
-      setPaymentAssignDropdownOpen(wrap, false);
-    }
-  });
-}
 
 function bindPaymentAssignDropdownGlobal() {
   if (paymentAssignDropdownBound) return;
@@ -2434,21 +2704,49 @@ function bindPaymentAssignDropdownGlobal() {
   });
 }
 
+function setPaymentAssignDropdownOpen(wrap, open) {
+  if (!wrap) return;
+  const trigger = wrap.querySelector('.payment-assign-trigger');
+  const panel = wrap.querySelector('.payment-assign-panel');
+  wrap.classList.toggle('is-open', open);
+  trigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (panel) panel.hidden = !open;
+  if (open) closeReservationSearchPanels();
+}
+
+function closePaymentAssignDropdowns(exceptWrap = null) {
+  document.querySelectorAll('.payment-assign-wrap').forEach((wrap) => {
+    if (wrap === exceptWrap) return;
+    const panel = wrap.querySelector('.payment-assign-panel');
+    if (wrap.classList.contains('is-open') || (panel && !panel.hidden)) {
+      setPaymentAssignDropdownOpen(wrap, false);
+    }
+  });
+}
+
 function buildAssignChoiceButton(opt) {
   const guest = opt.dataset.guest || '';
   const dates = opt.dataset.dates || '';
+  const listing = opt.dataset.listing || '';
   const amount = opt.dataset.amountLabel || '';
-  const channel = opt.dataset.channel || '';
+  const paid = opt.dataset.paidLabel || '';
+  const channelRaw = opt.dataset.channelRaw || '';
+  const meta = [listing, dates].filter(Boolean).join(' · ');
+  const titleGuest = guest || '–';
   return `
-    <button type="button" class="payment-assign-choice" data-value="${esc(opt.value)}"
+    <button type="button" class="payment-assign-choice payment-res-result" data-value="${esc(opt.value)}"
       role="option" title="${esc(opt.title || opt.textContent || '')}">
-      <span class="payment-assign-choice-top">
-        <span class="payment-assign-choice-id">#${esc(opt.value)}</span>
-        ${channel ? `<span class="payment-assign-choice-channel">${esc(channel)}</span>` : ''}
-        ${amount ? `<span class="payment-assign-choice-amount">${esc(amount)}</span>` : ''}
+      <span class="payment-res-result-main">
+        <span class="payment-res-result-title">#${esc(opt.value)} — ${esc(titleGuest)}</span>
+        ${meta ? `<span class="payment-res-result-meta">${esc(meta)}</span>` : ''}
       </span>
-      ${guest ? `<span class="payment-assign-choice-guest">${esc(guest)}</span>` : ''}
-      ${dates ? `<span class="payment-assign-choice-dates">${esc(dates)}</span>` : ''}
+      <span class="payment-res-result-side">
+        ${channelRaw ? renderChannelBadge(channelRaw) : ''}
+        <span class="payment-res-result-amounts">
+          ${amount ? `<span class="payment-res-result-total">${esc(amount)}</span>` : ''}
+          <span class="payment-res-result-paid">${esc(t('listings.paidAmount'))}: ${esc(paid || '–')}</span>
+        </span>
+      </span>
     </button>`;
 }
 
@@ -2540,7 +2838,6 @@ function mountAssignChoices(root = document) {
 }
 
 function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selectedHostawayId, percent) {
-  const listId = `payment-res-list-${paymentId}-${rowIndex}`;
   const amountValue = amount != null && Number.isFinite(Number(amount))
     ? Number(amount).toFixed(2)
     : '';
@@ -2569,11 +2866,15 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
         ${options}
       </select>
       </div>
-      <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
-        list="${listId}" autocomplete="off"
-        placeholder="${t('payments.manualReservationId')}"
-        title="${t('payments.manualReservationHint')}" />
-      <datalist id="${listId}"></datalist>
+      <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
+        <div class="payment-res-search-input-wrap">
+          <span class="payment-res-search-icon" aria-hidden="true"></span>
+          <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+            autocomplete="off"
+            placeholder="${t('payments.manualReservationId')}"
+            title="${t('payments.manualReservationHint')}" />
+        </div>
+      </div>
       <div class="payment-split-fields">
         <div class="payment-split-field">
           <label class="payment-field-label">${t('payments.splitPercent')}</label>
