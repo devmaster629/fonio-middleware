@@ -8,13 +8,31 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HostawayClient } from './hostaway.client';
 import { HostawayConversationService } from './hostaway-conversation.service';
 import { GuestRequestInboxService } from './guest-request-inbox.service';
-import { HostawayCalendarDay, HostawayReservation } from './hostaway.types';
+import {
+  HostawayCalendarDay,
+  HostawayListing,
+  HostawayReservation,
+} from './hostaway.types';
 import { EXCLUDED_LISTING_IDS } from './listing-hierarchy.config';
 import { ListingHierarchyService } from './listing-hierarchy.service';
 import {
   PaymentInboxService,
   ProcessPaymentUpdatesResult,
 } from './payment-inbox.service';
+
+function pickListingCoverUrl(remote: HostawayListing): string | null {
+  const topLevel =
+    remote.thumbnailUrl?.trim() || remote.pictureUrl?.trim() || '';
+  if (topLevel) return topLevel;
+  const images = [...(remote.listingImages ?? [])].sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+  );
+  for (const img of images) {
+    const url = img.url?.trim();
+    if (url) return url;
+  }
+  return null;
+}
 
 @Injectable()
 export class HostawaySyncService implements OnModuleInit {
@@ -174,6 +192,7 @@ export class HostawaySyncService implements OnModuleInit {
         !EXCLUDED_LISTING_IDS.includes(remote.id);
       const lat = parseCoord(remote.lat ?? remote.latitude);
       const lng = parseCoord(remote.lng ?? remote.longitude);
+      const coverImageUrl = pickListingCoverUrl(remote);
 
       await this.prisma.listing.upsert({
         where: { hostawayId: remote.id },
@@ -193,6 +212,7 @@ export class HostawaySyncService implements OnModuleInit {
           listingGroupId: group?.id,
           parentHostawayId,
           tags,
+          rawMetadata: coverImageUrl ? { coverImageUrl } : undefined,
           lastSyncedAt: new Date(),
         },
         update: {
@@ -210,6 +230,9 @@ export class HostawaySyncService implements OnModuleInit {
           listingGroupId: group?.id,
           parentHostawayId,
           tags,
+          ...(coverImageUrl
+            ? { rawMetadata: { coverImageUrl } }
+            : {}),
           lastSyncedAt: new Date(),
         },
       });

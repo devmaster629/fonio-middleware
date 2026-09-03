@@ -88,7 +88,7 @@ export class HostawayClient {
   async getListings(limit = 100, offset = 0): Promise<HostawayListing[]> {
     const { data } = await this.http.get<HostawayListResponse<HostawayListing>>(
       '/listings',
-      { params: { limit, offset } },
+      { params: { limit, offset, includeResources: 1 } },
     );
     return data.result ?? [];
   }

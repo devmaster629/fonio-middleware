@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260903e" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260903h" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -228,12 +228,21 @@
       </section>
 
       <section id="tab-listings" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="listings.title">Listings</h2></header>
-        <p class="field-hint" data-i18n="listings.aliasesHint">Add short guest-facing names (aliases) when callers use a different name than in Hostaway — e.g. „Wiesenblick“ for „2-Bedroom Apartment Wiesenblick“. Used for phone verification matching.</p>
-        <div id="listings-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="listings-table"></div>
-        <div id="listings-info" class="table-info"></div>
-        <div id="listings-pagination" class="table-pagination"></div>
+        <header class="page-header listings-page-header">
+          <div class="listings-page-heading">
+            <h2 data-i18n="listings.title">Listings</h2>
+            <p class="page-subtitle" data-i18n="listings.subtitle">Manage your properties and the guest-facing aliases for each listing.</p>
+          </div>
+        </header>
+        <div class="listings-board">
+          <div class="listings-toolbar-inner" id="listings-toolbar"></div>
+          <div class="listings-board-divider" aria-hidden="true"></div>
+          <div class="table-wrap listings-table-wrap" id="listings-table"></div>
+          <div class="listings-table-footer">
+            <div id="listings-info" class="table-info"></div>
+            <div id="listings-pagination" class="table-pagination"></div>
+          </div>
+        </div>
       </section>
 
       <section id="tab-groups" class="tab hidden">
@@ -725,9 +734,9 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260903e"></script>
+  <script src="/admin/i18n.js?v=20260903h"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260903e"></script>
+  <script src="/admin/app.js?v=20260903h"></script>
 </body>
 </html>

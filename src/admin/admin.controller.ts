@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import { AdminPermission, AdminRole, ApprovalMode, Prisma, RequestType } from '@prisma/client';
+import { AdminPermission, AdminRole, ApprovalMode, ListingStatus, Prisma, RequestType } from '@prisma/client';
 import { Request } from 'express';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import {
@@ -73,10 +73,30 @@ export class AdminController {
   @Get('listings')
   @Permissions(AdminPermission.LISTINGS_VIEW)
   @ApiOperation({ summary: 'List synced listings (paginated)' })
-  async listListings(@Query() query: SortablePaginationQueryDto) {
+  async listListings(
+    @Query() query: SortablePaginationQueryDto,
+    @Query('city') city?: string,
+    @Query('groupId') groupId?: string,
+    @Query('status') status?: string,
+    @Query('bookable') bookable?: string,
+    @Query('includeFacets') includeFacets?: string,
+  ) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
-    const where = this.buildListingSearch(query.search);
+    const and: Prisma.ListingWhereInput[] = [this.buildListingSearch(query.search)];
+    const cityTerm = city?.trim();
+    if (cityTerm) and.push({ city: { equals: cityTerm, mode: 'insensitive' } });
+    if (groupId?.trim()) and.push({ listingGroupId: groupId.trim() });
+    const statusTerm = status?.trim()?.toUpperCase();
+    if (
+      statusTerm &&
+      ['LIVE', 'DRAFT', 'HIDDEN', 'UNKNOWN'].includes(statusTerm)
+    ) {
+      and.push({ status: statusTerm as ListingStatus });
+    }
+    if (bookable === 'yes') and.push({ isBookable: true });
+    if (bookable === 'no') and.push({ isBookable: false });
+    const where: Prisma.ListingWhereInput = { AND: and };
     const orderBy = this.buildListingOrder(query.sortBy, query.sortDir);
     const [total, items] = await Promise.all([
       this.prisma.listing.count({ where }),
@@ -88,7 +108,29 @@ export class AdminController {
         take: pageSize,
       }),
     ]);
-    return paginated(items, total, page, pageSize);
+    const result = paginated(items, total, page, pageSize);
+    if (includeFacets === '1' || includeFacets === 'true') {
+      const [citiesRaw, groups] = await Promise.all([
+        this.prisma.listing.findMany({
+          where: { city: { not: null } },
+          select: { city: true },
+          distinct: ['city'],
+          orderBy: { city: 'asc' },
+        }),
+        this.prisma.listingGroup.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        }),
+      ]);
+      return {
+        ...result,
+        facets: {
+          cities: citiesRaw.map((c) => c.city).filter(Boolean) as string[],
+          groups,
+        },
+      };
+    }
+    return result;
   }
 
   @Patch('listings/:id/aliases')

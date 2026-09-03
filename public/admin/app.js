@@ -25,7 +25,7 @@ const webhookFilters = { range: '24h', event: 'all', result: 'all' };
 const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
-  listings: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' },
+  listings: { page: 1, pageSize: 25, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
   groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' },
   reservations: { page: 1, pageSize: 10, search: '', sortBy: 'arrivalDate', sortDir: 'desc' },
   conversations: { page: 1, pageSize: 10, search: '' },
@@ -38,6 +38,7 @@ const tableState = {
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   fonioActivity: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', actionFilter: '' },
 };
+let listingsFacets = { cities: [], groups: [] };
 const searchTimers = {};
 
 function pad2(n) {
@@ -489,6 +490,13 @@ function tableQuery(tabKey) {
   if (s.sortBy) {
     params.set('sortBy', s.sortBy);
     params.set('sortDir', s.sortDir || 'asc');
+  }
+  if (tabKey === 'listings') {
+    if (s.city) params.set('city', s.city);
+    if (s.groupId) params.set('groupId', s.groupId);
+    if (s.status) params.set('status', s.status);
+    if (s.bookable) params.set('bookable', s.bookable);
+    params.set('includeFacets', '1');
   }
   return params.toString();
 }
@@ -1049,12 +1057,12 @@ function renderWebhookTrend(jobs) {
 
   const peakRaw = Math.max(1, ...series.success, ...series.failed, ...series.warning);
   const yMax = Math.max(5, Math.ceil(peakRaw / 5) * 5);
-  const w = 420;
-  const h = 220;
-  const padL = 36;
-  const padR = 12;
-  const padT = 14;
-  const padB = 28;
+  const w = 640;
+  const h = 168;
+  const padL = 34;
+  const padR = 10;
+  const padT = 10;
+  const padB = 24;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
   const xAt = (i) => padL + (i / Math.max(buckets - 1, 1)) * plotW;
@@ -1066,27 +1074,30 @@ function renderWebhookTrend(jobs) {
   };
   const dots = (arr, color) =>
     arr
-      .map((v, i) => `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="3.2" fill="${color}" stroke="#0f1419" stroke-width="1.5" />`)
+      .map((v, i) => `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="3" fill="${color}" stroke="#0f1419" stroke-width="1.4" />`)
       .join('');
   const gridSteps = 5;
   const grid = Array.from({ length: gridSteps + 1 }, (_, i) => {
     const val = Math.round((yMax / gridSteps) * i);
     const y = yAt(val);
     return `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="#2d3a4f" stroke-width="1" />
-      <text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="#8b9cb3" font-size="10">${val}</text>`;
+      <text x="${padL - 5}" y="${y + 3}" text-anchor="end" fill="#8b9cb3" font-size="10">${val}</text>`;
   }).join('');
   const xLabels = Array.from({ length: buckets }, (_, i) => {
     const ts = minT + (span * i) / Math.max(buckets - 1, 1);
     const d = new Date(ts);
     const label = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    return `<text x="${xAt(i)}" y="${h - 8}" text-anchor="middle" fill="#8b9cb3" font-size="10">${label}</text>`;
+    return `<text x="${xAt(i)}" y="${h - 6}" text-anchor="middle" fill="#8b9cb3" font-size="10">${label}</text>`;
   }).join('');
+  const yMid = padT + plotH / 2;
+  const yAxisTitle = `<text x="11" y="${yMid}" fill="#8b9cb3" font-size="10" text-anchor="middle" transform="rotate(-90 11 ${yMid})">${esc(t('dashboard.trend.events'))}</text>`;
 
   chartEl.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(t('dashboard.trend.aria'))}">
       ${grid}
+      ${yAxisTitle}
       <polygon points="${areaPoints(series.success)}" fill="rgba(34,197,94,0.18)" />
-      <polyline fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.success)}" />
+      <polyline fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.success)}" />
       <polyline fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.failed)}" />
       <polyline fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.warning)}" />
       ${dots(series.success, '#22c55e')}
@@ -1419,42 +1430,59 @@ function bindRuleRowClicks() {
 }
 
 async function loadListings() {
-  ensureTableToolbar('#listings-toolbar', 'listings', loadListings);
+  ensureListingsToolbar();
   const data = await api(`/listings?${tableQuery('listings')}`);
   cachedListings = data.items || [];
+  if (data.facets) {
+    listingsFacets = {
+      cities: Array.isArray(data.facets.cities) ? data.facets.cities : [],
+      groups: Array.isArray(data.facets.groups) ? data.facets.groups : [],
+    };
+    refreshListingsFilterOptions();
+  }
+  const guestIcon = '<svg class="guest-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const rows = cachedListings.map((l) => {
     const aliasText = (l.aliases && l.aliases.length)
       ? esc(l.aliases.join(', '))
       : `<span class="muted">${t('listings.aliasesEmpty')}</span>`;
     const editBtn = hasPermission('LISTINGS_EDIT')
-      ? `<button type="button" class="btn ghost btn-sm listing-aliases-edit" data-id="${esc(l.id)}">${t('listings.aliasesEdit')}</button>`
+      ? `<button type="button" class="btn primary btn-sm listing-aliases-edit" data-id="${esc(l.id)}">${t('listings.aliasesEdit')}</button>`
       : '';
+    const thumb = listingThumbHtml(l);
+    const statusClass = String(l.status || '').toUpperCase() === 'LIVE'
+      ? 'badge-live'
+      : String(l.status || '').toUpperCase() === 'HIDDEN'
+        ? 'badge-hidden'
+        : 'badge-neutral';
+    const bookableClass = l.isBookable ? 'badge-yes' : 'badge-no';
     return `
     <tr>
-      <td>${l.hostawayId}</td>
-      <td>${esc(l.name)}</td>
+      <td class="listing-thumb-cell">${thumb}</td>
+      <td class="listing-id-cell">${l.hostawayId}</td>
+      <td class="listing-name-cell"><span class="listing-name">${esc(l.name)}</span></td>
       <td class="listing-aliases-cell">${aliasText}</td>
       <td>${esc(l.city || '–')}</td>
       <td>${esc(l.listingGroup?.name || '–')}</td>
-      <td>${l.personCapacity}</td>
-      <td><span class="badge live">${l.status}</span></td>
-      <td>${l.isBookable ? t('common.yes') : t('common.no')}</td>
-      <td>${editBtn}</td>
+      <td class="listing-guests-cell"><span class="guests-pill">${guestIcon}${l.personCapacity}</span></td>
+      <td><span class="status-pill ${statusClass}">${esc(l.status || '–')}</span></td>
+      <td><span class="status-pill ${bookableClass}">${l.isBookable ? t('common.yes') : t('common.no')}</span></td>
+      <td class="listing-actions-cell">${editBtn}</td>
     </tr>
   `;
   }).join('');
   $('#listings-table').innerHTML = `
-    <table><thead><tr>
+    <table class="listings-table"><thead><tr>
+      <th class="listing-thumb-col"></th>
       ${sortTh('listings', 'hostawayId', t('listings.id'))}
-      ${sortTh('listings', 'name', t('listings.name'))}
+      ${sortTh('listings', 'name', t('listings.propertyName'))}
       <th>${t('listings.aliases')}</th>
       ${sortTh('listings', 'city', t('listings.city'))}
       <th>${t('listings.group')}</th>
       ${sortTh('listings', 'personCapacity', t('listings.guests'))}
-      ${sortTh('listings', 'status', t('listings.status'))}
+      ${sortTh('listings', 'status', t('listings.visibility'))}
       <th>${t('listings.bookable')}</th>
-      <th></th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="9">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+      <th>${t('listings.actions')}</th>
+    </tr></thead><tbody>${rows || `<tr><td colspan="10">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#listings-table', 'listings', loadListings);
   $$('.listing-aliases-edit').forEach((btn) => {
     btn.addEventListener('click', () => openListingAliasesModal(btn.dataset.id));
@@ -1462,6 +1490,117 @@ async function loadListings() {
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
   applyRoleUi();
+}
+
+function listingThumbHtml(listing) {
+  const meta = listing?.rawMetadata;
+  let url = '';
+  if (meta && typeof meta === 'object') {
+    url = meta.coverImageUrl || meta.thumbnailUrl || meta.pictureUrl || meta.imageUrl || '';
+    if (!url) {
+      const images = meta.listingImages || meta.images || [];
+      if (Array.isArray(images) && images.length) {
+        url = images[0]?.url || images[0]?.thumbnailUrl || '';
+      }
+    }
+  }
+  if (url) {
+    return `<img class="listing-thumb" src="${esc(url)}" alt="" loading="lazy" />`;
+  }
+  return `<span class="listing-thumb listing-thumb-placeholder" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  </span>`;
+}
+
+function ensureListingsToolbar() {
+  const el = $('#listings-toolbar');
+  if (!el) return;
+  const s = tableState.listings;
+  if (el.dataset.toolbarInit === 'listings-v2') {
+    const search = el.querySelector('[data-table-search="listings"]');
+    if (search && document.activeElement !== search) search.value = s.search;
+    return;
+  }
+  el.dataset.toolbarInit = 'listings-v2';
+  el.innerHTML = `
+    <div class="listings-toolbar-row">
+      <label class="listings-search">
+        <span class="sr-only">${t('table.search')}</span>
+        <input type="search" data-table-search="listings" value="${esc(s.search)}" placeholder="${esc(t('listings.searchPlaceholder'))}" autocomplete="off" />
+        <svg class="listings-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </label>
+      <div class="listings-filters">
+        <label>
+          <span>${t('listings.city')}</span>
+          <select data-listing-filter="city"></select>
+        </label>
+        <label>
+          <span>${t('listings.group')}</span>
+          <select data-listing-filter="groupId"></select>
+        </label>
+        <label>
+          <span>${t('listings.visibility')}</span>
+          <select data-listing-filter="status">
+            <option value="">${t('listings.filterAll')}</option>
+            <option value="LIVE">LIVE</option>
+            <option value="HIDDEN">HIDDEN</option>
+            <option value="DRAFT">DRAFT</option>
+            <option value="UNKNOWN">UNKNOWN</option>
+          </select>
+        </label>
+        <label>
+          <span>${t('listings.bookable')}</span>
+          <select data-listing-filter="bookable">
+            <option value="">${t('listings.filterAll')}</option>
+            <option value="yes">${t('common.yes')}</option>
+            <option value="no">${t('common.no')}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  `;
+  refreshListingsFilterOptions();
+  el.querySelector('[data-table-search="listings"]')?.addEventListener('input', (e) => {
+    clearTimeout(searchTimers.listings);
+    searchTimers.listings = setTimeout(() => {
+      tableState.listings.search = e.target.value;
+      tableState.listings.page = 1;
+      loadListings();
+    }, 300);
+  });
+  el.querySelectorAll('[data-listing-filter]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const key = sel.dataset.listingFilter;
+      tableState.listings[key] = sel.value;
+      tableState.listings.page = 1;
+      loadListings();
+    });
+  });
+}
+
+function refreshListingsFilterOptions() {
+  const citySel = document.querySelector('[data-listing-filter="city"]');
+  const groupSel = document.querySelector('[data-listing-filter="groupId"]');
+  if (citySel) {
+    const current = tableState.listings.city || '';
+    citySel.innerHTML =
+      `<option value="">${t('listings.filterAll')}</option>` +
+      listingsFacets.cities
+        .map((c) => `<option value="${esc(c)}"${c === current ? ' selected' : ''}>${esc(c)}</option>`)
+        .join('');
+  }
+  if (groupSel) {
+    const current = tableState.listings.groupId || '';
+    groupSel.innerHTML =
+      `<option value="">${t('listings.filterAll')}</option>` +
+      listingsFacets.groups
+        .map((g) => `<option value="${esc(g.id)}"${g.id === current ? ' selected' : ''}>${esc(g.name)}</option>`)
+        .join('');
+  }
+  const statusSel = document.querySelector('[data-listing-filter="status"]');
+  const bookableSel = document.querySelector('[data-listing-filter="bookable"]');
+  if (statusSel) statusSel.value = tableState.listings.status || '';
+  if (bookableSel) bookableSel.value = tableState.listings.bookable || '';
 }
 
 function parseAliasesInput(raw) {

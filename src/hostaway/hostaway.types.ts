@@ -55,6 +55,8 @@ export interface HostawayListing {
   listingTags?: { id: number; name: string }[];
   listingAmenities?: { amenityId: number; amenityName: string }[];
   listingImages?: HostawayListingImage[];
+  thumbnailUrl?: string | null;
+  pictureUrl?: string | null;
 }
 
 export interface HostawayListingUnit {
