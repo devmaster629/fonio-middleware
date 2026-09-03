@@ -905,9 +905,13 @@ $('#sync-btn').addEventListener('click', async () => {
 
 $('#webhook-refresh-btn')?.addEventListener('click', () => loadDashboard());
 
-['webhook-filter-range', 'webhook-filter-event', 'webhook-filter-result'].forEach((id) => {
+['webhook-filter-range', 'webhook-filter-event', 'webhook-filter-result', 'trend-filter-range'].forEach((id) => {
   $(`#${id}`)?.addEventListener('change', (e) => {
-    if (id === 'webhook-filter-range') webhookFilters.range = e.target.value;
+    if (id === 'webhook-filter-range' || id === 'trend-filter-range') {
+      webhookFilters.range = e.target.value;
+      if ($('#webhook-filter-range')) $('#webhook-filter-range').value = webhookFilters.range;
+      if ($('#trend-filter-range')) $('#trend-filter-range').value = webhookFilters.range;
+    }
     if (id === 'webhook-filter-event') webhookFilters.event = e.target.value;
     if (id === 'webhook-filter-result') webhookFilters.result = e.target.value;
     tableState.webhooks.page = 1;
@@ -1008,9 +1012,12 @@ function renderWebhookTrend(jobs) {
   });
 
   totalsEl.innerHTML = `
-    <div class="trend-total ok"><span class="num">${formatCount(success)}</span><span class="lbl">${t('dashboard.trend.success')}</span></div>
-    <div class="trend-total err"><span class="num">${formatCount(failed)}</span><span class="lbl">${t('dashboard.trend.failed')}</span></div>
-    <div class="trend-total warn"><span class="num">${formatCount(warning)}</span><span class="lbl">${t('dashboard.trend.warning')}</span></div>
+    <span class="trend-total-label" data-i18n="dashboard.trend.total">${t('dashboard.trend.total')}</span>
+    <div class="trend-total-cards">
+      <div class="trend-total ok"><span class="num">${formatCount(success)}</span><span class="lbl">${t('dashboard.trend.success')}</span></div>
+      <div class="trend-total err"><span class="num">${formatCount(failed)}</span><span class="lbl">${t('dashboard.trend.failed')}</span></div>
+      <div class="trend-total warn"><span class="num">${formatCount(warning)}</span><span class="lbl">${t('dashboard.trend.warning')}</span></div>
+    </div>
   `;
 
   if (!jobs.length) {
@@ -1018,7 +1025,7 @@ function renderWebhookTrend(jobs) {
     return;
   }
 
-  const buckets = 12;
+  const buckets = 7;
   const times = jobs
     .map((w) => new Date(w.startedAt).getTime())
     .filter((n) => Number.isFinite(n));
@@ -1039,24 +1046,53 @@ function renderWebhookTrend(jobs) {
     else if (kind === 'failed') series.failed[idx] += 1;
     else series.warning[idx] += 1;
   });
-  const peak = Math.max(1, ...series.success, ...series.failed, ...series.warning);
-  const w = 320;
-  const h = 160;
-  const pad = 12;
-  const toPoints = (arr) =>
+
+  const peakRaw = Math.max(1, ...series.success, ...series.failed, ...series.warning);
+  const yMax = Math.max(5, Math.ceil(peakRaw / 5) * 5);
+  const w = 420;
+  const h = 220;
+  const padL = 36;
+  const padR = 12;
+  const padT = 14;
+  const padB = 28;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const xAt = (i) => padL + (i / Math.max(buckets - 1, 1)) * plotW;
+  const yAt = (v) => padT + plotH - (v / yMax) * plotH;
+  const toPoints = (arr) => arr.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ');
+  const areaPoints = (arr) => {
+    const line = arr.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ');
+    return `${xAt(0)},${yAt(0)} ${line} ${xAt(buckets - 1)},${yAt(0)}`;
+  };
+  const dots = (arr, color) =>
     arr
-      .map((v, i) => {
-        const x = pad + (i / Math.max(buckets - 1, 1)) * (w - pad * 2);
-        const y = h - pad - (v / peak) * (h - pad * 2);
-        return `${x},${y}`;
-      })
-      .join(' ');
+      .map((v, i) => `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="3.2" fill="${color}" stroke="#0f1419" stroke-width="1.5" />`)
+      .join('');
+  const gridSteps = 5;
+  const grid = Array.from({ length: gridSteps + 1 }, (_, i) => {
+    const val = Math.round((yMax / gridSteps) * i);
+    const y = yAt(val);
+    return `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="#2d3a4f" stroke-width="1" />
+      <text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="#8b9cb3" font-size="10">${val}</text>`;
+  }).join('');
+  const xLabels = Array.from({ length: buckets }, (_, i) => {
+    const ts = minT + (span * i) / Math.max(buckets - 1, 1);
+    const d = new Date(ts);
+    const label = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    return `<text x="${xAt(i)}" y="${h - 8}" text-anchor="middle" fill="#8b9cb3" font-size="10">${label}</text>`;
+  }).join('');
 
   chartEl.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-      <polyline fill="none" stroke="#22c55e" stroke-width="2.5" points="${toPoints(series.success)}" />
-      <polyline fill="none" stroke="#ef4444" stroke-width="2" points="${toPoints(series.failed)}" />
-      <polyline fill="none" stroke="#f59e0b" stroke-width="2" points="${toPoints(series.warning)}" />
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      ${grid}
+      <polygon points="${areaPoints(series.success)}" fill="rgba(34,197,94,0.18)" />
+      <polyline fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.success)}" />
+      <polyline fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.failed)}" />
+      <polyline fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.warning)}" />
+      ${dots(series.success, '#22c55e')}
+      ${dots(series.failed, '#ef4444')}
+      ${dots(series.warning, '#f59e0b')}
+      ${xLabels}
     </svg>
   `;
 }
@@ -1170,43 +1206,43 @@ async function loadDashboard() {
   $('#stats').innerHTML = `
     <div class="stat-card dash-stat">
       <div class="dash-stat-top">
+        <span class="dash-stat-icon listings">${dashStatIcon('listings')}</span>
         <div class="dash-stat-text">
           <div class="value">${formatCount(status.listingCount)}</div>
           <div class="label">${t('dashboard.listingsLabel')}</div>
+          <button type="button" class="link-btn" data-dash-nav="listings">${t('dashboard.viewListings')}</button>
         </div>
-        <span class="dash-stat-icon listings">${dashStatIcon('listings')}</span>
       </div>
-      <button type="button" class="link-btn" data-dash-nav="listings">${t('dashboard.viewListings')}</button>
     </div>
     <div class="stat-card dash-stat">
       <div class="dash-stat-top">
+        <span class="dash-stat-icon reservations">${dashStatIcon('reservations')}</span>
         <div class="dash-stat-text">
           <div class="value">${formatCount(status.reservationCount)}</div>
           <div class="label">${t('dashboard.reservationsLabel')}</div>
+          <button type="button" class="link-btn" data-dash-nav="reservations">${t('dashboard.viewReservations')}</button>
         </div>
-        <span class="dash-stat-icon reservations">${dashStatIcon('reservations')}</span>
       </div>
-      <button type="button" class="link-btn" data-dash-nav="reservations">${t('dashboard.viewReservations')}</button>
     </div>
     <div class="stat-card dash-stat">
       <div class="dash-stat-top">
-        <div class="dash-stat-text">
-          <div class="value">${esc(syncLabel)}</div>
-          <div class="label">${syncOk ? t('dashboard.allSystemsOk') : formatSyncPhase(last, inProgress)}</div>
-        </div>
         <span class="dash-stat-icon sync">${dashStatIcon('sync')}</span>
+        <div class="dash-stat-text">
+          <div class="value value-status">${esc(syncLabel)}</div>
+          <div class="label">${syncOk ? t('dashboard.allSystemsOk') : formatSyncPhase(last, inProgress)}</div>
+          <button type="button" class="link-btn" data-dash-scroll="#system-health-card">${t('dashboard.viewDetails')}</button>
+        </div>
       </div>
-      <button type="button" class="link-btn" data-dash-scroll="#system-health-card">${t('dashboard.viewDetails')}</button>
     </div>
     <div class="stat-card dash-stat">
       <div class="dash-stat-top">
-        <div class="dash-stat-text">
-          <div class="label">${t('dashboard.lastSync')}</div>
-          <div class="value value-sm">${syncTime}</div>
-        </div>
         <span class="dash-stat-icon time">${dashStatIcon('time')}</span>
+        <div class="dash-stat-text">
+          <div class="label label-top">${t('dashboard.lastSync')}</div>
+          <div class="value value-sm">${syncTime}</div>
+          <button type="button" class="link-btn" data-dash-scroll="#webhook-activity">${t('dashboard.viewSyncHistory')}</button>
+        </div>
       </div>
-      <button type="button" class="link-btn" data-dash-scroll="#webhook-activity">${t('dashboard.viewSyncHistory')}</button>
     </div>
   `;
 
@@ -1264,6 +1300,7 @@ async function loadDashboard() {
 
   cachedWebhookJobs = Array.isArray(webhooks) ? webhooks : [];
   if ($('#webhook-filter-range')) $('#webhook-filter-range').value = webhookFilters.range;
+  if ($('#trend-filter-range')) $('#trend-filter-range').value = webhookFilters.range;
   if ($('#webhook-filter-result')) $('#webhook-filter-result').value = webhookFilters.result;
   renderWebhookDashboard(cachedWebhookJobs);
   applyRoleUi();
