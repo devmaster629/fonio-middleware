@@ -1443,7 +1443,7 @@ async function loadListings() {
   const guestIcon = '<svg class="guest-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const rows = cachedListings.map((l) => {
     const aliasText = (l.aliases && l.aliases.length)
-      ? esc(l.aliases.join(', '))
+      ? `<div class="listing-aliases-lines">${l.aliases.map((a) => `<span class="listing-alias-line">${esc(a)}</span>`).join('')}</div>`
       : `<span class="muted">${t('listings.aliasesEmpty')}</span>`;
     const editBtn = hasPermission('LISTINGS_EDIT')
       ? `<button type="button" class="btn primary btn-sm listing-aliases-edit" data-id="${esc(l.id)}">${t('listings.aliasesEdit')}</button>`
@@ -1482,7 +1482,7 @@ async function loadListings() {
       ${sortTh('listings', 'status', t('listings.visibility'))}
       <th>${t('listings.bookable')}</th>
       <th>${t('listings.actions')}</th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="10">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+    </tr></thead><tbody>${rows || `<tr class="table-empty-row"><td class="table-empty-cell" colspan="10">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#listings-table', 'listings', loadListings);
   $$('.listing-aliases-edit').forEach((btn) => {
     btn.addEventListener('click', () => openListingAliasesModal(btn.dataset.id));
@@ -1490,6 +1490,7 @@ async function loadListings() {
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
   applyRoleUi();
+  scheduleEnhanceResponsiveTables();
 }
 
 function listingThumbPlaceholderHtml() {
@@ -1639,14 +1640,74 @@ function parseAliasesInput(raw) {
   )].slice(0, 30);
 }
 
+function renderListingAliasChips() {
+  const el = $('#listing-aliases-chips');
+  if (!el || !editingListingAliases) return;
+  const aliases = editingListingAliases.aliases || [];
+  if (!aliases.length) {
+    el.innerHTML = `<p class="aliases-empty muted">${t('listings.aliasesNoneYet')}</p>`;
+    return;
+  }
+  el.innerHTML = aliases
+    .map(
+      (alias, index) => `
+      <div class="aliases-chip">
+        <span class="aliases-chip-text">${esc(alias)}</span>
+        <button type="button" class="aliases-chip-remove" data-alias-index="${index}" aria-label="${esc(t('listings.aliasesRemove'))}">&times;</button>
+      </div>`,
+    )
+    .join('');
+  el.querySelectorAll('.aliases-chip-remove').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.aliasIndex);
+      if (!editingListingAliases || Number.isNaN(idx)) return;
+      editingListingAliases.aliases.splice(idx, 1);
+      renderListingAliasChips();
+    });
+  });
+}
+
+function addListingAliasFromInput() {
+  if (!editingListingAliases || !hasPermission('LISTINGS_EDIT')) return;
+  const input = $('#listing-aliases-input');
+  const parts = parseAliasesInput(input?.value || '');
+  if (!parts.length) return;
+  const existing = new Set(
+    (editingListingAliases.aliases || []).map((a) => a.toLowerCase()),
+  );
+  for (const part of parts) {
+    if (existing.has(part.toLowerCase())) continue;
+    if ((editingListingAliases.aliases || []).length >= 30) break;
+    editingListingAliases.aliases.push(part);
+    existing.add(part.toLowerCase());
+  }
+  if (input) input.value = '';
+  renderListingAliasChips();
+  input?.focus();
+}
+
 function openListingAliasesModal(listingId) {
   const listing = cachedListings.find((l) => l.id === listingId);
   if (!listing) return;
-  editingListingAliases = { id: listing.id, name: listing.name };
+  editingListingAliases = {
+    id: listing.id,
+    name: listing.name,
+    hostawayId: listing.hostawayId,
+    aliases: [...(listing.aliases || [])],
+  };
   $('#listing-aliases-modal-listing').textContent = listing.name;
-  $('#listing-aliases-input').value = (listing.aliases || []).join(', ');
+  $('#listing-aliases-modal-id').textContent = `ID: ${listing.hostawayId}`;
+  const thumbEl = $('#listing-aliases-modal-thumb');
+  if (thumbEl) thumbEl.innerHTML = listingThumbHtml(listing);
+  const input = $('#listing-aliases-input');
+  if (input) {
+    input.value = '';
+    input.placeholder = t('listings.aliasesPlaceholder');
+  }
+  renderListingAliasChips();
   $('#listing-aliases-modal').classList.remove('hidden');
   document.body.classList.add('modal-open');
+  setTimeout(() => input?.focus(), 0);
 }
 
 function closeListingAliasesModal() {
@@ -1656,13 +1717,24 @@ function closeListingAliasesModal() {
 }
 
 $('#listing-aliases-cancel')?.addEventListener('click', closeListingAliasesModal);
+$('#listing-aliases-close')?.addEventListener('click', closeListingAliasesModal);
 $('#listing-aliases-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'listing-aliases-modal') closeListingAliasesModal();
+});
+$('#listing-aliases-add')?.addEventListener('click', () => addListingAliasFromInput());
+$('#listing-aliases-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addListingAliasFromInput();
+  }
 });
 $('#listing-aliases-save')?.addEventListener('click', async () => {
   if (!editingListingAliases || !hasPermission('LISTINGS_EDIT')) return;
   try {
-    const aliases = parseAliasesInput($('#listing-aliases-input').value);
+    const aliases = (editingListingAliases.aliases || [])
+      .map((a) => a.trim())
+      .filter((a) => a.length >= 2)
+      .slice(0, 30);
     await api(`/listings/${editingListingAliases.id}/aliases`, {
       method: 'PATCH',
       body: JSON.stringify({ aliases }),

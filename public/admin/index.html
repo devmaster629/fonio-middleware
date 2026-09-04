@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260904b" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260904e" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -719,24 +719,45 @@
   </div>
 
   <div id="listing-aliases-modal" class="modal-overlay hidden">
-    <div class="modal-card">
-      <h4 id="listing-aliases-modal-title" data-i18n="listings.aliasesEdit">Property name aliases</h4>
-      <p class="field-hint" id="listing-aliases-modal-listing"></p>
-      <label>
-        <span class="field-label" data-i18n="listings.aliasesLabel">Aliases (comma or line-separated)</span>
-        <textarea id="listing-aliases-input" rows="4" placeholder="Wiesenblick, Wiesen Blick"></textarea>
-      </label>
-      <p class="field-hint" data-i18n="listings.aliasesExamples">Examples: short names guests say on the phone, or common speech-to-text variants.</p>
-      <div class="modal-actions">
-        <button type="button" id="listing-aliases-save" class="btn primary" data-i18n="users.save">Save</button>
+    <div class="modal-card aliases-modal-card">
+      <div class="aliases-modal-header">
+        <h4 id="listing-aliases-modal-title" data-i18n="listings.aliasesEdit">Edit aliases</h4>
+        <button type="button" id="listing-aliases-close" class="aliases-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="aliases-modal-listing">
+        <div id="listing-aliases-modal-thumb" class="aliases-modal-thumb" aria-hidden="true"></div>
+        <div class="aliases-modal-listing-meta">
+          <div id="listing-aliases-modal-listing" class="aliases-modal-listing-name"></div>
+          <div id="listing-aliases-modal-id" class="aliases-modal-listing-id"></div>
+        </div>
+      </div>
+      <div class="aliases-modal-divider" aria-hidden="true"></div>
+      <div class="aliases-modal-section">
+        <h5 data-i18n="listings.aliasesCurrent">Current aliases</h5>
+        <p class="field-hint" data-i18n="listings.aliasesCurrentHint">These aliases are used when guests say a different name on the phone.</p>
+        <div id="listing-aliases-chips" class="aliases-chip-list"></div>
+      </div>
+      <div class="aliases-modal-section">
+        <h5 data-i18n="listings.aliasesAdd">Add alias</h5>
+        <div class="aliases-add-row">
+          <input type="text" id="listing-aliases-input" maxlength="120" autocomplete="off" data-i18n-placeholder="listings.aliasesPlaceholder" placeholder="Enter alias and press Enter" />
+          <button type="button" id="listing-aliases-add" class="btn primary" data-i18n="listings.aliasesAddBtn">Add</button>
+        </div>
+        <div class="aliases-info-callout">
+          <span class="aliases-info-icon" aria-hidden="true">i</span>
+          <p data-i18n="listings.aliasesHelp">Aliases help match guests to the right listing. Use short names, speech-to-text variants, or other languages.</p>
+        </div>
+      </div>
+      <div class="modal-actions aliases-modal-actions">
         <button type="button" id="listing-aliases-cancel" class="btn ghost" data-i18n="common.cancel">Cancel</button>
+        <button type="button" id="listing-aliases-save" class="btn primary" data-i18n="listings.aliasesSave">Save aliases</button>
       </div>
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260904b"></script>
+  <script src="/admin/i18n.js?v=20260904c"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260904b"></script>
+  <script src="/admin/app.js?v=20260904e"></script>
 </body>
 </html>
