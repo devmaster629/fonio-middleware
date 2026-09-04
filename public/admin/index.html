@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260904h" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260904j" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -206,8 +206,16 @@
             </div>
           </div>
           <div class="card dash-panel dashboard-trend-card">
-            <div class="dash-panel-header">
-              <h3 data-i18n="dashboard.webhookTrend">Webhook activity trend</h3>
+            <div class="dash-panel-header trend-header">
+              <div class="trend-header-left">
+                <span class="trend-header-icon" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16V9"/><path d="M12 16v-5"/><path d="M17 16V7"/><path d="m5 13 5-4 4 2 5-5"/></svg>
+                </span>
+                <div>
+                  <h3 data-i18n="dashboard.webhookTrend">Webhook activity trend</h3>
+                  <p class="trend-subtitle" data-i18n="dashboard.trend.subtitle">Overview of webhook delivery performance.</p>
+                </div>
+              </div>
               <select id="trend-filter-range" class="trend-range-select" aria-label="Trend range">
                 <option value="24h" data-i18n="dashboard.filter.24h">Last 24 hours</option>
                 <option value="7d" data-i18n="dashboard.filter.7d">Last 7 days</option>
@@ -215,13 +223,17 @@
               </select>
             </div>
             <div class="dash-panel-body trend-body">
+              <div id="webhook-trend-totals" class="trend-kpi-row"></div>
               <div class="trend-legend">
                 <span class="legend-item legend-success" data-i18n="dashboard.trend.success">Success</span>
                 <span class="legend-item legend-failed" data-i18n="dashboard.trend.failed">Failed</span>
                 <span class="legend-item legend-warning" data-i18n="dashboard.trend.warning">Warnings</span>
               </div>
               <div id="webhook-trend-chart" class="trend-chart"></div>
-              <div id="webhook-trend-totals" class="trend-totals"></div>
+              <div class="trend-footer">
+                <span class="trend-footer-icon" aria-hidden="true">i</span>
+                <span data-i18n="dashboard.trend.timezoneNote">Times are shown in your local time zone.</span>
+              </div>
             </div>
           </div>
         </div>
@@ -768,9 +780,9 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260904f"></script>
+  <script src="/admin/i18n.js?v=20260904i"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260904h"></script>
+  <script src="/admin/app.js?v=20260904j"></script>
 </body>
 </html>

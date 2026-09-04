@@ -1027,13 +1027,36 @@ function renderWebhookTrend(jobs) {
     else if (kind === 'failed') failed += 1;
     else warning += 1;
   });
+  const total = success + failed + warning;
 
   totalsEl.innerHTML = `
-    <span class="trend-total-label" data-i18n="dashboard.trend.total">${t('dashboard.trend.total')}</span>
-    <div class="trend-total-cards">
-      <div class="trend-total ok"><span class="num">${formatCount(success)}</span><span class="lbl">${t('dashboard.trend.success')}</span></div>
-      <div class="trend-total err"><span class="num">${formatCount(failed)}</span><span class="lbl">${t('dashboard.trend.failed')}</span></div>
-      <div class="trend-total warn"><span class="num">${formatCount(warning)}</span><span class="lbl">${t('dashboard.trend.warning')}</span></div>
+    <div class="trend-kpi">
+      <div>
+        <div class="trend-kpi-label">${t('dashboard.trend.totalEvents')}</div>
+        <div class="trend-kpi-value">${formatCount(total)}</div>
+      </div>
+      <span class="trend-kpi-icon trend-kpi-total" aria-hidden="true">${trendIconLayers()}</span>
+    </div>
+    <div class="trend-kpi">
+      <div>
+        <div class="trend-kpi-label">${t('dashboard.trend.success')}</div>
+        <div class="trend-kpi-value">${formatCount(success)}</div>
+      </div>
+      <span class="trend-kpi-icon trend-kpi-ok" aria-hidden="true">${trendIconCheck()}</span>
+    </div>
+    <div class="trend-kpi">
+      <div>
+        <div class="trend-kpi-label">${t('dashboard.trend.failed')}</div>
+        <div class="trend-kpi-value">${formatCount(failed)}</div>
+      </div>
+      <span class="trend-kpi-icon trend-kpi-err" aria-hidden="true">${trendIconX()}</span>
+    </div>
+    <div class="trend-kpi">
+      <div>
+        <div class="trend-kpi-label">${t('dashboard.trend.warning')}</div>
+        <div class="trend-kpi-value">${formatCount(warning)}</div>
+      </div>
+      <span class="trend-kpi-icon trend-kpi-warn" aria-hidden="true">${trendIconWarn()}</span>
     </div>
   `;
 
@@ -1043,11 +1066,20 @@ function renderWebhookTrend(jobs) {
   }
 
   const buckets = 7;
-  const times = jobs
-    .map((w) => new Date(w.startedAt).getTime())
-    .filter((n) => Number.isFinite(n));
-  const maxT = Math.max(...times, Date.now());
-  const minT = Math.min(...times, maxT - 60 * 60 * 1000);
+  const now = Date.now();
+  let minT;
+  let maxT = now;
+  if (webhookFilters.range === '24h') {
+    minT = now - 24 * 60 * 60 * 1000;
+  } else if (webhookFilters.range === '7d') {
+    minT = now - 7 * 24 * 60 * 60 * 1000;
+  } else {
+    const times = jobs
+      .map((w) => new Date(w.startedAt).getTime())
+      .filter((n) => Number.isFinite(n));
+    minT = times.length ? Math.min(...times) : now - 24 * 60 * 60 * 1000;
+    maxT = Math.max(...times, now);
+  }
   const span = Math.max(maxT - minT, 1);
   const series = {
     success: Array(buckets).fill(0),
@@ -1056,7 +1088,7 @@ function renderWebhookTrend(jobs) {
   };
   jobs.forEach((w) => {
     const ts = new Date(w.startedAt).getTime();
-    if (!Number.isFinite(ts)) return;
+    if (!Number.isFinite(ts) || ts < minT || ts > maxT) return;
     const idx = Math.min(buckets - 1, Math.max(0, Math.floor(((ts - minT) / span) * buckets)));
     const kind = classifyWebhookStatus(w);
     if (kind === 'success') series.success[idx] += 1;
@@ -1066,12 +1098,12 @@ function renderWebhookTrend(jobs) {
 
   const peakRaw = Math.max(1, ...series.success, ...series.failed, ...series.warning);
   const yMax = Math.max(5, Math.ceil(peakRaw / 5) * 5);
-  const w = 640;
-  const h = 168;
-  const padL = 34;
-  const padR = 10;
-  const padT = 10;
-  const padB = 24;
+  const w = 720;
+  const h = 300;
+  const padL = 48;
+  const padR = 16;
+  const padT = 16;
+  const padB = 36;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
   const xAt = (i) => padL + (i / Math.max(buckets - 1, 1)) * plotW;
@@ -1083,30 +1115,29 @@ function renderWebhookTrend(jobs) {
   };
   const dots = (arr, color) =>
     arr
-      .map((v, i) => `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="3" fill="${color}" stroke="#0f1419" stroke-width="1.4" />`)
+      .map((v, i) => `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="4" fill="${color}" stroke="#0f1419" stroke-width="1.5" />`)
       .join('');
   const gridSteps = 5;
   const grid = Array.from({ length: gridSteps + 1 }, (_, i) => {
     const val = Math.round((yMax / gridSteps) * i);
     const y = yAt(val);
     return `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="#2d3a4f" stroke-width="1" />
-      <text x="${padL - 5}" y="${y + 3}" text-anchor="end" fill="#8b9cb3" font-size="10">${val}</text>`;
+      <text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="#8b9cb3" font-size="13">${val}</text>`;
   }).join('');
   const xLabels = Array.from({ length: buckets }, (_, i) => {
     const ts = minT + (span * i) / Math.max(buckets - 1, 1);
-    const d = new Date(ts);
-    const label = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    return `<text x="${xAt(i)}" y="${h - 6}" text-anchor="middle" fill="#8b9cb3" font-size="10">${label}</text>`;
+    const label = formatTrendAxisLabel(ts, span);
+    return `<text x="${xAt(i)}" y="${h - 10}" text-anchor="middle" fill="#8b9cb3" font-size="13">${label}</text>`;
   }).join('');
   const yMid = padT + plotH / 2;
-  const yAxisTitle = `<text x="11" y="${yMid}" fill="#8b9cb3" font-size="10" text-anchor="middle" transform="rotate(-90 11 ${yMid})">${esc(t('dashboard.trend.events'))}</text>`;
+  const yAxisTitle = `<text x="14" y="${yMid}" fill="#8b9cb3" font-size="13" text-anchor="middle" transform="rotate(-90 14 ${yMid})">${esc(t('dashboard.trend.events'))}</text>`;
 
   chartEl.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(t('dashboard.trend.aria'))}">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(t('dashboard.trend.aria'))}">
       ${grid}
       ${yAxisTitle}
       <polygon points="${areaPoints(series.success)}" fill="rgba(34,197,94,0.18)" />
-      <polyline fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.success)}" />
+      <polyline fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.success)}" />
       <polyline fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.failed)}" />
       <polyline fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${toPoints(series.warning)}" />
       ${dots(series.success, '#22c55e')}
@@ -1115,6 +1146,31 @@ function renderWebhookTrend(jobs) {
       ${xLabels}
     </svg>
   `;
+}
+
+function formatTrendAxisLabel(ts, spanMs) {
+  const d = new Date(ts);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  if (spanMs <= 36 * 60 * 60 * 1000) {
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+  if (spanMs <= 40 * 24 * 60 * 60 * 1000) {
+    return `${d.getDate()} ${months[d.getMonth()]}`;
+  }
+  return `${months[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+}
+
+function trendIconLayers() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.5-8.58 3.91a2 2 0 0 1-1.66 0L2.6 12.5"/><path d="m22 17.5-8.58 3.91a2 2 0 0 1-1.66 0L2.6 17.5"/></svg>`;
+}
+function trendIconCheck() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 12.5 11 15l4.5-5.5" stroke="#0f1419" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function trendIconX() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="m9 9 6 6M15 9l-6 6" stroke="#0f1419" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+}
+function trendIconWarn() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3.2 22 20.5H2L12 3.2Z" fill="currentColor"/><path d="M12 9.5v5" stroke="#0f1419" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="17.2" r="1.1" fill="#0f1419"/></svg>`;
 }
 
 function renderWebhookDashboard(allJobs) {
