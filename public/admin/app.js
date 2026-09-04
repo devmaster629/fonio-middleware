@@ -3403,6 +3403,7 @@ function closeReservationSearchPanels(except = null) {
 
 function ensureSelectHasReservationOption(select, reservation, currency) {
   if (!select || !reservation?.hostawayId) return;
+  cachePaymentReservation(reservation);
   const id = String(reservation.hostawayId);
   let opt = select.querySelector(`option[value="${id}"]`);
   if (!opt) {
@@ -3427,8 +3428,232 @@ function ensureSelectHasReservationOption(select, reservation, currency) {
   opt.dataset.channel = reservation.channelName ? prettyChannel(reservation.channelName) : '';
   opt.dataset.channelRaw = reservation.channelName || '';
   opt.dataset.totalPrice = reservation.totalPrice != null ? String(Number(reservation.totalPrice)) : '';
+  opt.dataset.arrival = reservation.arrivalDate
+    ? String(reservation.arrivalDate).slice(0, 10)
+    : '';
+  opt.dataset.departure = reservation.departureDate
+    ? String(reservation.departureDate).slice(0, 10)
+    : '';
+  opt.dataset.roomType = reservation.listing?.roomType || reservation.listingRoomType || '';
+  opt.dataset.coverUrl =
+    reservation.listingCoverUrl ||
+    reservation.listing?.rawMetadata?.coverImageUrl ||
+    '';
+  if (paid != null) opt.dataset.paidAmount = String(paid);
   opt.title = formatReservationOption(reservation, currency);
   opt.textContent = formatReservationOptionShort(reservation, currency);
+}
+
+const paymentReservationCache = new Map();
+
+function cachePaymentReservation(reservation) {
+  const id = Number(reservation?.hostawayId);
+  if (!id || !reservation) return;
+  paymentReservationCache.set(id, reservation);
+}
+
+function bookingFromSelectOption(opt) {
+  if (!opt?.value) return null;
+  const totalPrice = opt.dataset.totalPrice ? Number(opt.dataset.totalPrice) : null;
+  const paidAmount = opt.dataset.paidAmount ? Number(opt.dataset.paidAmount) : null;
+  const balanceDue =
+    totalPrice != null && paidAmount != null
+      ? Math.max(0, Math.round((totalPrice - paidAmount) * 100) / 100)
+      : totalPrice;
+  return {
+    hostawayId: Number(opt.value),
+    guestName: opt.dataset.guest || null,
+    listingName: opt.dataset.listing || '',
+    listingRoomType: opt.dataset.roomType || null,
+    listingCoverUrl: opt.dataset.coverUrl || null,
+    arrivalDate: opt.dataset.arrival || null,
+    departureDate: opt.dataset.departure || null,
+    channelName: opt.dataset.channelRaw || null,
+    totalPrice: Number.isFinite(totalPrice) ? totalPrice : null,
+    paidAmount: Number.isFinite(paidAmount) ? paidAmount : null,
+    balanceDue: Number.isFinite(balanceDue) ? balanceDue : null,
+  };
+}
+
+function resolvePaymentBooking(payment, hostawayId, rowEl = null) {
+  const id = Number(hostawayId);
+  if (!id) return { reservation: null, candidate: null };
+  const candidates = Array.isArray(payment?.matchCandidates) ? payment.matchCandidates : [];
+  const candidate = candidates.find((c) => Number(c.hostawayId) === id) || null;
+  if (
+    payment?.matchedReservation &&
+    Number(payment.matchedReservation.hostawayId) === id
+  ) {
+    return { reservation: payment.matchedReservation, candidate };
+  }
+  const cached = paymentReservationCache.get(id);
+  if (cached) return { reservation: cached, candidate };
+  const select = rowEl?.querySelector?.('.payment-assign-select');
+  const opt = select?.querySelector(`option[value="${id}"]`);
+  const synthetic = bookingFromSelectOption(opt);
+  if (synthetic) {
+    return {
+      reservation: {
+        ...synthetic,
+        listing: {
+          name: synthetic.listingName,
+          roomType: synthetic.listingRoomType,
+          rawMetadata: synthetic.listingCoverUrl
+            ? { coverImageUrl: synthetic.listingCoverUrl }
+            : null,
+        },
+      },
+      candidate: candidate || synthetic,
+    };
+  }
+  if (candidate) return { reservation: null, candidate };
+  return { reservation: null, candidate: null };
+}
+
+function collectPaymentPreviewSelections(paymentId) {
+  const container = $(`.payment-split-rows[data-payment-id="${paymentId}"]`);
+  if (!container) return [];
+  return [...container.querySelectorAll('.payment-split-row')]
+    .map((row) => {
+      const select = row.querySelector('.payment-assign-select');
+      const manual = row.querySelector('.payment-assign-manual');
+      const amountInput = row.querySelector('.payment-split-amount');
+      const hostawayId =
+        parseReservationIdInput(manual?.value) ||
+        (select?.value ? Number(select.value) : undefined);
+      return {
+        hostawayId,
+        amount: Math.round((Number(amountInput?.value) || 0) * 100) / 100,
+        row,
+      };
+    })
+    .filter((row) => row.hostawayId);
+}
+
+function renderMatchBlockForBooking(payment, candidate, reservation) {
+  const hostawayId = reservation?.hostawayId ?? candidate?.hostawayId;
+  const guest = reservation?.guestName ?? candidate?.guestName ?? '';
+  const score = Number(candidate?.score);
+  const confidenceLine = Number.isFinite(score)
+    ? `<div class="payment-match-confidence">${t('payments.matchConfidence', {
+        pct: Math.min(99, Math.round(score)),
+      })}</div>`
+    : '';
+  const chips = buildMatchSignalChips(payment, candidate);
+  const chipsHtml = chips
+    .map((chip) => {
+      const icon = chip.ok ? '✓' : '!';
+      const cls = chip.ok ? 'is-ok' : 'is-warn';
+      return `<div class="payment-match-chip ${cls}"><span class="payment-match-chip-icon">${icon}</span>${esc(chip.label)}</div>`;
+    })
+    .join('');
+  const title = hostawayId
+    ? `#${hostawayId}${guest ? ` – ${esc(guest)}` : ''}`
+    : guest || t('payments.reservation');
+  return `<div class="payment-match-booking">
+    <div class="payment-match-booking-title">${title}</div>
+    ${confidenceLine}
+    ${
+      chipsHtml
+        ? `<div class="payment-match-signals-label">${t('payments.matchingSignals')}</div><div class="payment-match-chips">${chipsHtml}</div>`
+        : `<div class="payment-match-summary">${esc(t('payments.manualSelection'))}</div>`
+    }
+  </div>`;
+}
+
+function renderMatchCellForSelections(payment, selections) {
+  const candidates = Array.isArray(payment.matchCandidates) ? payment.matchCandidates : [];
+  const decision = payment.matchDecision || payment.status || '';
+  const decisionLabel = paymentDecisionLabel(decision);
+  const blocks = selections.length
+    ? selections
+        .map((sel) => {
+          const { reservation, candidate } = resolvePaymentBooking(
+            payment,
+            sel.hostawayId,
+            sel.row,
+          );
+          return renderMatchBlockForBooking(payment, candidate, reservation);
+        })
+        .join('')
+    : renderMatchCell(payment, candidates, candidates[0] || null);
+
+  const countLine = selections.length > 1
+    ? `<div class="payment-match-summary">${esc(
+        t('payments.selectedBookingsCount', { count: selections.length }),
+      )}</div>`
+    : '';
+
+  if (!selections.length) return blocks;
+
+  return `<div class="payment-match-block">
+    <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
+    ${countLine}
+    <div class="payment-match-bookings">${blocks}</div>
+  </div>`;
+}
+
+function renderSuggestedReservationsForSelections(payment, selections) {
+  if (!selections.length) {
+    return renderSuggestedReservation(null, null, payment.currency, payment);
+  }
+  return `<div class="payment-suggestion-stack">
+    ${selections
+      .map((sel) => {
+        const { reservation, candidate } = resolvePaymentBooking(
+          payment,
+          sel.hostawayId,
+          sel.row,
+        );
+        const paymentView = {
+          ...payment,
+          amount: sel.amount > 0 ? sel.amount : payment.amount,
+        };
+        return renderSuggestedReservation(
+          reservation,
+          candidate,
+          payment.currency,
+          paymentView,
+        );
+      })
+      .join('')}
+  </div>`;
+}
+
+function refreshPaymentReviewSidePanels(paymentId) {
+  const payment = window.__paymentSplitById?.get(paymentId);
+  const row = $(`.payment-review-row[data-payment-id="${paymentId}"]`);
+  if (!payment || !row) return;
+  const selections = collectPaymentPreviewSelections(paymentId);
+  const matchCell = row.querySelector('.payment-match-cell');
+  const suggestionCell = row.querySelector('.payment-suggestion-cell');
+  if (matchCell) {
+    matchCell.innerHTML = renderMatchCellForSelections(payment, selections);
+  }
+  if (suggestionCell) {
+    suggestionCell.innerHTML = renderSuggestedReservationsForSelections(
+      payment,
+      selections,
+    );
+  }
+  const openBtn = row.querySelector('.payment-open-hostaway');
+  const firstId = selections[0]?.hostawayId;
+  if (openBtn && firstId) {
+    const url = hostawayReservationUrl(firstId);
+    if (url) {
+      openBtn.href = url;
+      openBtn.dataset.hostawayId = String(firstId);
+    }
+  }
+  row.querySelectorAll('.payment-find-booking').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = $(
+        `.payment-actions-stack[data-payment-id="${paymentId}"] .payment-assign-manual`,
+      );
+      input?.focus();
+      input?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  });
 }
 
 function applyReservationSearchPick(wrap, reservation) {
@@ -3941,6 +4166,16 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
     const id = Number(c.hostawayId);
     if (!id || seenIds.has(id)) return;
     seenIds.add(id);
+    cachePaymentReservation(c.listing ? c : {
+      ...c,
+      listing: c.listingName
+        ? {
+            name: c.listingName,
+            roomType: c.listingRoomType || null,
+            rawMetadata: c.listingCoverUrl ? { coverImageUrl: c.listingCoverUrl } : null,
+          }
+        : c.listing,
+    });
     const fullLabel = formatReservationOption(c, payment.currency);
     const guest = String(c.guestName || '').trim();
     const dates = formatStayDates(c.arrivalDate, c.departureDate);
@@ -3948,19 +4183,28 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
     const totalLabel =
       c.totalPrice != null ? formatMoney(c.totalPrice, payment.currency) : '';
     let paidLabel = '';
+    let paidAmount = null;
     if (c.paidAmount != null && Number.isFinite(Number(c.paidAmount))) {
-      paidLabel = formatMoney(c.paidAmount, payment.currency);
+      paidAmount = Number(c.paidAmount);
+      paidLabel = formatMoney(paidAmount, payment.currency);
     } else if (
       c.totalPrice != null &&
       c.balanceDue != null &&
       Number.isFinite(Number(c.totalPrice)) &&
       Number.isFinite(Number(c.balanceDue))
     ) {
-      const paid = Math.max(0, Math.round((Number(c.totalPrice) - Number(c.balanceDue)) * 100) / 100);
-      if (paid > 0) paidLabel = formatMoney(paid, payment.currency);
+      paidAmount = Math.max(0, Math.round((Number(c.totalPrice) - Number(c.balanceDue)) * 100) / 100);
+      if (paidAmount > 0) paidLabel = formatMoney(paidAmount, payment.currency);
     }
     const channelRaw = c.channelName || '';
     const channel = channelRaw ? prettyChannel(channelRaw) : '';
+    const arrival = c.arrivalDate ? String(c.arrivalDate).slice(0, 10) : '';
+    const departure = c.departureDate ? String(c.departureDate).slice(0, 10) : '';
+    const roomType = c.listingRoomType || c.listing?.roomType || '';
+    const coverUrl =
+      c.listingCoverUrl ||
+      c.listing?.rawMetadata?.coverImageUrl ||
+      '';
     options.push(
       `<option value="${id}"` +
         ` title="${esc(fullLabel)}"` +
@@ -3970,8 +4214,13 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
         ` data-listing="${esc(listing)}"` +
         ` data-amount-label="${esc(totalLabel)}"` +
         ` data-paid-label="${esc(paidLabel)}"` +
+        ` data-paid-amount="${paidAmount != null ? paidAmount : ''}"` +
         ` data-channel="${esc(channel)}"` +
         ` data-channel-raw="${esc(channelRaw)}"` +
+        ` data-arrival="${esc(arrival)}"` +
+        ` data-departure="${esc(departure)}"` +
+        ` data-room-type="${esc(roomType)}"` +
+        ` data-cover-url="${esc(coverUrl)}"` +
         `${selected ? ' selected' : ''}>${esc(formatReservationOptionShort(c, payment.currency))}</option>`,
     );
   };
@@ -3992,10 +4241,13 @@ function buildAssignOptionsHtml(payment, selectedHostawayId) {
         hostawayId: reservation.hostawayId,
         guestName: reservation.guestName,
         listingName: reservation.listing?.name,
+        listingRoomType: reservation.listing?.roomType,
+        listingCoverUrl: reservation.listing?.rawMetadata?.coverImageUrl,
+        listing: reservation.listing,
         arrivalDate: reservation.arrivalDate,
         departureDate: reservation.departureDate,
         totalPrice: reservation.totalPrice,
-        paidAmount: reservation.paidAmount,
+        paidAmount: reservationPaidAmount(reservation),
         channelName: reservation.channelName,
         balanceDue: reservation.balanceDue,
       },
@@ -4332,6 +4584,7 @@ function updatePaymentSplitUi(paymentId) {
     totalEl.classList.toggle('is-ok', ok);
   }
   stack.classList.toggle('is-split', rows.length > 1);
+  refreshPaymentReviewSidePanels(paymentId);
 }
 
 function collectPaymentSplitAllocations(paymentId) {
@@ -4416,6 +4669,7 @@ function bindPaymentSplitControls(paymentItems) {
       );
       bindReservationSearchInputs();
       bindPaymentHostawayOpeners();
+      refreshPaymentReviewSidePanels(paymentId);
     });
   });
 
@@ -4607,7 +4861,19 @@ async function loadPaymentsReconcile() {
   renderPagination('#payments-pagination', data, 'payments', loadPayments);
 
   // One booking row by default; combined-deposit hint is opt-in via button.
+  window.__paymentSplitById = new Map(data.items.map((p) => [p.id, p]));
   data.items.forEach((p) => {
+    if (p.matchedReservation) cachePaymentReservation(p.matchedReservation);
+    (Array.isArray(p.matchCandidates) ? p.matchCandidates : []).forEach((c) => {
+      cachePaymentReservation({
+        ...c,
+        listing: {
+          name: c.listingName,
+          roomType: c.listingRoomType || null,
+          rawMetadata: c.listingCoverUrl ? { coverImageUrl: c.listingCoverUrl } : null,
+        },
+      });
+    });
     const optionsHtml = buildAssignOptionsHtml(p);
     const defaultId =
       p.matchedReservation?.hostawayId ||
