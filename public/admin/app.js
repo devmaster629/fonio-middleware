@@ -2735,6 +2735,27 @@ function translatePaymentMatchReason(reason) {
       key: 'payments.reason.amountEqualsTotal',
       pick: (m) => ({ amount: m[1] }),
     },
+    {
+      re: /^Guest match with Restzahlung\/Teilzahlung fits the outstanding balance$/,
+      key: 'payments.reason.restzahlungPartial',
+    },
+    {
+      re: /^Soft amount guess: ~30\/50\/70% of booking total$/,
+      key: 'payments.reason.softAmountPercent',
+    },
+    {
+      re: /^Soft amount guess: within deposit\/installment range of total$/,
+      key: 'payments.reason.softAmountRange',
+    },
+    {
+      re: /^Soft amount guess: close to reservation total \(([0-9.]+)\)$/,
+      key: 'payments.reason.softAmountCloseTotal',
+      pick: (m) => ({ amount: m[1] }),
+    },
+    {
+      re: /^Soft amount guess: fits within outstanding balance$/,
+      key: 'payments.reason.softAmountInBalance',
+    },
   ];
 
   for (const rule of rules) {
@@ -2768,10 +2789,11 @@ function explainWhyNotAutoMatched(payment) {
     missing.push(t('payments.missing.guestEmail'));
   }
   const amountOk =
-    reasonText.includes('outstanding balance') ||
-    reasonText.includes('reservation total') ||
-    reasonText.includes('deposit share') ||
-    reasonText.includes('payment amount aligns');
+    reasonText.includes('equals outstanding balance') ||
+    reasonText.includes('equals reservation total') ||
+    reasonText.includes('deposit/installment') ||
+    reasonText.includes('payment amount aligns') ||
+    reasonText.includes('appears in reservation notes');
   if (!amountOk) {
     if (best?.balanceDue != null && best?.totalPrice != null) {
       missing.push(
@@ -3246,18 +3268,73 @@ function buildMatchSignalChips(payment, bestCandidate) {
     label: datesOk ? t('payments.signal.datesOk') : t('payments.signal.datesMissing'),
   });
 
-  const amountOk =
-    blob.includes('outstanding balance') ||
-    blob.includes('reservation total') ||
-    blob.includes('deposit share') ||
+  const amountExact =
+    blob.includes('equals outstanding balance') ||
+    blob.includes('equals reservation total') ||
     blob.includes('payment amount aligns') ||
     blob.includes('appears in reservation notes');
-  chips.push({
-    ok: amountOk,
-    label: amountOk ? t('payments.signal.amountOk') : t('payments.signal.amountUnclear'),
-  });
+  const amountPartialRest = blob.includes('restzahlung/teilzahlung');
+  const amountSoft =
+    blob.includes('soft amount guess') ||
+    blob.includes('deposit/installment share');
+
+  if (amountExact) {
+    chips.push({ ok: true, label: t('payments.signal.amountOk') });
+  } else if (amountPartialRest) {
+    chips.push({ ok: false, label: t('payments.signal.amountPartialRest') });
+  } else if (amountSoft) {
+    chips.push({ ok: false, label: t('payments.signal.amountGuess') });
+  } else {
+    chips.push({ ok: false, label: t('payments.signal.amountUnclear') });
+  }
+
+  const listingOk = blob.includes('listing name appears');
+  if (listingOk) {
+    chips.push({
+      ok: true,
+      label: t('payments.signal.listingOk'),
+    });
+  }
 
   return chips;
+}
+
+/** Short note when payment ≠ remaining but Restzahlung/Teilzahlung was used. */
+function renderAmountMatchNote(payment, candidate) {
+  const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
+  const blob = reasons.join(' ').toLowerCase();
+  const pay = Number(payment?.amount);
+  const due = candidate?.balanceDue != null ? Number(candidate.balanceDue) : null;
+  const currency = payment?.currency || 'EUR';
+  if (!Number.isFinite(pay)) return '';
+
+  if (blob.includes('equals outstanding balance') || blob.includes('equals reservation total')) {
+    return '';
+  }
+
+  if (blob.includes('restzahlung/teilzahlung') && due != null && Number.isFinite(due)) {
+    return `<div class="payment-match-amount-note">${esc(
+      t('payments.amountNote.partialRest', {
+        payment: formatMoney(pay, currency),
+        remaining: formatMoney(due, currency),
+      }),
+    )}</div>`;
+  }
+
+  if (
+    (blob.includes('soft amount guess') || blob.includes('deposit/installment')) &&
+    due != null &&
+    Number.isFinite(due)
+  ) {
+    return `<div class="payment-match-amount-note">${esc(
+      t('payments.amountNote.amountGuess', {
+        payment: formatMoney(pay, currency),
+        remaining: formatMoney(due, currency),
+      }),
+    )}</div>`;
+  }
+
+  return '';
 }
 
 function matchDecisionBadgeClass(decision) {
@@ -3267,27 +3344,60 @@ function matchDecisionBadgeClass(decision) {
   return 'is-muted';
 }
 
-function renderMatchCell(payment, candidates, bestCandidate) {
-  const decision = payment.matchDecision || payment.status || '';
-  const decisionLabel = paymentDecisionLabel(decision);
-  const count = candidates.length;
-  let summaryLine = '';
-  if (decision === 'AMBIGUOUS' || count > 1) {
-    summaryLine = t('payments.matchCandidatesCount', { count: Math.max(count, 2) });
-  } else if (decision === 'NO_MATCH' || count === 0) {
-    summaryLine = t('payments.matchNoneFound');
-  } else if (count === 1) {
-    summaryLine = t('payments.matchOneFound');
+function candidateMatchHint(candidate) {
+  const reasons = Array.isArray(candidate?.reasons) ? candidate.reasons : [];
+  const blob = reasons.join(' ').toLowerCase();
+  if (blob.includes('equals outstanding balance')) {
+    return t('payments.candidateHint.balanceExact');
   }
+  if (blob.includes('restzahlung/teilzahlung')) {
+    return t('payments.candidateHint.balancePartial');
+  }
+  if (blob.includes('guest name')) {
+    return t('payments.candidateHint.guest');
+  }
+  if (blob.includes('soft amount guess') || blob.includes('30/50/70') || blob.includes('deposit/installment')) {
+    return t('payments.candidateHint.amountGuess');
+  }
+  if (blob.includes('listing name')) {
+    return t('payments.candidateHint.listing');
+  }
+  if (blob.includes('reservation #')) {
+    return t('payments.candidateHint.reservationId');
+  }
+  return '';
+}
 
-  const score = Number(bestCandidate?.score ?? payment.matchScore);
-  const confidenceLine = Number.isFinite(score)
-    ? `<div class="payment-match-confidence">${t('payments.matchConfidence', {
-        pct: Math.min(99, Math.round(score)),
-      })}</div>`
-    : '';
+function renderMatchCandidateButton(payment, candidate, rank, isBest) {
+  const id = Number(candidate.hostawayId);
+  const guest = String(candidate.guestName || '').trim();
+  const score = Number(candidate.score);
+  const pct = Number.isFinite(score) ? Math.min(99, Math.round(score)) : null;
+  const label = id ? `#${id}${guest ? ` – ${guest}` : ''}` : guest || '–';
+  const hint = candidateMatchHint(candidate);
+  return `<button type="button" class="payment-match-candidate${isBest ? ' is-best' : ''}"
+    role="listitem"
+    data-payment-id="${esc(payment.id)}"
+    data-hostaway-id="${id}"
+    title="${esc(t('payments.useSuggestedBooking'))}">
+    <span class="payment-match-candidate-main">
+      <span class="payment-match-candidate-rank">${rank}</span>
+      <span class="payment-match-candidate-text">
+        <span class="payment-match-candidate-label">${esc(label)}</span>
+        ${hint ? `<span class="payment-match-candidate-hint">${esc(hint)}</span>` : ''}
+      </span>
+    </span>
+    ${
+      pct != null
+        ? `<span class="payment-match-candidate-pct">${t('payments.matchConfidence', { pct })}</span>`
+        : ''
+    }
+  </button>`;
+}
 
+function renderMatchSignalChipsHtml(payment, bestCandidate) {
   const chips = buildMatchSignalChips(payment, bestCandidate);
+  if (!chips.length) return '';
   const chipsHtml = chips
     .map((chip) => {
       const icon = chip.ok ? '✓' : '!';
@@ -3295,18 +3405,96 @@ function renderMatchCell(payment, candidates, bestCandidate) {
       return `<div class="payment-match-chip ${cls}"><span class="payment-match-chip-icon">${icon}</span>${esc(chip.label)}</div>`;
     })
     .join('');
+  return `<div class="payment-match-signals-label">${t('payments.matchingSignals')}</div>
+    <div class="payment-match-chips">${chipsHtml}</div>`;
+}
 
-  const whyText = explainWhyNotAutoMatched(payment);
-  const details = whyText
-    ? `<details class="payment-match-more"><summary>${t('payments.showMore')}</summary><div class="payment-match-more-body">${esc(whyText)}</div></details>`
+function renderMatchCell(payment, candidates, bestCandidate) {
+  const decision = payment.matchDecision || payment.status || '';
+  const decisionLabel = paymentDecisionLabel(decision);
+  const list = Array.isArray(candidates) ? candidates.slice(0, 5) : [];
+  const count = list.length;
+  let summaryLine = '';
+  if (count > 1) {
+    summaryLine = t('payments.matchCandidatesCount', { count });
+  } else if (decision === 'NO_MATCH' || count === 0) {
+    summaryLine = t('payments.matchNoneFound');
+  } else if (count === 1) {
+    summaryLine = t('payments.matchOneFound');
+  }
+
+  const best = bestCandidate || list[0] || null;
+  const bestId = best ? Number(best.hostawayId) : null;
+  const bestIndex = bestId
+    ? list.findIndex((c) => Number(c.hostawayId) === bestId)
+    : 0;
+  const bestRank = bestIndex >= 0 ? bestIndex + 1 : 1;
+  const others = list.filter((c) => Number(c.hostawayId) !== bestId);
+  const otherCount = others.length;
+
+  const bestHtml = best
+    ? `<div class="payment-match-candidates" role="list">
+        ${renderMatchCandidateButton(payment, best, bestRank, true)}
+      </div>`
     : '';
 
-  return `<div class="payment-match-block">
+  const othersHtml = otherCount
+    ? `<div class="payment-match-others" hidden>
+        <div class="payment-match-others-label">${esc(
+          t('payments.otherBookings', { count: otherCount }),
+        )}</div>
+        <div class="payment-match-candidates is-others" role="list">
+          ${others
+            .map((c, idx) => {
+              const rankInFull = list.findIndex(
+                (x) => Number(x.hostawayId) === Number(c.hostawayId),
+              );
+              return renderMatchCandidateButton(
+                payment,
+                c,
+                rankInFull >= 0 ? rankInFull + 1 : idx + 2,
+                false,
+              );
+            })
+            .join('')}
+        </div>
+      </div>
+      <button type="button" class="payment-match-more-toggle" data-payment-id="${esc(payment.id)}" data-other-count="${otherCount}" aria-expanded="false">
+        ${esc(t('payments.showOtherBookings', { count: otherCount }))}
+      </button>`
+    : '';
+
+  return `<div class="payment-match-block" data-payment-id="${esc(payment.id)}">
     <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
-    ${confidenceLine}
     ${summaryLine ? `<div class="payment-match-summary">${esc(summaryLine)}</div>` : ''}
-    ${chipsHtml ? `<div class="payment-match-signals-label">${t('payments.matchingSignals')}</div><div class="payment-match-chips">${chipsHtml}</div>` : ''}
-    ${details}
+    ${bestHtml}
+    ${renderAmountMatchNote(payment, best)}
+    ${best ? renderMatchSignalChipsHtml(payment, best) : ''}
+    ${othersHtml}
+  </div>`;
+}
+
+function renderPaymentPayerCell(payment) {
+  const when = formatCompactDateTime(payment.occurredAt || payment.createdAt);
+  const source = String(payment.source || '').toLowerCase() === 'paypal' ? 'PayPal' : (payment.source || '–');
+  const sourceCls =
+    String(payment.source || '').toUpperCase() === 'PAYPAL'
+      ? 'is-paypal'
+      : String(payment.source || '').toUpperCase() === 'QONTO'
+        ? 'is-qonto'
+        : '';
+  const name = payment.payerName || '–';
+  const email = payment.payerEmail ? String(payment.payerEmail).trim() : '';
+  const ref = payment.reference ? String(payment.reference).trim() : '';
+  return `<div class="payment-payer-combo">
+    <div class="payment-compact-amount">${esc(formatMoney(payment.amount, payment.currency))}</div>
+    <div class="payment-compact-meta">
+      <span class="payment-source-pill ${sourceCls}">${esc(source)}</span>
+      <span class="payment-compact-when">${esc(when)}</span>
+    </div>
+    <div class="payment-payer-name">${esc(name)}</div>
+    ${email ? `<div class="payment-payer-email">${esc(email)}</div>` : ''}
+    ${ref ? `<div class="payment-payer-ref" title="${esc(ref)}">${esc(ref)}</div>` : ''}
   </div>`;
 }
 
@@ -3563,34 +3751,14 @@ function renderMatchBlockForBooking(payment, candidate, reservation) {
 
 function renderMatchCellForSelections(payment, selections) {
   const candidates = Array.isArray(payment.matchCandidates) ? payment.matchCandidates : [];
-  const decision = payment.matchDecision || payment.status || '';
-  const decisionLabel = paymentDecisionLabel(decision);
-  const blocks = selections.length
-    ? selections
-        .map((sel) => {
-          const { reservation, candidate } = resolvePaymentBooking(
-            payment,
-            sel.hostawayId,
-            sel.row,
-          );
-          return renderMatchBlockForBooking(payment, candidate, reservation);
-        })
-        .join('')
-    : renderMatchCell(payment, candidates, candidates[0] || null);
-
-  const countLine = selections.length > 1
-    ? `<div class="payment-match-summary">${esc(
-        t('payments.selectedBookingsCount', { count: selections.length }),
-      )}</div>`
-    : '';
-
-  if (!selections.length) return blocks;
-
-  return `<div class="payment-match-block">
-    <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
-    ${countLine}
-    <div class="payment-match-bookings">${blocks}</div>
-  </div>`;
+  const selectedId = selections[0]?.hostawayId;
+  const best =
+    (selectedId &&
+      candidates.find((c) => Number(c.hostawayId) === Number(selectedId))) ||
+    candidates[0] ||
+    null;
+  // Keep count + candidate list visible; do not collapse to a single booking block.
+  return renderMatchCell(payment, candidates, best);
 }
 
 function renderSuggestedReservationsForSelections(payment, selections) {
@@ -3620,6 +3788,53 @@ function renderSuggestedReservationsForSelections(payment, selections) {
   </div>`;
 }
 
+function bindMatchCellInteractions(root = document) {
+  const scope = typeof root.querySelectorAll === 'function' ? root : document;
+  scope.querySelectorAll('.payment-match-candidate').forEach((btn) => {
+    if (btn.dataset.boundPick) return;
+    btn.dataset.boundPick = '1';
+    btn.addEventListener('click', () => {
+      const paymentId = btn.dataset.paymentId;
+      const hostawayId = Number(btn.dataset.hostawayId);
+      if (!paymentId || !hostawayId) return;
+      const select = $(
+        `.payment-split-row[data-payment-id="${paymentId}"][data-row-index="0"] .payment-assign-select`,
+      );
+      if (!select) return;
+      const hasOption = [...select.options].some(
+        (opt) => Number(opt.value) === hostawayId,
+      );
+      if (!hasOption) return;
+      select.value = String(hostawayId);
+      const wrap = select.closest('.payment-assign-wrap');
+      if (wrap) syncAssignDropdown(wrap, select);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+
+  scope.querySelectorAll('.payment-match-more-toggle').forEach((btn) => {
+    if (btn.dataset.boundToggle) return;
+    btn.dataset.boundToggle = '1';
+    btn.addEventListener('click', () => {
+      const block = btn.closest('.payment-match-block');
+      const others = block?.querySelector('.payment-match-others');
+      if (!others) return;
+      const open = others.hasAttribute('hidden');
+      if (open) others.removeAttribute('hidden');
+      else others.setAttribute('hidden', '');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const count = Number(btn.dataset.otherCount) || 0;
+      btn.textContent = open
+        ? t('payments.hideOtherBookings')
+        : t('payments.showOtherBookings', { count });
+    });
+  });
+}
+
+function bindPaymentMatchCandidatePicks() {
+  bindMatchCellInteractions(document);
+}
+
 function refreshPaymentReviewSidePanels(paymentId) {
   const payment = window.__paymentSplitById?.get(paymentId);
   const row = $(`.payment-review-row[data-payment-id="${paymentId}"]`);
@@ -3629,6 +3844,7 @@ function refreshPaymentReviewSidePanels(paymentId) {
   const suggestionCell = row.querySelector('.payment-suggestion-cell');
   if (matchCell) {
     matchCell.innerHTML = renderMatchCellForSelections(payment, selections);
+    bindMatchCellInteractions(matchCell);
   }
   if (suggestionCell) {
     suggestionCell.innerHTML = renderSuggestedReservationsForSelections(
@@ -4441,7 +4657,6 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
           </div>
         </div>
         <div class="payment-booking-pick-block">
-          <span class="payment-field-label">${t('payments.searchBooking')}</span>
           <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
             <div class="payment-res-search-input-wrap">
               <svg class="payment-res-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
@@ -4451,7 +4666,8 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
               <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
                 autocomplete="off"
                 placeholder="${t('payments.manualReservationId')}"
-                title="${t('payments.manualReservationHint')}" />
+                title="${t('payments.manualReservationHint')}"
+                aria-label="${esc(t('payments.searchBooking'))}" />
             </div>
           </div>
         </div>
@@ -4809,7 +5025,22 @@ async function loadPaymentsReconcile() {
           <button type="button" class="payment-split-hint-link payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositLearnMore')}</button>
         </div>`
       : '';
-    const suggestionHtml = renderSuggestedReservation(reservation, bestCandidate, p.currency, p);
+    const suggestionHtml =
+      candidates.length > 1
+        ? `<div class="payment-suggestion-stack">${candidates
+            .slice(0, 3)
+            .map((c) =>
+              renderSuggestedReservation(
+                Number(reservation?.hostawayId) === Number(c.hostawayId)
+                  ? reservation
+                  : null,
+                c,
+                p.currency,
+                p,
+              ),
+            )
+            .join('')}</div>`
+        : renderSuggestedReservation(reservation, bestCandidate, p.currency, p);
     const initialAmount = Number(p.amount) || 0;
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
@@ -4834,8 +5065,7 @@ async function loadPaymentsReconcile() {
       </td>`;
     return `
     <tr class="payment-review-row" data-payment-id="${p.id}">
-      <td class="payment-payment-cell">${renderPaymentCell(p)}</td>
-      <td class="payment-payer-cell">${renderPayerCell(p)}</td>
+      <td class="payment-payment-cell">${renderPaymentPayerCell(p)}</td>
       <td class="payment-match-cell">${renderMatchCell(p, candidates, bestCandidate)}</td>
       <td class="payment-suggestion-cell">${suggestionHtml}</td>
       ${actionsCell}
@@ -4846,11 +5076,10 @@ async function loadPaymentsReconcile() {
     : `<p class="payments-empty">${t('payments.none')}</p>`;
   $('#payments-table').innerHTML = `
     <table class="payments-review-table"><colgroup>
-      <col class="col-payment" /><col class="col-payer" /><col class="col-match" />
+      <col class="col-payment" /><col class="col-match" />
       <col class="col-reservation" /><col class="col-actions" />
     </colgroup><thead><tr>
-      <th>${t('payments.paymentCol')}</th>
-      <th>${t('payments.payer')}</th>
+      <th>${t('payments.paymentPayerCol')}</th>
       <th>${t('payments.match')}</th>
       <th>${t('payments.reservation')}</th>
       <th>${t('payments.actions')}</th>
@@ -4888,6 +5117,7 @@ async function loadPaymentsReconcile() {
   bindExpandableToggles('#payments-table');
   bindPaymentHostawayOpeners();
   bindPaymentSplitControls(data.items);
+  bindPaymentMatchCandidatePicks();
 
   $$('.payment-find-booking').forEach((btn) => {
     btn.addEventListener('click', () => {

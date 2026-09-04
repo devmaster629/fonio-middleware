@@ -164,11 +164,13 @@ export class PaymentMatcherService {
       reasons.includes('guest name matches') ||
       reasons.includes('guest email matches');
     const strongAmount =
-      reasons.includes('outstanding balance') ||
-      reasons.includes('reservation total') ||
+      reasons.includes('equals outstanding balance') ||
+      reasons.includes('equals reservation total') ||
       reasons.includes('deposit/installment') ||
       reasons.includes('appears in reservation notes') ||
       reasons.includes('payment amount aligns');
+    // Restzahlung/Teilzahlung + guest boosts ranking for review, but partial
+    // open-balance fits alone are not enough to auto-apply.
     const clearlyUnique =
       !second || best.score - second.score >= PAYMENT_AMBIGUITY_SCORE_GAP;
 
@@ -232,11 +234,11 @@ export class PaymentMatcherService {
     }
 
     const amountMatches =
-      reasons.includes('outstanding balance') ||
-      reasons.includes('reservation total') ||
-      reasons.includes('deposit') ||
-      reasons.includes('installment') ||
-      reasons.includes('payment amount aligns');
+      reasons.includes('equals outstanding balance') ||
+      reasons.includes('equals reservation total') ||
+      /deposit\/installment share/.test(reasons) ||
+      reasons.includes('payment amount aligns') ||
+      reasons.includes('appears in reservation notes');
     if (!amountMatches) {
       const amountLabel = `${payment.amount.toFixed(2)} ${payment.currency}`;
       if (best.balanceDue != null && best.totalPrice != null) {
@@ -341,6 +343,12 @@ export class PaymentMatcherService {
       }
     }
 
+    const guestMatched =
+      (!!payment.payerName &&
+        !!reservation.guestName &&
+        this.namesMatch(payment.payerName, reservation.guestName)) ||
+      reasons.some((r) => r.includes('Guest name'));
+
     if (
       referenceText &&
       listingNameMatches(referenceText, {
@@ -348,7 +356,9 @@ export class PaymentMatcherService {
         aliases: reservation.listing.aliases,
       })
     ) {
-      score += 15;
+      // Listing-only is weak evidence; require guest/email context for full weight.
+      const listingPoints = guestMatched || reasons.some((r) => r.includes('email')) ? 15 : 6;
+      score += listingPoints;
       reasons.push('Listing name appears in reference');
     }
 
@@ -363,7 +373,12 @@ export class PaymentMatcherService {
       reasons.push('Payment amount aligns with reference');
     }
 
-    const balanceScore = this.scoreBalanceDue(payment.amount, reservation, payment);
+    const balanceScore = this.scoreBalanceDue(
+      payment.amount,
+      reservation,
+      payment,
+      referenceText,
+    );
     if (balanceScore.score > 0) {
       score += balanceScore.score;
       reasons.push(balanceScore.reason);
@@ -458,6 +473,7 @@ export class PaymentMatcherService {
       guestName?: string | null;
     },
     payment?: NormalizedExternalPayment,
+    referenceText = '',
   ): { score: number; reason: string } {
     const total = reservation.totalPrice;
     if (!total || total <= 0) return { score: 0, reason: '' };
@@ -467,57 +483,124 @@ export class PaymentMatcherService {
       0,
     );
     const balanceDue = Math.max(0, total - paid);
-
-    // Prefer outstanding balance evidence over total-price matches.
-    if (balanceDue > 0 && this.amountsMatch(amount, balanceDue)) {
-      return {
-        score: 30,
-        reason: `Amount equals outstanding balance (${balanceDue.toFixed(2)})`,
-      };
-    }
+    const partiallyPaid = paid >= 1;
+    const remainingPaymentHint = this.referenceLooksLikeRemainingPayment(referenceText);
 
     const guestMatched =
       !!payment?.payerName &&
       !!reservation.guestName &&
       this.namesMatch(payment.payerName, reservation.guestName);
 
+    // Prefer outstanding balance evidence over total-price matches.
+    if (balanceDue > 0 && this.amountsMatch(amount, balanceDue)) {
+      const boost = remainingPaymentHint ? 8 : 0;
+      return {
+        score: 35 + boost,
+        reason: `Amount equals outstanding balance (${balanceDue.toFixed(2)})`,
+      };
+    }
+
+    // Restzahlung / Teilzahlung + guest: prefer open-balance fits over 30% total guesses.
+    if (
+      guestMatched &&
+      remainingPaymentHint &&
+      balanceDue > 0 &&
+      amount > 0 &&
+      amount <= balanceDue + 1
+    ) {
+      const ratio = amount / balanceDue;
+      if (ratio >= 0.1 && ratio <= 0.99) {
+        return {
+          score: 32,
+          reason:
+            'Guest match with Restzahlung/Teilzahlung fits the outstanding balance',
+        };
+      }
+    }
+
     if (
       guestMatched &&
       balanceDue > 0 &&
-      balanceDue < total &&
+      partiallyPaid &&
       this.looksLikeDepositShare(amount, balanceDue)
     ) {
       return {
-        score: 22,
+        score: remainingPaymentHint ? 28 : 22,
         reason: 'Amount matches a likely deposit/installment share of the outstanding balance',
       };
     }
 
-    if (this.amountsMatch(amount, total)) {
+    // Matching the full total only makes sense when little/nothing is already paid.
+    // Otherwise €852 ≈ €850 total can rank an already-paid booking above better fits.
+    if (!partiallyPaid && this.amountsMatch(amount, total)) {
       return {
-        score: 20,
+        score: 28,
         reason: `Amount equals reservation total (${total.toFixed(2)})`,
       };
     }
-    // Common deposit / installment patterns (30%, 50%, 70%) — tight match
+
+    // 30/50/70% heuristics need guest identity for hard score.
     if (
-      this.amountsMatch(amount, total * 0.7) ||
-      this.amountsMatch(amount, total * 0.5) ||
-      this.amountsMatch(amount, total * 0.3)
+      guestMatched &&
+      (this.amountsMatch(amount, total * 0.7) ||
+        this.amountsMatch(amount, total * 0.5) ||
+        this.amountsMatch(amount, total * 0.3))
     ) {
       return {
-        score: 15,
+        score: 18,
         reason: 'Amount matches a typical deposit/installment share of the total',
       };
     }
-    // Wider deposit bands when the payer name matches the guest.
+
     if (guestMatched && this.looksLikeDepositShare(amount, total)) {
       return {
         score: 18,
         reason: 'Amount matches a likely deposit/installment share of the total',
       };
     }
+
+    // Soft review-only signals: keep ~30%/deposit alternatives visible in Needs review
+    // without letting them outrank guest-name + balance matches (~25–40+).
+    if (
+      this.amountsMatch(amount, total * 0.7) ||
+      this.amountsMatch(amount, total * 0.5) ||
+      this.amountsMatch(amount, total * 0.3)
+    ) {
+      return {
+        score: 8,
+        reason: 'Soft amount guess: ~30/50/70% of booking total',
+      };
+    }
+    if (this.looksLikeDepositShare(amount, total)) {
+      return {
+        score: 6,
+        reason: 'Soft amount guess: within deposit/installment range of total',
+      };
+    }
+    if (partiallyPaid && this.amountsMatch(amount, total)) {
+      return {
+        score: 7,
+        reason: `Soft amount guess: close to reservation total (${total.toFixed(2)})`,
+      };
+    }
+    if (balanceDue > 0 && amount > 0 && amount <= balanceDue + 1) {
+      const ratio = amount / balanceDue;
+      if (ratio >= 0.1 && ratio <= 0.95) {
+        return {
+          score: 5,
+          reason: 'Soft amount guess: fits within outstanding balance',
+        };
+      }
+    }
     return { score: 0, reason: '' };
+  }
+
+  /** Payment texts like "Restzahlung …" / "Teil …" imply settling an open balance. */
+  private referenceLooksLikeRemainingPayment(referenceText: string): boolean {
+    if (!referenceText) return false;
+    return /restzahlung|restbetrag|rest\s*zahlung|teilzahlung|teil\s*\d|anzahlung|balance\s*due|remaining\s*(balance|payment)|final\s*payment|outstanding|installment|rate\s*\d/i.test(
+      referenceText,
+    );
   }
 
   /** True when amount is roughly 20–80% of a total (typical Anzahlung range). */
@@ -552,12 +635,15 @@ export class PaymentMatcherService {
     let score = 0;
     const parts: string[] = [];
 
-    if (this.amountAppearsInText(amount, notesNorm)) {
+    const amountInNotes = this.amountAppearsInText(amount, notesNorm);
+    if (amountInNotes) {
       score += 35;
       parts.push('Payment amount appears in reservation notes');
     }
 
+    // Keywords alone (without the amount) inflated unrelated bookings in Needs review.
     if (
+      amountInNotes &&
       /anzahlung|restbetrag|restzahlung|teilzahlung|deposit|vor anreise|anzuzahlen|\d+\s*%/.test(
         notesNorm,
       )
@@ -587,7 +673,8 @@ export class PaymentMatcherService {
   }
 
   private amountsMatch(a: number, b: number): boolean {
-    const tolerance = Math.max(0.01, b * 0.005);
+    // At least €1 so tiny FX/rounding noise still matches; cap relative noise at 0.5%.
+    const tolerance = Math.max(1, b * 0.005);
     return Math.abs(a - b) <= tolerance;
   }
 
