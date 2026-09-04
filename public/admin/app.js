@@ -2966,18 +2966,46 @@ function classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostN
 /**
  * Payment breakdown so a reviewer can see, at a glance, whether this is a
  * full settlement, a partial/deposit payment, or an extra charge.
+ * Distinguishes already-recorded payments from this incoming bank payment.
  */
-function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote = null) {
+function renderPaymentMath(
+  payment,
+  totalPrice,
+  balanceDue,
+  channelName,
+  hostNote = null,
+  alreadyPaid = null,
+) {
   if (totalPrice == null && balanceDue == null) return '';
   const currency = payment?.currency || 'EUR';
-  const amount = payment?.amount;
+  const amount = payment?.amount != null ? Number(payment.amount) : null;
   const kind = classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostNote);
-  const remainingAfter =
-    amount != null && balanceDue != null
-      ? Math.max(0, Math.round((balanceDue - amount) * 100) / 100)
-      : amount != null && totalPrice != null
-        ? Math.max(0, Math.round((totalPrice - amount) * 100) / 100)
+
+  let paidSoFar = alreadyPaid != null && Number.isFinite(Number(alreadyPaid))
+    ? Math.max(0, Number(alreadyPaid))
+    : null;
+  if (
+    paidSoFar == null &&
+    totalPrice != null &&
+    balanceDue != null &&
+    Number.isFinite(Number(totalPrice)) &&
+    Number.isFinite(Number(balanceDue))
+  ) {
+    paidSoFar = Math.max(0, Math.round((Number(totalPrice) - Number(balanceDue)) * 100) / 100);
+  }
+  if (paidSoFar == null) paidSoFar = 0;
+
+  const remainingBefore =
+    balanceDue != null && Number.isFinite(Number(balanceDue))
+      ? Math.max(0, Number(balanceDue))
+      : totalPrice != null
+        ? Math.max(0, Math.round((Number(totalPrice) - paidSoFar) * 100) / 100)
         : null;
+
+  const remainingAfter =
+    amount != null && remainingBefore != null
+      ? Math.max(0, Math.round((remainingBefore - amount) * 100) / 100)
+      : null;
 
   let badge = '';
   let hint = '';
@@ -2998,23 +3026,41 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
   }
 
   const lines = [];
-  if (kind === 'partial' && amount != null && totalPrice != null) {
+  if (totalPrice != null && (kind === 'partial' || kind === 'full' || kind === 'additional')) {
     lines.push(
       `<div class="payment-math-line">
-        <span class="payment-math-k">${esc(t('payments.paidLabel'))}</span>
+        <span class="payment-math-k">${esc(t('payments.alreadyPaidLabel'))}</span>
         <span class="payment-math-v">${esc(t('payments.paidOfTotalValue', {
-          paid: formatMoney(amount, currency),
+          paid: formatMoney(paidSoFar, currency),
           total: formatMoney(totalPrice, currency),
         }))}</span>
       </div>`,
     );
+    if (amount != null && remainingBefore != null) {
+      lines.push(
+        `<div class="payment-math-line is-focus">
+          <span class="payment-math-k">${esc(t('payments.thisPayment'))}</span>
+          <span class="payment-math-v">${esc(t('payments.thisPaymentOfRemaining', {
+            amount: formatMoney(amount, currency),
+            remaining: formatMoney(remainingBefore, currency),
+          }))}</span>
+        </div>`,
+      );
+    } else if (amount != null) {
+      lines.push(
+        `<div class="payment-math-line is-focus">
+          <span class="payment-math-k">${esc(t('payments.thisPayment'))}</span>
+          <span class="payment-math-v">${esc(formatMoney(amount, currency))}</span>
+        </div>`,
+      );
+    }
     if (remainingAfter != null) {
       const openPct =
         totalPrice > 0
           ? Math.min(100, Math.round((remainingAfter / totalPrice) * 100))
           : null;
       lines.push(
-        `<div class="payment-math-line is-focus">
+        `<div class="payment-math-line">
           <span class="payment-math-k">${esc(t('payments.openLabel'))}</span>
           <span class="payment-math-v">${esc(t('payments.openRemainingValue', {
             pct: openPct != null ? String(openPct) : '–',
@@ -3034,7 +3080,7 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
         `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
       );
     }
-    if (remainingAfter != null && (kind === 'partial' || remainingAfter > 0.5)) {
+    if (remainingAfter != null && remainingAfter > 0.5) {
       lines.push(
         `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
       );
@@ -3079,6 +3125,17 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
   const departure = reservation?.departureDate ?? candidate?.departureDate;
   const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
   let balanceDue = candidate?.balanceDue;
+  let alreadyPaid = reservationPaidAmount(reservation);
+  if (
+    alreadyPaid == null &&
+    candidate?.totalPrice != null &&
+    candidate?.balanceDue != null
+  ) {
+    alreadyPaid = Math.max(
+      0,
+      Math.round((Number(candidate.totalPrice) - Number(candidate.balanceDue)) * 100) / 100,
+    );
+  }
   if (
     balanceDue == null &&
     reservation?.totalPrice != null &&
@@ -3088,9 +3145,21 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
       (sum, charge) => sum + (Number(charge.amount) || 0),
       0,
     );
+    alreadyPaid = alreadyPaid != null ? alreadyPaid : paid;
     balanceDue = Math.max(
       0,
       Math.round((Number(reservation.totalPrice) - paid) * 100) / 100,
+    );
+  }
+  if (alreadyPaid == null) alreadyPaid = 0;
+  if (
+    balanceDue == null &&
+    totalPrice != null &&
+    Number.isFinite(Number(totalPrice))
+  ) {
+    balanceDue = Math.max(
+      0,
+      Math.round((Number(totalPrice) - alreadyPaid) * 100) / 100,
     );
   }
   const channelName = reservation?.channelName ?? candidate?.channelName ?? null;
@@ -3139,7 +3208,7 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
       </div>
     </div>
     <div class="payment-suggestion-board">
-      ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
+      ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote, alreadyPaid)}
     </div>
   </div>`;
 }
