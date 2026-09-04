@@ -297,7 +297,12 @@ export class PaymentMatcherService {
       hostNote: string | null;
       guestNote: string | null;
       comment: string | null;
-      listing: { name: string; aliases: string[] };
+      listing: {
+        name: string;
+        aliases: string[];
+        roomType?: string | null;
+        rawMetadata?: unknown;
+      };
       notifiedCharges: { amount: number }[];
     },
     payment: NormalizedExternalPayment,
@@ -381,12 +386,35 @@ export class PaymentMatcherService {
     const balanceDue =
       totalPrice != null ? Math.max(0, Math.round((totalPrice - paid) * 100) / 100) : null;
     const hostNote = reservation.hostNote?.trim() || null;
+    const listingMeta =
+      reservation.listing.rawMetadata &&
+      typeof reservation.listing.rawMetadata === 'object'
+        ? (reservation.listing.rawMetadata as Record<string, unknown>)
+        : null;
+    let listingCoverUrl: string | null = null;
+    if (listingMeta) {
+      listingCoverUrl =
+        (typeof listingMeta.coverImageUrl === 'string' && listingMeta.coverImageUrl) ||
+        (typeof listingMeta.thumbnailUrl === 'string' && listingMeta.thumbnailUrl) ||
+        (typeof listingMeta.pictureUrl === 'string' && listingMeta.pictureUrl) ||
+        null;
+      if (!listingCoverUrl) {
+        const images = (listingMeta.listingImages || listingMeta.images) as
+          | Array<{ url?: string; thumbnailUrl?: string }>
+          | undefined;
+        if (Array.isArray(images) && images[0]) {
+          listingCoverUrl = images[0].url || images[0].thumbnailUrl || null;
+        }
+      }
+    }
 
     return {
       reservationId: reservation.id,
       hostawayId: reservation.hostawayId,
       guestName: reservation.guestName,
       listingName: reservation.listing.name,
+      listingRoomType: reservation.listing.roomType ?? null,
+      listingCoverUrl,
       arrivalDate: reservation.arrivalDate.toISOString().slice(0, 10),
       departureDate: reservation.departureDate.toISOString().slice(0, 10),
       channelName: reservation.channelName ?? null,

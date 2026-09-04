@@ -2866,10 +2866,16 @@ function hostawayReservationUrl(hostawayId) {
 function renderOpenInHostawayButton(hostawayId, extraClass = '') {
   const url = hostawayReservationUrl(hostawayId);
   if (!url) return '';
-  return `<a class="btn ghost btn-sm payment-open-hostaway ${extraClass}"
+  return `<a class="btn payment-btn-hostaway btn-sm payment-open-hostaway ${extraClass}"
     href="${esc(url)}" target="_blank" rel="noopener noreferrer"
     data-hostaway-id="${idOrEmpty(hostawayId)}"
-    title="${t('payments.openInHostawayHint')}">${t('payments.openInHostaway')}</a>`;
+    title="${t('payments.openInHostawayHint')}">
+    <span>${t('payments.openInHostaway')}</span>
+    <svg class="payment-ext-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        d="M14 3h7v7M10 14 21 3M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6"/>
+    </svg>
+  </a>`;
 }
 
 function idOrEmpty(hostawayId) {
@@ -2992,24 +2998,51 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
   }
 
   const lines = [];
-  if (totalPrice != null) {
+  if (kind === 'partial' && amount != null && totalPrice != null) {
     lines.push(
-      `<div class="payment-math-line"><span class="payment-math-k">${t('payments.bookingAmount')}</span><span class="payment-math-v">${esc(formatMoney(totalPrice, currency))}</span></div>`,
+      `<div class="payment-math-line">
+        <span class="payment-math-k">${esc(t('payments.paidLabel'))}</span>
+        <span class="payment-math-v">${esc(t('payments.paidOfTotalValue', {
+          paid: formatMoney(amount, currency),
+          total: formatMoney(totalPrice, currency),
+        }))}</span>
+      </div>`,
     );
-  }
-  if (amount != null) {
-    lines.push(
-      `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
-    );
-  }
-  if (remainingAfter != null && (kind === 'partial' || remainingAfter > 0.5)) {
-    lines.push(
-      `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
-    );
-  } else if (balanceDue != null && !(amount != null && remainingAfter != null)) {
-    lines.push(
-      `<div class="payment-math-line"><span class="payment-math-k">${t('payments.balanceDue')}</span><span class="payment-math-v">${esc(formatMoney(balanceDue, currency))}</span></div>`,
-    );
+    if (remainingAfter != null) {
+      const openPct =
+        totalPrice > 0
+          ? Math.min(100, Math.round((remainingAfter / totalPrice) * 100))
+          : null;
+      lines.push(
+        `<div class="payment-math-line is-focus">
+          <span class="payment-math-k">${esc(t('payments.openLabel'))}</span>
+          <span class="payment-math-v">${esc(t('payments.openRemainingValue', {
+            pct: openPct != null ? String(openPct) : '–',
+            amount: formatMoney(remainingAfter, currency),
+          }))}</span>
+        </div>`,
+      );
+    }
+  } else {
+    if (totalPrice != null) {
+      lines.push(
+        `<div class="payment-math-line"><span class="payment-math-k">${t('payments.bookingAmount')}</span><span class="payment-math-v">${esc(formatMoney(totalPrice, currency))}</span></div>`,
+      );
+    }
+    if (amount != null) {
+      lines.push(
+        `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.thisPayment')}</span><span class="payment-math-v">${esc(formatMoney(amount, currency))}</span></div>`,
+      );
+    }
+    if (remainingAfter != null && (kind === 'partial' || remainingAfter > 0.5)) {
+      lines.push(
+        `<div class="payment-math-line is-focus"><span class="payment-math-k">${t('payments.remainingAfter')}</span><span class="payment-math-v">${esc(formatMoney(remainingAfter, currency))}</span></div>`,
+      );
+    } else if (balanceDue != null && !(amount != null && remainingAfter != null)) {
+      lines.push(
+        `<div class="payment-math-line"><span class="payment-math-k">${t('payments.balanceDue')}</span><span class="payment-math-v">${esc(formatMoney(balanceDue, currency))}</span></div>`,
+      );
+    }
   }
 
   return `<div class="${boxClass}"${hint ? ` title="${esc(hint)}"` : ''}>
@@ -3018,54 +3051,96 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
   </div>`;
 }
 
+function suggestionListingThumbHtml(reservation, candidate) {
+  if (reservation?.listing) return listingThumbHtml(reservation.listing);
+  const url = candidate?.listingCoverUrl;
+  if (url) {
+    return `<span class="listing-thumb-frame payment-suggestion-thumb-frame"><img class="listing-thumb" src="${esc(url)}" alt="" loading="lazy" onerror="listingThumbFallback(this)" /></span>`;
+  }
+  return listingThumbPlaceholderHtml();
+}
+
 function renderSuggestedReservation(reservation, candidate, currency = 'EUR', payment = null) {
   const src = reservation || candidate;
   if (!src) {
     return `<div class="payment-suggestion is-empty">
-      <div class="payment-suggestion-empty">${t('payments.noSuitableBooking')}</div>
+      <div class="payment-suggestion-empty-mark">—</div>
+      <button type="button" class="btn payment-btn-find payment-find-booking" data-payment-id="${esc(payment?.id || '')}">
+        ${t('payments.findBooking')}
+      </button>
     </div>`;
   }
   const hostawayId = reservation?.hostawayId ?? candidate?.hostawayId;
-  const guest = reservation?.guestName ?? candidate?.guestName;
-  const listing = reservation?.listing?.name ?? candidate?.listingName;
+  const guest = reservation?.guestName ?? candidate?.guestName ?? '';
+  const listingName = reservation?.listing?.name ?? candidate?.listingName ?? '';
+  const roomType =
+    reservation?.listing?.roomType ?? candidate?.listingRoomType ?? '';
   const arrival = reservation?.arrivalDate ?? candidate?.arrivalDate;
   const departure = reservation?.departureDate ?? candidate?.departureDate;
   const totalPrice = reservation?.totalPrice ?? candidate?.totalPrice;
-  const balanceDue = candidate?.balanceDue;
+  let balanceDue = candidate?.balanceDue;
+  if (
+    balanceDue == null &&
+    reservation?.totalPrice != null &&
+    Array.isArray(reservation?.notifiedCharges)
+  ) {
+    const paid = reservation.notifiedCharges.reduce(
+      (sum, charge) => sum + (Number(charge.amount) || 0),
+      0,
+    );
+    balanceDue = Math.max(
+      0,
+      Math.round((Number(reservation.totalPrice) - paid) * 100) / 100,
+    );
+  }
   const channelName = reservation?.channelName ?? candidate?.channelName ?? null;
   const hostNote = reservation?.hostNote ?? candidate?.hostNote ?? null;
-  const hostawayUrl = hostawayReservationUrl(hostawayId);
-  const titleId = hostawayUrl
-    ? `<a class="payment-hostaway-link" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">#${hostawayId}</a>`
-    : `#${hostawayId}`;
-  const channelBadge = renderChannelBadge(channelName);
   const stay = formatStayDates(arrival, departure);
-  const notesBlock = hostNote
-    ? `<details class="payment-notes"><summary>${t('payments.hostNote')}</summary><div class="payment-notes-body">${esc(hostNote)}</div></details>`
-    : '';
   const score = Number(candidate?.score ?? payment?.matchScore);
-  const confidence = Number.isFinite(score)
-    ? `<span class="payment-confidence ${score >= 85 ? 'is-high' : 'is-mid'}">${
-        score >= 85
-          ? t('payments.confidenceHigh', { pct: Math.min(99, Math.round(score)) })
-          : t('payments.confidencePossible', { pct: Math.min(99, Math.round(score)) })
-      }</span>`
-    : '';
+  const pct = Number.isFinite(score) ? Math.min(99, Math.round(score)) : null;
+  const confidence =
+    pct != null
+      ? `<div class="payment-suggestion-conf">
+          <span class="payment-confidence ${pct >= 85 ? 'is-high' : 'is-mid'}">${
+            pct >= 85
+              ? t('payments.confidenceHighShort')
+              : t('payments.confidencePossibleShort')
+          }</span>
+          <span class="payment-suggestion-pct">${pct}%</span>
+        </div>`
+      : '';
+  const hostawayUrl = hostawayReservationUrl(hostawayId);
+  const idLabel = hostawayId ? `#${hostawayId}` : '';
+  const titleId = hostawayUrl
+    ? `<a class="payment-hostaway-link payment-suggestion-id" href="${esc(hostawayUrl)}" target="_blank" rel="noopener noreferrer" title="${t('payments.openInHostawayHint')}">${esc(idLabel)}</a>`
+    : idLabel
+      ? `<span class="payment-suggestion-id">${esc(idLabel)}</span>`
+      : '';
+  const channelBadge = renderChannelBadge(channelName);
+  const boardHead =
+    titleId || guest || channelBadge
+      ? `<div class="payment-suggestion-board-head">
+          <div class="payment-suggestion-board-title">
+            ${titleId}${guest ? ` <span class="payment-suggestion-board-guest">– ${esc(guest)}</span>` : ''}
+            ${channelBadge ? `<span class="payment-suggestion-board-channel">${channelBadge}</span>` : ''}
+          </div>
+        </div>`
+      : '';
 
   return `<div class="payment-suggestion">
-    <div class="payment-suggestion-head">
-      <div class="payment-suggestion-title">${titleId}${guest ? ` – ${esc(guest)}` : ''}</div>
-      <div class="payment-suggestion-badges">
-        ${channelBadge ? `<div class="payment-suggestion-channel">${channelBadge}</div>` : ''}
+    ${boardHead}
+    <div class="payment-suggestion-card">
+      ${suggestionListingThumbHtml(reservation, candidate)}
+      <div class="payment-suggestion-info">
+        ${listingName ? `<div class="payment-suggestion-listing">${esc(listingName)}</div>` : ''}
+        ${roomType ? `<div class="payment-suggestion-room">${esc(roomType)}</div>` : ''}
+        ${stay ? `<div class="payment-suggestion-dates">${esc(stay)}</div>` : ''}
         ${confidence}
       </div>
     </div>
-    <div class="payment-suggestion-stay">
-      ${listing ? `<div class="payment-suggestion-listing">${esc(listing)}</div>` : ''}
-      ${stay ? `<div class="payment-suggestion-dates">${esc(stay)}</div>` : ''}
+    <div class="payment-suggestion-board">
+      ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
     </div>
-    ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote)}
-    ${notesBlock}
   </div>`;
 }
 
@@ -3161,7 +3236,7 @@ function renderMatchCell(payment, candidates, bestCandidate) {
     <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
     ${confidenceLine}
     ${summaryLine ? `<div class="payment-match-summary">${esc(summaryLine)}</div>` : ''}
-    ${chipsHtml ? `<div class="payment-match-chips">${chipsHtml}</div>` : ''}
+    ${chipsHtml ? `<div class="payment-match-signals-label">${t('payments.matchingSignals')}</div><div class="payment-match-chips">${chipsHtml}</div>` : ''}
     ${details}
   </div>`;
 }
@@ -4035,19 +4110,28 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
         <button type="button" class="btn ghost btn-sm payment-split-remove" data-payment-id="${paymentId}" data-row-index="${rowIndex}" title="${t('payments.splitRemove')}">${t('payments.splitRemove')}</button>
       </div>
       <div class="payment-booking-pick">
-        <div class="payment-assign-wrap">
-          <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}" aria-label="${esc(t('payments.suggestedBookingSelect'))}">
-            <option value="">${t('payments.pickReservation')}</option>
-            ${options}
-          </select>
+        <div class="payment-booking-pick-block">
+          <span class="payment-field-label">${t('payments.suggestedBookingSelect')}</span>
+          <div class="payment-assign-wrap">
+            <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}" aria-label="${esc(t('payments.suggestedBookingSelect'))}">
+              <option value="">${t('payments.pickReservation')}</option>
+              ${options}
+            </select>
+          </div>
         </div>
-        <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
-          <div class="payment-res-search-input-wrap">
-            <span class="payment-res-search-icon" aria-hidden="true"></span>
-            <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
-              autocomplete="off"
-              placeholder="${t('payments.manualReservationId')}"
-              title="${t('payments.manualReservationHint')}" />
+        <div class="payment-booking-pick-block">
+          <span class="payment-field-label">${t('payments.searchBooking')}</span>
+          <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
+            <div class="payment-res-search-input-wrap">
+              <svg class="payment-res-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/>
+                <path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+                autocomplete="off"
+                placeholder="${t('payments.manualReservationId')}"
+                title="${t('payments.manualReservationHint')}" />
+            </div>
           </div>
         </div>
       </div>
@@ -4171,11 +4255,12 @@ function updatePaymentSplitUi(paymentId) {
   ) / 100;
   if (totalEl) {
     const ok = Math.abs(sum - paymentAmount) <= 0.01;
-    totalEl.textContent = t('payments.splitTotal', {
-      sum: formatMoney(sum),
-      total: formatMoney(paymentAmount),
-    });
+    const currency = stack.dataset.currency || 'EUR';
+    totalEl.innerHTML = `${esc(t('payments.allocationTotal', {
+      sum: formatMoney(sum, currency),
+    }))}${ok ? '<span class="payment-alloc-check" aria-hidden="true">✓</span>' : ''}`;
     totalEl.classList.toggle('is-invalid', !ok);
+    totalEl.classList.toggle('is-ok', ok);
   }
   stack.classList.toggle('is-split', rows.length > 1);
 }
@@ -4393,9 +4478,12 @@ async function loadPaymentsReconcile() {
     const hint = p.combinedDepositHint;
     const hintHtml = hint
       ? `<div class="payment-split-hint" data-payment-id="${p.id}">
-          <strong>${t('payments.combinedDepositHintTitle')}</strong>
-          <span>${t('payments.combinedDepositHint', { guest: hint.guestName || '–' })}</span>
-          <button type="button" class="btn ghost btn-sm payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositApply')}</button>
+          <span class="payment-split-hint-icon" aria-hidden="true">!</span>
+          <div class="payment-split-hint-body">
+            <strong>${t('payments.combinedDepositHintTitle')}</strong>
+            <span>${t('payments.combinedDepositHint', { guest: hint.guestName || '–' })}</span>
+          </div>
+          <button type="button" class="payment-split-hint-link payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositLearnMore')}</button>
         </div>`
       : '';
     const suggestionHtml = renderSuggestedReservation(reservation, bestCandidate, p.currency, p);
@@ -4406,13 +4494,15 @@ async function loadPaymentsReconcile() {
           ${hintHtml}
           <div class="payment-split-rows" data-payment-id="${p.id}"></div>
           <div class="payment-split-toolbar">
-            <button type="button" class="btn ghost btn-sm payment-split-add" data-payment-id="${p.id}">${t('payments.split')}</button>
+            <button type="button" class="btn payment-btn-split payment-split-add" data-payment-id="${p.id}">${t('payments.split')}</button>
             <span class="payment-split-total muted" data-payment-id="${p.id}"></span>
           </div>
-          <div class="payment-action-btns">
-            <button type="button" class="btn primary btn-sm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
-            <button type="button" class="btn ghost btn-sm payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
-            ${openHostawayBtn}
+          <div class="payment-action-footer">
+            <div class="payment-action-btns">
+              <button type="button" class="btn payment-btn-confirm payment-confirm-btn" data-payment-id="${p.id}">${t('payments.confirm')}</button>
+              <button type="button" class="btn payment-btn-skip payment-skip-btn" data-payment-id="${p.id}">${t('payments.skip')}</button>
+              ${openHostawayBtn}
+            </div>
           </div>
         </div>
       </td>`
@@ -4463,6 +4553,17 @@ async function loadPaymentsReconcile() {
   bindExpandableToggles('#payments-table');
   bindPaymentHostawayOpeners();
   bindPaymentSplitControls(data.items);
+
+  $$('.payment-find-booking').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const paymentId = btn.dataset.paymentId;
+      const input = $(
+        `.payment-actions-stack[data-payment-id="${paymentId}"] .payment-assign-manual`,
+      );
+      input?.focus();
+      input?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  });
 
   $$('.payment-confirm-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {

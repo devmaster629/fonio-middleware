@@ -20,6 +20,10 @@ export interface PaymentMatchCandidate {
   hostawayId: number;
   guestName: string | null;
   listingName: string;
+  /** Listing room / unit type when available */
+  listingRoomType?: string | null;
+  /** Cover / thumbnail URL for suggested-booking UI */
+  listingCoverUrl?: string | null;
   arrivalDate: string;
   departureDate: string;
   /** Booking source / channel (Airbnb, Booking.com, direct, …), if known */

@@ -169,10 +169,37 @@ export class PaymentAdminController {
           totalPrice != null
             ? Math.max(0, Math.round((totalPrice - paid) * 100) / 100)
             : null;
+        const listingMeta =
+          live.listing.rawMetadata &&
+          typeof live.listing.rawMetadata === 'object'
+            ? (live.listing.rawMetadata as Record<string, unknown>)
+            : null;
+        let listingCoverUrl =
+          (c.listingCoverUrl as string) ||
+          (typeof listingMeta?.coverImageUrl === 'string'
+            ? listingMeta.coverImageUrl
+            : null) ||
+          (typeof listingMeta?.thumbnailUrl === 'string'
+            ? listingMeta.thumbnailUrl
+            : null) ||
+          (typeof listingMeta?.pictureUrl === 'string'
+            ? listingMeta.pictureUrl
+            : null);
+        if (!listingCoverUrl && listingMeta) {
+          const images = (listingMeta.listingImages || listingMeta.images) as
+            | Array<{ url?: string; thumbnailUrl?: string }>
+            | undefined;
+          if (Array.isArray(images) && images[0]) {
+            listingCoverUrl = images[0].url || images[0].thumbnailUrl || null;
+          }
+        }
         return {
           ...c,
           guestName: c.guestName ?? live.guestName,
           listingName: c.listingName ?? live.listing.name,
+          listingRoomType:
+            (c.listingRoomType as string) ?? live.listing.roomType ?? null,
+          listingCoverUrl,
           arrivalDate:
             (c.arrivalDate as string) ||
             live.arrivalDate.toISOString().slice(0, 10),
