@@ -31,7 +31,7 @@ const tableState = {
   conversations: { page: 1, pageSize: 10, search: '' },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
-  payments: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
   paymentsHistory: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   webhooks: { page: 1, pageSize: 10, search: '' },
@@ -443,14 +443,34 @@ function manageDashboardPoll() {
 
 function formatRelativeAgo(iso) {
   if (!iso) return '';
-  const ms = Date.now() - new Date(iso).getTime();
+  const then = new Date(iso).getTime();
+  const ms = Date.now() - then;
   if (!Number.isFinite(ms) || ms < 0) return '';
   const sec = Math.floor(ms / 1000);
   if (sec < 60) return t('payments.agoSeconds', { n: Math.max(1, sec) });
   const min = Math.floor(sec / 60);
   if (min < 60) return t('payments.agoMinutes', { n: min });
   const hrs = Math.floor(min / 60);
-  return t('payments.agoHours', { n: hrs });
+  if (hrs < 24) return t('payments.agoHours', { n: hrs });
+  const days = Math.floor(hrs / 24);
+  const remHrs = hrs % 24;
+  if (remHrs <= 0) return t('payments.agoDays', { n: days });
+  return t('payments.agoDaysHours', { days, hours: remHrs });
+}
+
+/** Friendly import time: "Today, 08:42" / "Yesterday, 18:13" / "13/07/2026, 18:13". */
+function formatPaymentImportTime(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '–';
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startThen = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((startToday - startThen) / 86400000);
+  if (dayDiff === 0) return t('payments.timeToday', { time });
+  if (dayDiff === 1) return t('payments.timeYesterday', { time });
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}, ${time}`;
 }
 
 function formatSyncPhase(last, inProgress) {
@@ -563,6 +583,105 @@ function compareSort(a, b, sortBy, sortDir) {
   if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
   else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
   return sortDir === 'desc' ? -cmp : cmp;
+}
+
+function ensurePaymentsToolbar(loader) {
+  const el = $('#payments-toolbar');
+  if (!el) return;
+  const tabKey = 'payments';
+  const s = tableState[tabKey];
+  if (el.dataset.toolbarInit === 'payments-v4') {
+    const sourceSel = el.querySelector('[data-payment-filter="source"]');
+    const matchSel = el.querySelector('[data-payment-filter="match"]');
+    const dateSel = el.querySelector('[data-payment-filter="date"]');
+    if (sourceSel) sourceSel.value = s.source || 'all';
+    if (matchSel) matchSel.value = s.match || 'all';
+    if (dateSel) dateSel.value = s.date || 'all';
+    return;
+  }
+  el.dataset.toolbarInit = 'payments-v4';
+  el.innerHTML = `
+    <div class="payments-toolbar-filters">
+      <label class="payments-search-field">
+        <span class="payments-filter-label">${t('table.search')}</span>
+        <span class="payments-search-wrap">
+          <svg class="payments-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+            <circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.searchPlaceholder'))}" />
+        </span>
+      </label>
+      <label>
+        <span class="payments-filter-label">${t('payments.source')}</span>
+        <select data-payment-filter="source">
+          <option value="all">${t('payments.filterAllSources')}</option>
+          <option value="QONTO">Qonto</option>
+          <option value="PAYPAL">PayPal</option>
+        </select>
+      </label>
+      <label>
+        <span class="payments-filter-label">${t('payments.matchStatus')}</span>
+        <select data-payment-filter="match">
+          <option value="all">${t('payments.filterAllMatch')}</option>
+          <option value="PARTIAL_UNCLEAR">${t('payments.decision.PARTIAL_UNCLEAR')}</option>
+          <option value="AMBIGUOUS">${t('payments.decision.AMBIGUOUS')}</option>
+          <option value="NO_MATCH">${t('payments.decision.NO_MATCH')}</option>
+        </select>
+      </label>
+      <label>
+        <span class="payments-filter-label">${t('payments.dateFilter')}</span>
+        <select data-payment-filter="date">
+          <option value="all">${t('payments.filterAllTime')}</option>
+          <option value="24h">${t('payments.filter24h')}</option>
+          <option value="7d">${t('payments.filter7d')}</option>
+          <option value="30d">${t('payments.filter30d')}</option>
+        </select>
+      </label>
+      <label class="payments-toolbar-length">
+        <span class="payments-filter-label">${t('table.show')}</span>
+        <select data-table-length="${tabKey}">
+          ${PAGE_SIZE_OPTIONS.map((n) =>
+            `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
+          ).join('')}
+        </select>
+      </label>
+    </div>
+  `;
+  const sourceSel = el.querySelector('[data-payment-filter="source"]');
+  const matchSel = el.querySelector('[data-payment-filter="match"]');
+  const dateSel = el.querySelector('[data-payment-filter="date"]');
+  if (sourceSel) sourceSel.value = s.source || 'all';
+  if (matchSel) matchSel.value = s.match || 'all';
+  if (dateSel) dateSel.value = s.date || 'all';
+  el.querySelector(`[data-table-length="${tabKey}"]`)?.addEventListener('change', (e) => {
+    tableState[tabKey].pageSize = Number(e.target.value);
+    tableState[tabKey].page = 1;
+    loader();
+  });
+  el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
+    clearTimeout(searchTimers[tabKey]);
+    searchTimers[tabKey] = setTimeout(() => {
+      tableState[tabKey].search = e.target.value;
+      tableState[tabKey].page = 1;
+      loader();
+    }, 300);
+  });
+  sourceSel?.addEventListener('change', (e) => {
+    tableState[tabKey].source = e.target.value;
+    tableState[tabKey].page = 1;
+    loader();
+  });
+  matchSel?.addEventListener('change', (e) => {
+    tableState[tabKey].match = e.target.value;
+    tableState[tabKey].page = 1;
+    loader();
+  });
+  dateSel?.addEventListener('change', (e) => {
+    tableState[tabKey].date = e.target.value;
+    tableState[tabKey].page = 1;
+    loader();
+  });
 }
 
 function ensureTableToolbar(toolbarId, tabKey, loader) {
@@ -2472,7 +2591,7 @@ function formatMoney(amount, currency = 'EUR') {
   }
 }
 
-/** Short date+time for the payment review list (e.g. 24.07.2026 · 09:35). */
+/** Short date+time for the payment review list (e.g. 31/08/2026 - 14:41). */
 function formatCompactDateTime(value) {
   if (!value) return '–';
   const d = new Date(value);
@@ -2481,8 +2600,8 @@ function formatCompactDateTime(value) {
   const month = pad2(d.getMonth() + 1);
   const year = d.getFullYear();
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  if (getLang() === 'de') return `${day}.${month}.${year} · ${time}`;
-  return `${day}/${month}/${year} · ${time}`;
+  if (getLang() === 'de') return `${day}.${month}.${year} - ${time}`;
+  return `${day}/${month}/${year} - ${time}`;
 }
 
 function formatDayMonthYear(value) {
@@ -2901,7 +3020,11 @@ function renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNot
 
 function renderSuggestedReservation(reservation, candidate, currency = 'EUR', payment = null) {
   const src = reservation || candidate;
-  if (!src) return '–';
+  if (!src) {
+    return `<div class="payment-suggestion is-empty">
+      <div class="payment-suggestion-empty">${t('payments.noSuitableBooking')}</div>
+    </div>`;
+  }
   const hostawayId = reservation?.hostawayId ?? candidate?.hostawayId;
   const guest = reservation?.guestName ?? candidate?.guestName;
   const listing = reservation?.listing?.name ?? candidate?.listingName;
@@ -2920,11 +3043,22 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
   const notesBlock = hostNote
     ? `<details class="payment-notes"><summary>${t('payments.hostNote')}</summary><div class="payment-notes-body">${esc(hostNote)}</div></details>`
     : '';
+  const score = Number(candidate?.score ?? payment?.matchScore);
+  const confidence = Number.isFinite(score)
+    ? `<span class="payment-confidence ${score >= 85 ? 'is-high' : 'is-mid'}">${
+        score >= 85
+          ? t('payments.confidenceHigh', { pct: Math.min(99, Math.round(score)) })
+          : t('payments.confidencePossible', { pct: Math.min(99, Math.round(score)) })
+      }</span>`
+    : '';
 
   return `<div class="payment-suggestion">
     <div class="payment-suggestion-head">
       <div class="payment-suggestion-title">${titleId}${guest ? ` – ${esc(guest)}` : ''}</div>
-      ${channelBadge ? `<div class="payment-suggestion-channel">${channelBadge}</div>` : ''}
+      <div class="payment-suggestion-badges">
+        ${channelBadge ? `<div class="payment-suggestion-channel">${channelBadge}</div>` : ''}
+        ${confidence}
+      </div>
     </div>
     <div class="payment-suggestion-stay">
       ${listing ? `<div class="payment-suggestion-listing">${esc(listing)}</div>` : ''}
@@ -2940,6 +3074,20 @@ function buildMatchSignalChips(payment, bestCandidate) {
   const reasons = Array.isArray(bestCandidate?.reasons) ? bestCandidate.reasons : [];
   const blob = reasons.join(' ').toLowerCase();
   const chips = [];
+
+  const idOk = /reservation #\d+ in reference/.test(blob);
+  chips.push({
+    ok: idOk,
+    label: idOk ? t('payments.signal.idOk') : t('payments.signal.idMissing'),
+  });
+
+  const emailOk = blob.includes('guest email matches');
+  if (payment.payerEmail || emailOk) {
+    chips.push({
+      ok: emailOk,
+      label: emailOk ? t('payments.signal.emailOk') : t('payments.signal.emailMissing'),
+    });
+  }
 
   const nameOk =
     blob.includes('guest name matches') || blob.includes('guest name appears');
@@ -2968,6 +3116,13 @@ function buildMatchSignalChips(payment, bestCandidate) {
   return chips;
 }
 
+function matchDecisionBadgeClass(decision) {
+  if (decision === 'UNAMBIGUOUS') return 'is-ok';
+  if (decision === 'NO_MATCH') return 'is-err';
+  if (decision === 'AMBIGUOUS' || decision === 'PARTIAL_UNCLEAR') return 'is-warn';
+  return 'is-muted';
+}
+
 function renderMatchCell(payment, candidates, bestCandidate) {
   const decision = payment.matchDecision || payment.status || '';
   const decisionLabel = paymentDecisionLabel(decision);
@@ -2980,6 +3135,13 @@ function renderMatchCell(payment, candidates, bestCandidate) {
   } else if (count === 1) {
     summaryLine = t('payments.matchOneFound');
   }
+
+  const score = Number(bestCandidate?.score ?? payment.matchScore);
+  const confidenceLine = Number.isFinite(score)
+    ? `<div class="payment-match-confidence">${t('payments.matchConfidence', {
+        pct: Math.min(99, Math.round(score)),
+      })}</div>`
+    : '';
 
   const chips = buildMatchSignalChips(payment, bestCandidate);
   const chipsHtml = chips
@@ -2996,7 +3158,8 @@ function renderMatchCell(payment, candidates, bestCandidate) {
     : '';
 
   return `<div class="payment-match-block">
-    <div class="payment-match-status">${esc(decisionLabel)}</div>
+    <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
+    ${confidenceLine}
     ${summaryLine ? `<div class="payment-match-summary">${esc(summaryLine)}</div>` : ''}
     ${chipsHtml ? `<div class="payment-match-chips">${chipsHtml}</div>` : ''}
     ${details}
@@ -3013,17 +3176,19 @@ function renderPaymentCell(payment) {
         ? 'is-qonto'
         : '';
   return `<div class="payment-compact">
-    <div class="payment-compact-when">${esc(when)}</div>
-    <div class="payment-compact-source"><span class="payment-source-pill ${sourceCls}">${esc(source)}</span></div>
     <div class="payment-compact-amount">${esc(formatMoney(payment.amount, payment.currency))}</div>
+    <div class="payment-compact-source"><span class="payment-source-pill ${sourceCls}">${esc(source)}</span></div>
+    <div class="payment-compact-when">${esc(when)}</div>
   </div>`;
 }
 
 function renderPayerCell(payment) {
   const name = payment.payerName || '–';
+  const email = payment.payerEmail ? String(payment.payerEmail).trim() : '';
   const ref = payment.reference ? String(payment.reference).trim() : '';
   return `<div class="payment-payer-block">
     <div class="payment-payer-name">${esc(name)}</div>
+    ${email ? `<div class="payment-payer-email">${esc(email)}</div>` : ''}
     ${ref ? `<div class="payment-payer-ref"><span class="payment-payer-ref-label">${t('payments.referenceLabel')}</span> ${esc(ref)}</div>` : ''}
   </div>`;
 }
@@ -3389,27 +3554,48 @@ async function loadQontoStatus() {
   const whenEl = $('#qonto-status-when');
   const agoEl = $('#qonto-status-ago');
   const btn = $('#qonto-poll-btn');
+  const badge = $('#qonto-connected-badge');
+  const okIcon = $('#qonto-ok-icon');
+  const newItems = $('#qonto-new-items');
+  const lastSyncEl = $('#payments-last-sync');
   if (!whenEl) return;
   try {
     const status = await api('/payments/qonto-status');
     const last = status.last;
     const stamp = last?.finishedAt || last?.startedAt;
-    let whenText = formatSyncTime(last, status.inProgress);
+    let whenText = '–';
     let ago = '';
     let meta = '';
+    const connected = !!(status.enabled && status.configured);
+    if (badge) badge.hidden = !connected;
+    if (okIcon) okIcon.hidden = !connected;
 
     if (!status.enabled) {
       whenText = '–';
       meta = t('payments.qontoDisabled');
+      if (newItems) newItems.textContent = '–';
     } else if (!status.configured) {
       whenText = '–';
       meta = t('payments.qontoNotConfigured');
+      if (newItems) newItems.textContent = '–';
     } else if (status.inProgress || last?.status === 'running') {
+      whenText = stamp ? formatPaymentImportTime(stamp) : '–';
       meta = t('payments.qontoRunningShort');
+      if (newItems) newItems.textContent = '…';
     } else if (last?.status === 'failed') {
+      whenText = stamp ? formatPaymentImportTime(stamp) : '–';
       meta = t('payments.qontoFailedShort', { error: last.error || '–' });
+      if (newItems) newItems.textContent = '–';
     } else if (last) {
+      whenText = stamp ? formatPaymentImportTime(stamp) : '–';
       ago = stamp ? formatRelativeAgo(stamp) : '';
+      const ingested = last.metadata?.ingested ?? last.ingested;
+      const fetched = last.metadata?.fetched ?? last.fetched;
+      const newCount = ingested ?? fetched;
+      if (newItems) {
+        newItems.textContent =
+          newCount != null ? String(newCount) : '–';
+      }
       const counts = formatQontoPollMeta(last).replace(/^ — /, '');
       meta = [counts, t('payments.qontoIntervalShort', { n: status.intervalMinutes || 5 })]
         .filter(Boolean)
@@ -3417,11 +3603,18 @@ async function loadQontoStatus() {
     } else {
       whenText = '–';
       meta = t('payments.qontoNever');
+      if (newItems) newItems.textContent = '0';
     }
 
     whenEl.textContent = whenText;
     if (agoEl) agoEl.textContent = ago;
     if (line) line.textContent = meta;
+    if (lastSyncEl) {
+      lastSyncEl.textContent =
+        whenText && whenText !== '–'
+          ? t('payments.lastSync', { when: whenText })
+          : t('payments.lastSyncUnknown');
+    }
 
     if (btn) {
       const canPoll =
@@ -3438,6 +3631,10 @@ async function loadQontoStatus() {
     whenEl.textContent = '–';
     if (agoEl) agoEl.textContent = '';
     if (line) line.textContent = ex.message || t('payments.qontoStatusError');
+    if (badge) badge.hidden = true;
+    if (okIcon) okIcon.hidden = true;
+    if (newItems) newItems.textContent = '–';
+    if (lastSyncEl) lastSyncEl.textContent = t('payments.lastSyncUnknown');
   }
 }
 
@@ -3445,6 +3642,9 @@ async function loadPaypalStatus() {
   const line = $('#paypal-status-line');
   const whenEl = $('#paypal-status-when');
   const agoEl = $('#paypal-status-ago');
+  const badge = $('#paypal-connected-badge');
+  const okIcon = $('#paypal-ok-icon');
+  const newItems = $('#paypal-new-items');
   if (!whenEl) return;
   try {
     const status = await api('/payments/paypal-status');
@@ -3452,27 +3652,43 @@ async function loadPaypalStatus() {
       whenEl.textContent = '–';
       if (agoEl) agoEl.textContent = '';
       if (line) line.textContent = t('payments.paypalDisabled');
+      if (badge) badge.hidden = true;
+      if (okIcon) okIcon.hidden = true;
+      if (newItems) newItems.textContent = '–';
       return;
     }
     if (!status.configured) {
       whenEl.textContent = '–';
       if (agoEl) agoEl.textContent = '';
       if (line) line.textContent = t('payments.paypalNotConfigured');
+      if (badge) badge.hidden = true;
+      if (okIcon) okIcon.hidden = true;
+      if (newItems) newItems.textContent = '–';
       return;
     }
+    if (badge) badge.hidden = false;
+    if (okIcon) okIcon.hidden = false;
     if (status.last?.createdAt) {
-      whenEl.textContent = formatDateTime(status.last.createdAt);
-      if (agoEl) agoEl.textContent = formatRelativeAgo(status.last.createdAt);
-      if (line) line.textContent = t('payments.paypalWebhookShort', { count: status.count ?? 0 });
+      whenEl.textContent = formatPaymentImportTime(status.last.createdAt);
+      const ago = formatRelativeAgo(status.last.createdAt);
+      if (agoEl) agoEl.textContent = '';
+      if (line) {
+        line.textContent = [t('payments.paypalCaption'), ago].filter(Boolean).join(' · ');
+      }
+      if (newItems) newItems.textContent = String(status.count ?? 0);
     } else {
       whenEl.textContent = '–';
       if (agoEl) agoEl.textContent = '';
       if (line) line.textContent = t('payments.paypalNeverShort');
+      if (newItems) newItems.textContent = '0';
     }
   } catch (ex) {
     whenEl.textContent = '–';
     if (agoEl) agoEl.textContent = '';
     if (line) line.textContent = ex.message || t('payments.paypalStatusError');
+    if (badge) badge.hidden = true;
+    if (okIcon) okIcon.hidden = true;
+    if (newItems) newItems.textContent = '–';
   }
 }
 
@@ -3500,12 +3716,14 @@ $('#qonto-poll-btn')?.addEventListener('click', async () => {
 });
 
 function activatePaymentsView(view) {
-  const next = view === 'portal' ? 'portal' : 'reconcile';
+  const next =
+    view === 'portal' ? 'portal' : view === 'history' ? 'history' : 'reconcile';
   paymentsView = next;
   $$('.payments-subnav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.paymentsView === next);
   });
   $('#payments-view-reconcile')?.classList.toggle('hidden', next !== 'reconcile');
+  $('#payments-view-history')?.classList.toggle('hidden', next !== 'history');
   $('#payments-view-portal')?.classList.toggle('hidden', next !== 'portal');
   if (activeTab === 'payments') {
     try {
@@ -3518,6 +3736,8 @@ function activatePaymentsView(view) {
     }
     if (next === 'portal') {
       loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
+    } else if (next === 'history') {
+      loadPaymentsHistory();
     } else {
       loadPaymentsReconcile();
     }
@@ -3527,7 +3747,9 @@ function activatePaymentsView(view) {
 function applyPaymentsViewFromUrl() {
   try {
     const view = new URLSearchParams(window.location.search).get('paymentsView');
-    activatePaymentsView(view === 'portal' ? 'portal' : 'reconcile');
+    if (view === 'portal') activatePaymentsView('portal');
+    else if (view === 'history') activatePaymentsView('history');
+    else activatePaymentsView('reconcile');
   } catch {
     activatePaymentsView('reconcile');
   }
@@ -3732,7 +3954,7 @@ function mountAssignChoices(root = document) {
     }
 
     wrap.querySelector('.payment-assign-dropdown')?.remove();
-    select.classList.add('payment-assign-select-hidden');
+    select.classList.remove('payment-assign-select-hidden');
     select.removeAttribute('aria-hidden');
     select.tabIndex = -1;
 
@@ -3766,6 +3988,8 @@ function mountAssignChoices(root = document) {
     dropdown.appendChild(trigger);
     dropdown.appendChild(panel);
     wrap.appendChild(dropdown);
+    // Hide native select only after the visible trigger is in the DOM.
+    select.classList.add('payment-assign-select-hidden');
 
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -3810,19 +4034,21 @@ function paymentSplitRowTemplate(paymentId, optionsHtml, rowIndex, amount, selec
         <label class="payment-field-label">${t('payments.assignLabel')} ${rowIndex + 1}</label>
         <button type="button" class="btn ghost btn-sm payment-split-remove" data-payment-id="${paymentId}" data-row-index="${rowIndex}" title="${t('payments.splitRemove')}">${t('payments.splitRemove')}</button>
       </div>
-      <div class="payment-assign-wrap">
-      <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
-        <option value="">${t('payments.pickReservation')}</option>
-        ${options}
-      </select>
-      </div>
-      <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
-        <div class="payment-res-search-input-wrap">
-          <span class="payment-res-search-icon" aria-hidden="true"></span>
-          <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
-            autocomplete="off"
-            placeholder="${t('payments.manualReservationId')}"
-            title="${t('payments.manualReservationHint')}" />
+      <div class="payment-booking-pick">
+        <div class="payment-assign-wrap">
+          <select class="payment-assign-select" data-payment-id="${paymentId}" data-row-index="${rowIndex}" aria-label="${esc(t('payments.suggestedBookingSelect'))}">
+            <option value="">${t('payments.pickReservation')}</option>
+            ${options}
+          </select>
+        </div>
+        <div class="payment-res-search" data-payment-id="${paymentId}" data-row-index="${rowIndex}">
+          <div class="payment-res-search-input-wrap">
+            <span class="payment-res-search-icon" aria-hidden="true"></span>
+            <input type="text" class="payment-assign-manual" data-payment-id="${paymentId}" data-row-index="${rowIndex}"
+              autocomplete="off"
+              placeholder="${t('payments.manualReservationId')}"
+              title="${t('payments.manualReservationHint')}" />
+          </div>
         </div>
       </div>
       <div class="payment-split-fields">
@@ -3901,9 +4127,18 @@ function initPaymentSplitRows(paymentId, paymentAmount, optionsHtml, rows) {
     ),
   ).join('');
   // Recalculate amounts from percentage when both booking + % are set.
+  // If amount is set but % empty and booking total known, derive %.
   container.querySelectorAll('.payment-split-row').forEach((row) => {
-    if (row.querySelector('.payment-split-percent')?.value) {
+    const pctInput = row.querySelector('.payment-split-percent');
+    if (pctInput?.value) {
       applySplitRowPercentage(paymentId, row);
+      return;
+    }
+    const bookingTotal = getSplitRowBookingTotal(paymentId, row);
+    const amount = Number(row.querySelector('.payment-split-amount')?.value);
+    if (bookingTotal && amount > 0 && pctInput) {
+      const pct = Math.round((amount / bookingTotal) * 10000) / 100;
+      if (pct > 0 && pct <= 100) pctInput.value = String(pct);
     }
   });
   mountAssignChoices(container);
@@ -4077,25 +4312,72 @@ async function loadPayments() {
   if (paymentsView === 'portal') {
     return loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
   }
+  if (paymentsView === 'history') {
+    return loadPaymentsHistory();
+  }
   return loadPaymentsReconcile();
 }
 
 async function loadPaymentsReconcile() {
-  loadPaymentsHistory();
   loadQontoStatus();
   loadPaypalStatus();
   try {
     const response = await api('/payments/review-queue');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
-    ensureTableToolbar('#payments-toolbar', 'payments', loadPayments);
-    const data = paginateClient(paymentList, 'payments', (p) => [
-    p.createdAt,
-    p.source,
-    p.status,
-    p.payerName,
-    p.reference,
-    p.matchedReservation?.listing?.name,
-  ].join(' '));
+    ensurePaymentsToolbar(loadPayments);
+
+    const sourceFilter = tableState.payments.source || 'all';
+    const matchFilter = tableState.payments.match || 'all';
+    const dateFilter = tableState.payments.date || 'all';
+    const now = Date.now();
+    const dateMs =
+      dateFilter === '24h'
+        ? 24 * 60 * 60 * 1000
+        : dateFilter === '7d'
+          ? 7 * 24 * 60 * 60 * 1000
+          : dateFilter === '30d'
+            ? 30 * 24 * 60 * 60 * 1000
+            : null;
+    let filtered = paymentList.filter((p) => {
+      if (sourceFilter !== 'all' && String(p.source || '').toUpperCase() !== sourceFilter) {
+        return false;
+      }
+      if (matchFilter !== 'all' && String(p.matchDecision || '') !== matchFilter) {
+        return false;
+      }
+      if (dateMs != null) {
+        const ts = new Date(p.occurredAt || p.createdAt).getTime();
+        if (!Number.isFinite(ts) || now - ts > dateMs) return false;
+      }
+      return true;
+    });
+    // Weakest matches first so hard review cases surface early.
+    filtered = [...filtered].sort((a, b) => {
+      const scoreA = Number(a.matchScore);
+      const scoreB = Number(b.matchScore);
+      const sa = Number.isFinite(scoreA) ? scoreA : 999;
+      const sb = Number.isFinite(scoreB) ? scoreB : 999;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+
+    const countEl = $('#payments-queue-count');
+    if (countEl) {
+      countEl.textContent = String(filtered.length);
+      countEl.hidden = filtered.length === 0;
+    }
+
+    const data = paginateClient(filtered, 'payments', (p) => [
+      p.createdAt,
+      p.source,
+      p.status,
+      p.matchDecision,
+      p.payerName,
+      p.payerEmail,
+      p.reference,
+      p.matchedReservation?.listing?.name,
+      p.matchedReservation?.guestName,
+    ].join(' '));
   const rows = data.items.map((p) => {
     const reservation = p.matchedReservation;
     const candidates = Array.isArray(p.matchCandidates) ? p.matchCandidates : [];
@@ -4116,6 +4398,7 @@ async function loadPaymentsReconcile() {
           <button type="button" class="btn ghost btn-sm payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositApply')}</button>
         </div>`
       : '';
+    const suggestionHtml = renderSuggestedReservation(reservation, bestCandidate, p.currency, p);
     const initialAmount = Number(p.amount) || 0;
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
@@ -4141,7 +4424,7 @@ async function loadPaymentsReconcile() {
       <td class="payment-payment-cell">${renderPaymentCell(p)}</td>
       <td class="payment-payer-cell">${renderPayerCell(p)}</td>
       <td class="payment-match-cell">${renderMatchCell(p, candidates, bestCandidate)}</td>
-      <td class="payment-suggestion-cell">${renderSuggestedReservation(reservation, bestCandidate, p.currency, p)}</td>
+      <td class="payment-suggestion-cell">${suggestionHtml}</td>
       ${actionsCell}
     </tr>`;
   }).join('');

@@ -13,6 +13,7 @@ import {
   PaymentMatchResult,
   isOtaPaymentChannel,
 } from './automation.types';
+import { detectCombinedDepositHint } from './payment-split-hint.util';
 
 @Injectable()
 export class PaymentMatcherService {
@@ -113,6 +114,19 @@ export class PaymentMatcherService {
         best,
         reason:
           `The bank reference contains more than one reservation number (#${best.hostawayId} and #${second.hostawayId}). Please choose the correct booking.`,
+      };
+    }
+
+    const combinedHint = detectCombinedDepositHint(
+      payment.amount,
+      candidates.slice(0, 5),
+    );
+    if (combinedHint && !hasStrongIdMatch) {
+      return {
+        decision: PaymentMatchDecision.AMBIGUOUS,
+        candidates: candidates.slice(0, 5),
+        best,
+        reason: combinedHint.reason,
       };
     }
 
@@ -426,12 +440,31 @@ export class PaymentMatcherService {
     );
     const balanceDue = Math.max(0, total - paid);
 
+    // Prefer outstanding balance evidence over total-price matches.
     if (balanceDue > 0 && this.amountsMatch(amount, balanceDue)) {
       return {
-        score: 25,
+        score: 30,
         reason: `Amount equals outstanding balance (${balanceDue.toFixed(2)})`,
       };
     }
+
+    const guestMatched =
+      !!payment?.payerName &&
+      !!reservation.guestName &&
+      this.namesMatch(payment.payerName, reservation.guestName);
+
+    if (
+      guestMatched &&
+      balanceDue > 0 &&
+      balanceDue < total &&
+      this.looksLikeDepositShare(amount, balanceDue)
+    ) {
+      return {
+        score: 22,
+        reason: 'Amount matches a likely deposit/installment share of the outstanding balance',
+      };
+    }
+
     if (this.amountsMatch(amount, total)) {
       return {
         score: 20,
@@ -449,28 +482,11 @@ export class PaymentMatcherService {
         reason: 'Amount matches a typical deposit/installment share of the total',
       };
     }
-    // Wider deposit bands (e.g. 475.25 on a 1500 booking ≈ 32%) when the
-    // payer name matches the guest — avoids missing real Anzahlungen that
-    // are not exactly 30/50/70%.
-    const guestMatched =
-      !!payment?.payerName &&
-      !!reservation.guestName &&
-      this.namesMatch(payment.payerName, reservation.guestName);
+    // Wider deposit bands when the payer name matches the guest.
     if (guestMatched && this.looksLikeDepositShare(amount, total)) {
       return {
-        score: 20,
+        score: 18,
         reason: 'Amount matches a likely deposit/installment share of the total',
-      };
-    }
-    if (
-      guestMatched &&
-      balanceDue > 0 &&
-      balanceDue < total &&
-      this.looksLikeDepositShare(amount, balanceDue)
-    ) {
-      return {
-        score: 20,
-        reason: 'Amount matches a likely deposit/installment share of the outstanding balance',
       };
     }
     return { score: 0, reason: '' };
@@ -572,9 +588,12 @@ export class PaymentMatcherService {
   private extractReservationIds(text: string): number[] {
     const ids = new Set<number>();
     const patterns = [
-      /\bres(?:ervierung|ervation)?\s*#?\s*(\d{6,9})\b/gi,
-      /\b(?:buchung|booking)\s*#?\s*(\d{6,9})\b/gi,
-      /\bhostaway\s*#?\s*(\d{6,9})\b/gi,
+      /\bres(?:ervierung|ervation)?\s*[#.:]?\s*(\d{6,9})\b/gi,
+      /\b(?:buchung|booking|buchungsnr|buchungsnummer)\s*[#.:]?\s*(\d{6,9})\b/gi,
+      /\b(?:buchungs-?\s*nr\.?)\s*[#.:]?\s*(\d{6,9})\b/gi,
+      /\bhostaway\s*[#.:]?\s*(\d{6,9})\b/gi,
+      /\bnr\.?\s*[#.:]?\s*(\d{7,8})\b/gi,
+      /\b#\s*(\d{7,8})\b/g,
       /\b(\d{7,8})\b/g,
     ];
     for (const pattern of patterns) {
