@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import { AdminPermission, AdminRole, ApprovalMode, ListingStatus, Prisma, RequestType } from '@prisma/client';
+import { AdminPermission, AdminRole, ApprovalMode, AvailabilityMode, ListingStatus, Prisma, RequestType } from '@prisma/client';
 import { Request } from 'express';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import {
@@ -161,22 +161,86 @@ export class AdminController {
   @Get('listing-groups')
   @Permissions(AdminPermission.GROUPS_VIEW)
   @ApiOperation({ summary: 'List parent/child listing groups (paginated)' })
-  async listGroups(@Query() query: SortablePaginationQueryDto) {
+  async listGroups(
+    @Query() query: SortablePaginationQueryDto,
+    @Query('city') city?: string,
+    @Query('mode') mode?: string,
+    @Query('includeFacets') includeFacets?: string,
+  ) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
-    const where = this.buildGroupSearch(query.search);
+    const and: Prisma.ListingGroupWhereInput[] = [this.buildGroupSearch(query.search)];
+    const cityTerm = city?.trim();
+    if (cityTerm) and.push({ city: { equals: cityTerm, mode: 'insensitive' } });
+    const modeTerm = mode?.trim()?.toUpperCase();
+    if (
+      modeTerm &&
+      ['PARENT_ONLY', 'CHILDREN_ONLY', 'BOTH'].includes(modeTerm)
+    ) {
+      and.push({ availabilityMode: modeTerm as AvailabilityMode });
+    }
+    const where: Prisma.ListingGroupWhereInput = { AND: and };
     const orderBy = this.buildGroupOrder(query.sortBy, query.sortDir);
     const [total, items] = await Promise.all([
       this.prisma.listingGroup.count({ where }),
       this.prisma.listingGroup.findMany({
         where,
-        include: { listings: true },
+        include: {
+          listings: {
+            select: {
+              id: true,
+              hostawayId: true,
+              name: true,
+              aliases: true,
+              city: true,
+              lastSyncedAt: true,
+              status: true,
+            },
+            orderBy: { name: 'asc' },
+          },
+        },
         orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
     ]);
-    return paginated(items, total, page, pageSize);
+    const result = paginated(items, total, page, pageSize);
+    if (includeFacets === '1' || includeFacets === 'true') {
+      const [citiesRaw, modesRaw, groupsTotal, groupedListings, citiesCount] =
+        await Promise.all([
+          this.prisma.listingGroup.findMany({
+            where: { city: { not: null } },
+            select: { city: true },
+            distinct: ['city'],
+            orderBy: { city: 'asc' },
+          }),
+          this.prisma.listingGroup.findMany({
+            select: { availabilityMode: true },
+            distinct: ['availabilityMode'],
+            orderBy: { availabilityMode: 'asc' },
+          }),
+          this.prisma.listingGroup.count(),
+          this.prisma.listing.count({ where: { listingGroupId: { not: null } } }),
+          this.prisma.listingGroup.findMany({
+            where: { city: { not: null } },
+            select: { city: true },
+            distinct: ['city'],
+          }),
+        ]);
+      return {
+        ...result,
+        facets: {
+          cities: citiesRaw.map((c) => c.city).filter(Boolean) as string[],
+          modes: modesRaw.map((m) => m.availabilityMode),
+        },
+        stats: {
+          groups: groupsTotal,
+          groupedListings,
+          cities: citiesCount.length,
+        },
+      };
+    }
+    return result;
   }
 
   @Get('sync/status')

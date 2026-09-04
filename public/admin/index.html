@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260904e" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260904h" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -246,12 +246,25 @@
       </section>
 
       <section id="tab-groups" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="nav.groups">Groups</h2></header>
-        <p class="field-hint" data-i18n="groups.hint">Parent/child groups from Hostaway multi-unit API + configured cross-listings.</p>
-        <div id="groups-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="listing-groups-table"></div>
-        <div id="groups-info" class="table-info"></div>
-        <div id="groups-pagination" class="table-pagination"></div>
+        <header class="page-header groups-page-header">
+          <div class="groups-page-heading">
+            <h2 data-i18n="nav.groups">Groups</h2>
+            <p class="page-subtitle" data-i18n="groups.subtitle">Parent/child groups from Hostaway multi-unit API and configured cross-listings.</p>
+          </div>
+          <div class="groups-header-meta">
+            <span id="groups-last-sync" class="groups-last-sync"></span>
+          </div>
+        </header>
+        <div id="groups-stats" class="groups-stats"></div>
+        <div class="groups-board">
+          <div class="groups-toolbar-inner" id="groups-toolbar"></div>
+          <div class="groups-board-divider" aria-hidden="true"></div>
+          <div class="table-wrap groups-table-wrap" id="listing-groups-table"></div>
+          <div class="groups-table-footer">
+            <div id="groups-info" class="table-info"></div>
+            <div id="groups-pagination" class="table-pagination"></div>
+          </div>
+        </div>
       </section>
 
       <section id="tab-reservations" class="tab hidden">
@@ -755,9 +768,9 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260904c"></script>
+  <script src="/admin/i18n.js?v=20260904f"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260904e"></script>
+  <script src="/admin/app.js?v=20260904h"></script>
 </body>
 </html>

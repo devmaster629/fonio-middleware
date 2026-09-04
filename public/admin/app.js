@@ -26,7 +26,7 @@ const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
   listings: { page: 1, pageSize: 25, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
-  groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' },
+  groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '' },
   reservations: { page: 1, pageSize: 10, search: '', sortBy: 'arrivalDate', sortDir: 'desc' },
   conversations: { page: 1, pageSize: 10, search: '' },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
@@ -39,6 +39,10 @@ const tableState = {
   fonioActivity: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', actionFilter: '' },
 };
 let listingsFacets = { cities: [], groups: [] };
+let groupsFacets = { cities: [], modes: [] };
+let groupsStats = { groups: 0, groupedListings: 0, cities: 0 };
+let groupsLastSync = null;
+const expandedGroupIds = new Set();
 const searchTimers = {};
 
 function pad2(n) {
@@ -496,6 +500,11 @@ function tableQuery(tabKey) {
     if (s.groupId) params.set('groupId', s.groupId);
     if (s.status) params.set('status', s.status);
     if (s.bookable) params.set('bookable', s.bookable);
+    params.set('includeFacets', '1');
+  }
+  if (tabKey === 'groups') {
+    if (s.city) params.set('city', s.city);
+    if (s.mode) params.set('mode', s.mode);
     params.set('includeFacets', '1');
   }
   return params.toString();
@@ -1748,29 +1757,294 @@ $('#listing-aliases-save')?.addEventListener('click', async () => {
 });
 
 async function loadGroups() {
-  ensureTableToolbar('#groups-toolbar', 'groups', loadGroups);
-  const data = await api(`/listing-groups?${tableQuery('groups')}`);
-  const rows = data.items.map((g) => `
-    <tr>
-      <td>${g.hostawayParentId}</td>
-      <td>${esc(g.name)}</td>
-      <td>${esc(g.city || '–')}</td>
-      <td>${g.availabilityMode}</td>
-      <td>${g.listings?.length ?? 0}</td>
-      <td>${(g.listings || []).map((l) => esc(l.name)).join(', ') || '–'}</td>
-    </tr>
-  `).join('');
+  ensureGroupsToolbar();
+  const [data, syncStatus] = await Promise.all([
+    api(`/listing-groups?${tableQuery('groups')}`),
+    api('/sync/status').catch(() => null),
+  ]);
+  groupsLastSync = syncStatus?.last || null;
+  if (data.facets) {
+    groupsFacets = {
+      cities: Array.isArray(data.facets.cities) ? data.facets.cities : [],
+      modes: Array.isArray(data.facets.modes) ? data.facets.modes : [],
+    };
+    refreshGroupsFilterOptions();
+  }
+  if (data.stats) {
+    groupsStats = {
+      groups: data.stats.groups ?? 0,
+      groupedListings: data.stats.groupedListings ?? 0,
+      cities: data.stats.cities ?? 0,
+    };
+  }
+  renderGroupsHeaderMeta();
+  renderGroupsStats(syncStatus);
+  const rows = (data.items || []).map((g) => {
+    const listingCount = g.listings?.length ?? 0;
+    const expanded = expandedGroupIds.has(g.id);
+    const shortListings = (g.listings || [])
+      .map((l) => {
+        const label = groupListingDisplayName(l);
+        return `<div class="group-listing-chip" title="${esc(l.name)}">
+          <span class="group-listing-chip-icon" aria-hidden="true">${groupHomeIcon()}</span>
+          <span class="group-listing-chip-text">${esc(label)}</span>
+        </div>`;
+      })
+      .join('');
+    const synced = (g.listings || []).some((l) => l.lastSyncedAt) || listingCount > 0;
+    return `
+      <tr class="group-row${expanded ? ' is-expanded' : ''}" data-group-id="${esc(g.id)}">
+        <td class="group-name-cell">
+          <span class="group-name-wrap">
+            <span class="group-name-icon" aria-hidden="true">${groupBuildingIcon()}</span>
+            <span class="group-name">${esc(g.name)}</span>
+          </span>
+        </td>
+        <td>${esc(g.city || '–')}</td>
+        <td><span class="group-mode-pill">${esc(g.availabilityMode || '–')}</span></td>
+        <td class="group-listings-count">${listingCount}</td>
+        <td>
+          <span class="group-sync-status ${synced ? 'is-synced' : 'is-pending'}">
+            ${synced ? groupCheckIcon() : ''}
+            ${synced ? t('groups.synced') : t('groups.pending')}
+          </span>
+        </td>
+        <td class="group-expand-cell">
+          <button type="button" class="group-expand-btn" data-group-toggle="${esc(g.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${esc(t('groups.toggleListings'))}">
+            ${expanded ? groupChevronUp() : groupChevronDown()}
+          </button>
+        </td>
+      </tr>
+      <tr class="group-listings-row${expanded ? '' : ' hidden'}" data-group-listings="${esc(g.id)}">
+        <td colspan="6">
+          <div class="group-listings-panel">
+            <div class="group-listings-title">${t('groups.listingsInGroup', { count: listingCount })}</div>
+            <div class="group-listings-grid">${shortListings || `<span class="muted">${t('groups.noListings')}</span>`}</div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
   $('#listing-groups-table').innerHTML = `
-    <table><thead><tr>
-      ${sortTh('groups', 'hostawayParentId', 'ID')}
-      ${sortTh('groups', 'name', t('listings.name'))}
+    <table class="groups-table"><thead><tr>
+      ${sortTh('groups', 'name', t('groups.colGroup'))}
       ${sortTh('groups', 'city', t('listings.city'))}
-      <th>Mode</th><th>#</th><th>${t('listings.title')}</th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="6">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+      <th>${t('groups.colMode')}</th>
+      <th>${t('groups.colListings')}</th>
+      <th>${t('groups.colSync')}</th>
+      <th class="group-expand-col"></th>
+    </tr></thead><tbody>${rows || `<tr class="table-empty-row"><td class="table-empty-cell" colspan="6">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#listing-groups-table', 'groups', loadGroups);
+  $$('[data-group-toggle]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.groupToggle;
+      if (!id) return;
+      if (expandedGroupIds.has(id)) expandedGroupIds.delete(id);
+      else expandedGroupIds.add(id);
+      loadGroups();
+    });
+  });
   renderTableInfo('#groups-info', data);
   renderPagination('#groups-pagination', data, 'groups', loadGroups);
   scheduleEnhanceResponsiveTables();
+}
+
+function groupListingDisplayName(listing) {
+  const alias = (listing?.aliases || []).find((a) => a && String(a).trim().length >= 2);
+  if (alias) return String(alias).trim();
+  return shortGroupListingName(listing?.name);
+}
+
+function shortGroupListingName(name) {
+  if (!name) return '–';
+  let cleaned = String(name).trim();
+  // Prefer the distinctive short title before long descriptive tails.
+  cleaned = cleaned
+    .replace(/\s*[·|]\s*.*$/, '')
+    .replace(/\s+[-–—]\s+(FeWo|Apartment|Zimmer|Suite|Wohnung).*$/i, '')
+    .trim();
+  if (cleaned.length > 36) cleaned = `${cleaned.slice(0, 34).trim()}…`;
+  return cleaned || String(name).trim();
+}
+
+function groupBuildingIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>`;
+}
+function groupHomeIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+}
+function groupCheckIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>`;
+}
+function groupChevronDown() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>`;
+}
+function groupChevronUp() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>`;
+}
+function groupUsersIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+}
+function groupPinIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>`;
+}
+
+function renderGroupsHeaderMeta() {
+  const el = $('#groups-last-sync');
+  if (!el) return;
+  const stamp = groupsLastSync?.finishedAt || groupsLastSync?.startedAt;
+  if (!stamp) {
+    el.innerHTML = `<span class="muted">${t('groups.neverSynced')}</span>`;
+    return;
+  }
+  const ok = groupsLastSync?.status === 'completed';
+  el.innerHTML = `
+    <span class="groups-last-sync-pill ${ok ? 'is-ok' : 'is-warn'}">
+      ${ok ? groupCheckIcon() : ''}
+      ${t('groups.lastSync')}: ${formatRelativeAgo(stamp)}
+    </span>
+  `;
+}
+
+function renderGroupsStats(syncStatus) {
+  const el = $('#groups-stats');
+  if (!el) return;
+  const last = syncStatus?.last;
+  const inProgress = !!syncStatus?.inProgress;
+  const syncOk = !inProgress && last?.status === 'completed';
+  const syncLabel = inProgress
+    ? t('groups.syncRunning')
+    : syncOk
+      ? t('groups.syncAllOk')
+      : last?.status === 'failed'
+        ? t('groups.syncFailed')
+        : t('groups.syncIdle');
+  const syncHint = inProgress
+    ? t('groups.syncRunningHint')
+    : syncOk
+      ? t('groups.syncAllOkHint')
+      : last?.status === 'failed'
+        ? t('groups.syncFailedHint')
+        : t('groups.syncIdleHint');
+  el.innerHTML = `
+    <div class="groups-stat-card">
+      <div class="groups-stat-icon">${groupUsersIcon()}</div>
+      <div>
+        <div class="groups-stat-label">${t('groups.statGroups')}</div>
+        <div class="groups-stat-value">${formatCount(groupsStats.groups)}</div>
+      </div>
+    </div>
+    <div class="groups-stat-card">
+      <div class="groups-stat-icon">${groupBuildingIcon()}</div>
+      <div>
+        <div class="groups-stat-label">${t('groups.statListings')}</div>
+        <div class="groups-stat-value">${formatCount(groupsStats.groupedListings)}</div>
+      </div>
+    </div>
+    <div class="groups-stat-card">
+      <div class="groups-stat-icon">${groupPinIcon()}</div>
+      <div>
+        <div class="groups-stat-label">${t('groups.statCities')}</div>
+        <div class="groups-stat-value">${formatCount(groupsStats.cities)}</div>
+      </div>
+    </div>
+    <div class="groups-stat-card groups-stat-sync ${syncOk ? 'is-ok' : inProgress ? 'is-run' : 'is-idle'}">
+      <div class="groups-stat-icon">${syncOk ? groupCheckIcon() : groupBuildingIcon()}</div>
+      <div>
+        <div class="groups-stat-label">${t('groups.statSync')}</div>
+        <div class="groups-stat-value groups-stat-sync-text">${esc(syncLabel)}</div>
+        <div class="groups-stat-hint">${esc(syncHint)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function ensureGroupsToolbar() {
+  const el = $('#groups-toolbar');
+  if (!el) return;
+  const s = tableState.groups;
+  if (el.dataset.toolbarInit === 'groups-v1') {
+    const search = el.querySelector('[data-table-search="groups"]');
+    if (search && document.activeElement !== search) search.value = s.search;
+    const lengthSel = el.querySelector('[data-table-length="groups"]');
+    if (lengthSel && document.activeElement !== lengthSel) lengthSel.value = String(s.pageSize);
+    return;
+  }
+  el.dataset.toolbarInit = 'groups-v1';
+  el.innerHTML = `
+    <div class="groups-toolbar-row">
+      <label class="groups-search">
+        <span class="sr-only">${t('table.search')}</span>
+        <input type="search" data-table-search="groups" value="${esc(s.search)}" placeholder="${esc(t('groups.searchPlaceholder'))}" autocomplete="off" />
+        <svg class="groups-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </label>
+      <div class="groups-filters">
+        <label>
+          <span>${t('listings.city')}</span>
+          <select data-group-filter="city"></select>
+        </label>
+        <label>
+          <span>${t('groups.colMode')}</span>
+          <select data-group-filter="mode"></select>
+        </label>
+        <label class="groups-page-size">
+          <span>${t('table.perPage')}</span>
+          <select data-table-length="groups">
+            ${PAGE_SIZE_OPTIONS.map((n) =>
+              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
+            ).join('')}
+          </select>
+        </label>
+      </div>
+    </div>
+  `;
+  refreshGroupsFilterOptions();
+  el.querySelector('[data-table-search="groups"]')?.addEventListener('input', (e) => {
+    clearTimeout(searchTimers.groups);
+    searchTimers.groups = setTimeout(() => {
+      tableState.groups.search = e.target.value;
+      tableState.groups.page = 1;
+      loadGroups();
+    }, 300);
+  });
+  el.querySelector('[data-table-length="groups"]')?.addEventListener('change', (e) => {
+    tableState.groups.pageSize = Number(e.target.value);
+    tableState.groups.page = 1;
+    loadGroups();
+  });
+  el.querySelectorAll('[data-group-filter]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const key = sel.dataset.groupFilter;
+      tableState.groups[key] = sel.value;
+      tableState.groups.page = 1;
+      loadGroups();
+    });
+  });
+}
+
+function refreshGroupsFilterOptions() {
+  const citySel = document.querySelector('[data-group-filter="city"]');
+  const modeSel = document.querySelector('[data-group-filter="mode"]');
+  if (citySel) {
+    const current = tableState.groups.city || '';
+    citySel.innerHTML =
+      `<option value="">${t('groups.filterAllCities')}</option>` +
+      groupsFacets.cities
+        .map((c) => `<option value="${esc(c)}"${c === current ? ' selected' : ''}>${esc(c)}</option>`)
+        .join('');
+  }
+  if (modeSel) {
+    const current = tableState.groups.mode || '';
+    const modes = groupsFacets.modes.length
+      ? groupsFacets.modes
+      : ['BOTH', 'PARENT_ONLY', 'CHILDREN_ONLY'];
+    modeSel.innerHTML =
+      `<option value="">${t('groups.filterAllModes')}</option>` +
+      modes
+        .map((m) => `<option value="${esc(m)}"${m === current ? ' selected' : ''}>${esc(m)}</option>`)
+        .join('');
+  }
 }
 
 async function loadReservations() {
