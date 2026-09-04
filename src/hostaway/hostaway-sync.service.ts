@@ -20,18 +20,38 @@ import {
   ProcessPaymentUpdatesResult,
 } from './payment-inbox.service';
 
+function isPreferredCoverHost(url: string): boolean {
+  return /hostaway-platform|amazonaws\.com|cloudfront\.net/i.test(url);
+}
+
+function isFragileCoverHost(url: string): boolean {
+  return /muscache\.com|airbnb\.|media\.vrbo\.|homeaway\./i.test(url);
+}
+
 function pickListingCoverUrl(remote: HostawayListing): string | null {
-  const topLevel =
-    remote.thumbnailUrl?.trim() || remote.pictureUrl?.trim() || '';
-  if (topLevel) return topLevel;
+  const candidates: string[] = [];
+  const push = (value?: string | null) => {
+    const url = value?.trim();
+    if (url && !candidates.includes(url)) candidates.push(url);
+  };
+
+  push(remote.thumbnailUrl);
+  push(remote.pictureUrl);
+
   const images = [...(remote.listingImages ?? [])].sort(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
   );
-  for (const img of images) {
-    const url = img.url?.trim();
-    if (url) return url;
-  }
-  return null;
+  for (const img of images) push(img.url);
+
+  if (!candidates.length) return null;
+
+  const preferred = candidates.find(isPreferredCoverHost);
+  if (preferred) return preferred;
+
+  const nonFragile = candidates.find((url) => !isFragileCoverHost(url));
+  if (nonFragile) return nonFragile;
+
+  return candidates[0];
 }
 
 @Injectable()

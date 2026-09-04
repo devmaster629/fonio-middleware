@@ -109,6 +109,7 @@ export class HostawayClient {
   async getListing(id: number): Promise<HostawayListing> {
     const { data } = await this.http.get<HostawaySingleResponse<HostawayListing>>(
       `/listings/${id}`,
+      { params: { includeResources: 1 } },
     );
     return data.result;
   }

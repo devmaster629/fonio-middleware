@@ -1459,7 +1459,7 @@ async function loadListings() {
     <tr>
       <td class="listing-thumb-cell">${thumb}</td>
       <td class="listing-id-cell">${l.hostawayId}</td>
-      <td class="listing-name-cell"><span class="listing-name">${esc(l.name)}</span></td>
+      <td class="listing-name-cell"><span class="listing-name" title="${esc(l.name)}">${esc(l.name)}</span></td>
       <td class="listing-aliases-cell">${aliasText}</td>
       <td>${esc(l.city || '–')}</td>
       <td>${esc(l.listingGroup?.name || '–')}</td>
@@ -1492,6 +1492,23 @@ async function loadListings() {
   applyRoleUi();
 }
 
+function listingThumbPlaceholderHtml() {
+  return `<span class="listing-thumb-frame listing-thumb-placeholder" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  </span>`;
+}
+
+function listingThumbFallback(img) {
+  if (!img || img.dataset.fallbackApplied === '1') return;
+  img.dataset.fallbackApplied = '1';
+  const wrap = document.createElement('span');
+  wrap.innerHTML = listingThumbPlaceholderHtml();
+  const placeholder = wrap.firstElementChild;
+  const target = img.closest('.listing-thumb-frame') || img;
+  if (placeholder) target.replaceWith(placeholder);
+}
+window.listingThumbFallback = listingThumbFallback;
+
 function listingThumbHtml(listing) {
   const meta = listing?.rawMetadata;
   let url = '';
@@ -1505,23 +1522,23 @@ function listingThumbHtml(listing) {
     }
   }
   if (url) {
-    return `<img class="listing-thumb" src="${esc(url)}" alt="" loading="lazy" />`;
+    return `<span class="listing-thumb-frame"><img class="listing-thumb" src="${esc(url)}" alt="" loading="lazy" onerror="listingThumbFallback(this)" /></span>`;
   }
-  return `<span class="listing-thumb listing-thumb-placeholder" aria-hidden="true">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-  </span>`;
+  return listingThumbPlaceholderHtml();
 }
 
 function ensureListingsToolbar() {
   const el = $('#listings-toolbar');
   if (!el) return;
   const s = tableState.listings;
-  if (el.dataset.toolbarInit === 'listings-v2') {
+  if (el.dataset.toolbarInit === 'listings-v3') {
     const search = el.querySelector('[data-table-search="listings"]');
     if (search && document.activeElement !== search) search.value = s.search;
+    const lengthSel = el.querySelector('[data-table-length="listings"]');
+    if (lengthSel && document.activeElement !== lengthSel) lengthSel.value = String(s.pageSize);
     return;
   }
-  el.dataset.toolbarInit = 'listings-v2';
+  el.dataset.toolbarInit = 'listings-v3';
   el.innerHTML = `
     <div class="listings-toolbar-row">
       <label class="listings-search">
@@ -1556,6 +1573,14 @@ function ensureListingsToolbar() {
             <option value="no">${t('common.no')}</option>
           </select>
         </label>
+        <label class="listings-page-size">
+          <span>${t('table.perPage')}</span>
+          <select data-table-length="listings">
+            ${PAGE_SIZE_OPTIONS.map((n) =>
+              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
+            ).join('')}
+          </select>
+        </label>
       </div>
     </div>
   `;
@@ -1567,6 +1592,11 @@ function ensureListingsToolbar() {
       tableState.listings.page = 1;
       loadListings();
     }, 300);
+  });
+  el.querySelector('[data-table-length="listings"]')?.addEventListener('change', (e) => {
+    tableState.listings.pageSize = Number(e.target.value);
+    tableState.listings.page = 1;
+    loadListings();
   });
   el.querySelectorAll('[data-listing-filter]').forEach((sel) => {
     sel.addEventListener('change', () => {
