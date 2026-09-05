@@ -1687,29 +1687,67 @@ function listingThumbFallback(img) {
   if (!img || img.dataset.fallbackApplied === '1') return;
   img.dataset.fallbackApplied = '1';
   const wrap = document.createElement('span');
-  wrap.innerHTML = listingThumbPlaceholderHtml();
+  const inGroup = !!img.closest('.group-thumb-frame, .group-listing-chip, .group-name-wrap');
+  if (inGroup) {
+    const isGroupRow = !!img.closest('.group-name-wrap');
+    wrap.innerHTML = isGroupRow
+      ? `<span class="group-thumb-frame is-group group-thumb-placeholder" aria-hidden="true">${groupBuildingIcon()}</span>`
+      : `<span class="group-thumb-frame group-thumb-placeholder" aria-hidden="true">${groupHomeIcon()}</span>`;
+  } else {
+    wrap.innerHTML = listingThumbPlaceholderHtml();
+  }
   const placeholder = wrap.firstElementChild;
-  const target = img.closest('.listing-thumb-frame') || img;
+  const target = img.closest('.group-thumb-frame, .listing-thumb-frame') || img;
   if (placeholder) target.replaceWith(placeholder);
 }
 window.listingThumbFallback = listingThumbFallback;
 
-function listingThumbHtml(listing) {
+function listingCoverUrl(listing) {
   const meta = listing?.rawMetadata;
-  let url = '';
-  if (meta && typeof meta === 'object') {
-    url = meta.coverImageUrl || meta.thumbnailUrl || meta.pictureUrl || meta.imageUrl || '';
-    if (!url) {
-      const images = meta.listingImages || meta.images || [];
-      if (Array.isArray(images) && images.length) {
-        url = images[0]?.url || images[0]?.thumbnailUrl || '';
-      }
+  if (!meta || typeof meta !== 'object') return '';
+  let url = meta.coverImageUrl || meta.thumbnailUrl || meta.pictureUrl || meta.imageUrl || '';
+  if (!url) {
+    const images = meta.listingImages || meta.images || [];
+    if (Array.isArray(images) && images.length) {
+      url = images[0]?.url || images[0]?.thumbnailUrl || '';
     }
   }
+  return url || '';
+}
+
+function listingThumbHtml(listing) {
+  const url = listingCoverUrl(listing);
   if (url) {
     return `<span class="listing-thumb-frame"><img class="listing-thumb" src="${esc(url)}" alt="" loading="lazy" onerror="listingThumbFallback(this)" /></span>`;
   }
   return listingThumbPlaceholderHtml();
+}
+
+/** Compact thumb for Groups page chips / group name cell. */
+function groupListingThumbHtml(listing) {
+  const url = listingCoverUrl(listing);
+  if (url) {
+    return `<span class="group-thumb-frame"><img class="group-thumb" src="${esc(url)}" alt="" loading="lazy" onerror="listingThumbFallback(this)" /></span>`;
+  }
+  return `<span class="group-thumb-frame group-thumb-placeholder" aria-hidden="true">${groupHomeIcon()}</span>`;
+}
+
+/** Prefer parent listing cover, else first child with an image, else building icon. */
+function groupThumbHtml(group) {
+  const listings = Array.isArray(group?.listings) ? group.listings : [];
+  const parentId = Number(group?.hostawayParentId);
+  const parent =
+    Number.isFinite(parentId) && parentId > 0
+      ? listings.find((l) => Number(l.hostawayId) === parentId)
+      : null;
+  const withImage =
+    (parent && listingCoverUrl(parent) ? parent : null) ||
+    listings.find((l) => listingCoverUrl(l)) ||
+    null;
+  if (withImage) {
+    return `<span class="group-thumb-frame is-group"><img class="group-thumb" src="${esc(listingCoverUrl(withImage))}" alt="" loading="lazy" onerror="listingThumbFallback(this)" /></span>`;
+  }
+  return `<span class="group-thumb-frame is-group group-thumb-placeholder" aria-hidden="true">${groupBuildingIcon()}</span>`;
 }
 
 function ensureListingsToolbar() {
@@ -1961,7 +1999,7 @@ async function loadGroups() {
       .map((l) => {
         const label = groupListingDisplayName(l);
         return `<div class="group-listing-chip" title="${esc(l.name)}">
-          <span class="group-listing-chip-icon" aria-hidden="true">${groupHomeIcon()}</span>
+          ${groupListingThumbHtml(l)}
           <span class="group-listing-chip-text">${esc(label)}</span>
         </div>`;
       })
@@ -1971,7 +2009,7 @@ async function loadGroups() {
       <tr class="group-row${expanded ? ' is-expanded' : ''}" data-group-id="${esc(g.id)}">
         <td class="group-name-cell">
           <span class="group-name-wrap">
-            <span class="group-name-icon" aria-hidden="true">${groupBuildingIcon()}</span>
+            ${groupThumbHtml(g)}
             <span class="group-name">${esc(g.name)}</span>
           </span>
         </td>

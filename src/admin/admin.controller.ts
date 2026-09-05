@@ -195,6 +195,7 @@ export class AdminController {
               city: true,
               lastSyncedAt: true,
               status: true,
+              rawMetadata: true,
             },
             orderBy: { name: 'asc' },
           },

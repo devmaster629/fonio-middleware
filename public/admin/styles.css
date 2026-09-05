@@ -6444,6 +6444,49 @@ a.payment-suggestion-id:hover {
   flex-shrink: 0;
 }
 
+.group-thumb-frame {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 8px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.group-thumb-frame.is-group {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9px;
+}
+
+.group-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.group-thumb-placeholder {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: transparent;
+}
+
+.group-thumb-placeholder svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.group-thumb-frame.is-group.group-thumb-placeholder svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
 .group-name { font-weight: 650; color: #fff; }
 
 .group-mode-pill {
@@ -6555,6 +6598,12 @@ a.payment-suggestion-id:hover {
   flex-shrink: 0;
   color: #60a5fa;
   background: rgba(59, 130, 246, 0.14);
+}
+
+.group-listing-chip .group-thumb-frame {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 7px;
 }
 
 .group-listing-chip-text {
