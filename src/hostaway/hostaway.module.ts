@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { Check24Module } from '../check24/check24.module';
 import { HostawayClient } from './hostaway.client';
 import { HostawayConversationService } from './hostaway-conversation.service';
 import { GuestRequestApplyService } from './guest-request-apply.service';
@@ -12,7 +13,7 @@ import { ListingHierarchyService } from './listing-hierarchy.service';
 import { SyncSettingsService } from './sync-settings.service';
 
 @Module({
-  imports: [ScheduleModule.forRoot()],
+  imports: [ScheduleModule.forRoot(), forwardRef(() => Check24Module)],
   providers: [
     HostawayClient,
     HostawaySyncService,

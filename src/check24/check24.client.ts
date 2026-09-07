@@ -4,6 +4,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import {
   Check24Availability,
   Check24Booking,
+  Check24CancelBookingPayload,
   Check24Property,
   Check24Rate,
   Check24WebhookRegistration,
@@ -145,6 +146,21 @@ export class Check24Client {
   ): Promise<unknown> {
     const { data } = await this.http.post(
       `/bookings/${encodeURIComponent(bookingId)}/decline`,
+      payload,
+    );
+    return data;
+  }
+
+  /**
+   * Provider-initiated cancel (Supply API v2). Guest-side cancels arrive via
+   * webhook/poll with status cancelled — do not call this again for those.
+   */
+  async cancelBooking(
+    bookingId: string,
+    payload: Check24CancelBookingPayload,
+  ): Promise<unknown> {
+    const { data } = await this.http.post(
+      `/bookings/${encodeURIComponent(bookingId)}/cancel`,
       payload,
     );
     return data;

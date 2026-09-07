@@ -85,7 +85,17 @@ Optional Basic auth via `CHECK24_WEBHOOK_*`.
 ## Notes
 
 - CHECK24 docs/UI: staging login at `https://supplyapistaging.ferienwohnung.check24-test.de/login`
+- OpenAPI: `https://supplyapistaging.ferienwohnung.check24-test.de/api/v2/openapi.json`
 - Auth is **Bearer** (API v2), not Basic
 - Listings without lat/lng or city cannot be pushed (mapper throws)
 - Amenity names are mapped best-effort; unknown Hostaway amenities are skipped
 - Auto-sync refreshes availability/rates on an interval; content re-push is off by default (`CHECK24_AUTO_SYNC_CONTENT=false`)
+
+## Cancellation flow
+
+| Direction | Behaviour |
+|-----------|-----------|
+| Guest cancels on CHECK24 | Webhook/poll → cancel Hostaway reservation → **always** push availability (reopen dates) |
+| Provider cancels in Hostaway (UI / unpaid auto-cancel) | `POST /bookings/{id}/cancel` with `cancelledBy=Provider` → push availability |
+
+Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBooking` schema).

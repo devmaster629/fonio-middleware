@@ -6,7 +6,12 @@ import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Check24Client } from './check24.client';
 import { Check24SyncService } from './check24-sync.service';
-import { Check24Booking, Check24WebhookNotification } from './check24.types';
+import {
+  Check24Booking,
+  Check24CancelBookingPayload,
+  Check24CancelReason,
+  Check24WebhookNotification,
+} from './check24.types';
 
 @Injectable()
 export class Check24BookingService {
@@ -222,6 +227,99 @@ export class Check24BookingService {
     };
   }
 
+  /**
+   * When a Hostaway reservation linked to CHECK24 is cancelled on our side
+   * (unpaid auto-cancel, Hostaway UI, etc.), confirm the cancel on CHECK24
+   * via POST /bookings/{id}/cancel and reopen dates.
+   */
+  async propagateHostawayCancellation(
+    hostawayReservationId: number,
+    options?: {
+      cancelReason?: Check24CancelReason;
+      cancelMessage?: string;
+    },
+  ) {
+    if (!this.check24.isConfigured()) {
+      return { processed: false, reason: 'check24_not_configured' };
+    }
+
+    const linked = await this.prisma.check24Booking.findFirst({
+      where: { hostawayReservationId },
+    });
+    if (!linked) {
+      return { processed: false, reason: 'not_check24_booking' };
+    }
+
+    const status = (linked.status ?? '').toLowerCase();
+    if (this.isTerminalStatus(status)) {
+      await this.pushAvailabilityForProperty(
+        linked.check24PropertyId,
+        linked.check24BookingId,
+      );
+      return {
+        processed: true,
+        action: 'already_terminal_pushed_availability',
+        check24BookingId: linked.check24BookingId,
+      };
+    }
+
+    const payload: Check24CancelBookingPayload = {
+      cancelledBy: 'Provider',
+      cancelReason: options?.cancelReason ?? 'providerOther',
+      cancelMessage:
+        options?.cancelMessage ??
+        'Cancelled by property management system',
+      currencyCode: 'EUR',
+      cancelFee: 0,
+    };
+
+    try {
+      await this.check24.cancelBooking(linked.check24BookingId, payload);
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: linked.check24BookingId },
+        data: {
+          status: 'cancelled',
+          processedAt: new Date(),
+          lastError: null,
+        },
+      });
+      await this.pushAvailabilityForProperty(
+        linked.check24PropertyId,
+        linked.check24BookingId,
+      );
+      this.logger.log(
+        `CHECK24 booking ${linked.check24BookingId} cancelled after Hostaway ${hostawayReservationId}`,
+      );
+      return {
+        processed: true,
+        action: 'cancelled_on_check24',
+        check24BookingId: linked.check24BookingId,
+      };
+    } catch (err) {
+      const message = this.check24.describeError(err);
+      this.logger.warn(
+        `CHECK24 cancel for ${linked.check24BookingId} (Hostaway ${hostawayReservationId}) failed: ${message}`,
+      );
+      await this.prisma.check24Booking.update({
+        where: { check24BookingId: linked.check24BookingId },
+        data: {
+          lastError: `CHECK24 cancel failed: ${message}`.slice(0, 1000),
+        },
+      });
+      // Still reopen dates — Hostaway is cancelled.
+      await this.pushAvailabilityForProperty(
+        linked.check24PropertyId,
+        linked.check24BookingId,
+      );
+      return {
+        processed: false,
+        action: 'check24_cancel_failed',
+        check24BookingId: linked.check24BookingId,
+        error: message,
+      };
+    }
+  }
+
   async registerWebhook(publicBaseUrl?: string) {
     const base = (
       publicBaseUrl ??
@@ -309,6 +407,10 @@ export class Check24BookingService {
           status: booking.status,
         },
       });
+      await this.pushAvailabilityForProperty(
+        booking.propertyId,
+        booking.bookingId,
+      );
       return {
         processed: true,
         action: 'ignored_terminal_status',
@@ -330,6 +432,12 @@ export class Check24BookingService {
           status: booking.status,
         },
       });
+      // Always reopen CHECK24 dates even if Hostaway was already cancelled
+      // (previous bug: already_cancelled skipped the availability push).
+      await this.pushAvailabilityForProperty(
+        booking.propertyId,
+        booking.bookingId,
+      );
       return {
         processed: true,
         action: 'already_cancelled',
@@ -339,14 +447,8 @@ export class Check24BookingService {
     }
 
     try {
-      await this.hostaway.cancelReservation(hostawayReservationId);
-      await this.hostawaySync.syncSingleReservation(hostawayReservationId).catch((err) => {
-        this.logger.warn(
-          `CHECK24 booking ${booking.bookingId} cancelled Hostaway ${hostawayReservationId} but local sync failed: ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      });
+      // Mark cancelled locally first so Hostaway sync → propagateHostawayCancellation
+      // does not POST /cancel again for a guest-initiated CHECK24 cancel.
       await this.prisma.check24Booking.update({
         where: { check24BookingId: booking.bookingId },
         data: {
@@ -355,18 +457,19 @@ export class Check24BookingService {
           status: booking.status,
         },
       });
-
-      const mapping = await this.prisma.check24PropertyMapping.findUnique({
-        where: { check24PropertyId: booking.propertyId },
-        include: { listing: true },
-      });
-      if (mapping?.listing) {
-        await this.pushAvailabilityAfterBookingChange(
-          mapping.listing.id,
-          mapping.listing.hostawayId,
-          booking.bookingId,
+      await this.hostaway.cancelReservation(hostawayReservationId);
+      await this.hostawaySync.syncSingleReservation(hostawayReservationId).catch((err) => {
+        this.logger.warn(
+          `CHECK24 booking ${booking.bookingId} cancelled Hostaway ${hostawayReservationId} but local sync failed: ${
+            err instanceof Error ? err.message : err
+          }`,
         );
-      }
+      });
+
+      await this.pushAvailabilityForProperty(
+        booking.propertyId,
+        booking.bookingId,
+      );
 
       return {
         processed: true,
@@ -400,6 +503,27 @@ export class Check24BookingService {
    * Hostaway UI cannot add a custom channel name. We set channelId on create
    * (CHECK24_HOSTAWAY_CHANNEL_ID) and fill custom field "Buchungsportal".
    */
+  private async pushAvailabilityForProperty(
+    check24PropertyId: string,
+    check24BookingId: string,
+  ) {
+    const mapping = await this.prisma.check24PropertyMapping.findUnique({
+      where: { check24PropertyId },
+      include: { listing: true },
+    });
+    if (!mapping?.listing) {
+      this.logger.warn(
+        `CHECK24 availability push skipped for booking ${check24BookingId}: no mapping for ${check24PropertyId}`,
+      );
+      return;
+    }
+    await this.pushAvailabilityAfterBookingChange(
+      mapping.listing.id,
+      mapping.listing.hostawayId,
+      check24BookingId,
+    );
+  }
+
   private async pushAvailabilityAfterBookingChange(
     listingId: string,
     hostawayListingId: number,

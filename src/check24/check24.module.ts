@@ -14,7 +14,11 @@ import { Check24SyncService } from './check24-sync.service';
 import { Check24WebhookController } from './check24-webhook.controller';
 
 @Module({
-  imports: [HostawayModule, LoggingModule, forwardRef(() => AutomationModule)],
+  imports: [
+    forwardRef(() => HostawayModule),
+    LoggingModule,
+    forwardRef(() => AutomationModule),
+  ],
   controllers: [Check24AdminController, Check24WebhookController],
   providers: [
     Check24Client,

@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { LogLevel } from '@prisma/client';
+import { Check24BookingService } from '../check24/check24-booking.service';
 import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawayMessagingService } from '../hostaway/hostaway-messaging.service';
@@ -39,6 +40,8 @@ export class GuestPaymentAutomationService {
     private readonly messaging: HostawayMessagingService,
     private readonly portalRules: PortalPaymentRulesService,
     private readonly audit: AuditLogService,
+    @Inject(forwardRef(() => Check24BookingService))
+    private readonly check24Bookings: Check24BookingService,
   ) {}
 
   /** After CHECK24 (or other) import — send first guest payment request. */
@@ -411,6 +414,19 @@ export class GuestPaymentAutomationService {
       where: { id: reservationId },
       data: { autoCanceledAt: new Date(), status: 'cancelled' },
     });
+
+    await this.check24Bookings
+      .propagateHostawayCancellation(hostawayId, {
+        cancelReason: 'missingIncompletePayment',
+        cancelMessage: reason,
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `CHECK24 cancel propagate failed for Hostaway ${hostawayId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
 
     await this.audit.log({
       level: LogLevel.INFO,

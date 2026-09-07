@@ -112,11 +112,54 @@ export interface Check24Booker {
   lastName?: string;
 }
 
+/** Supply API v2 uses British spelling `cancelled` in the OpenAPI enum. */
+export type Check24BookingStatus =
+  | 'requested'
+  | 'booked'
+  | 'declined'
+  | 'cancelled'
+  | 'canceled'
+  | 'failed'
+  | string;
+
+export type Check24CancelledBy = 'Provider' | 'Guest' | 'Check24';
+
+export type Check24CancelReason =
+  | 'moreSuitableOfferCheck24'
+  | 'moreSuitableOfferCompetitor'
+  | 'cheaperOfferCompetitor'
+  | 'changedPlans'
+  | 'travelRestrictions'
+  | 'accommodationIntervened'
+  | 'accommodationUnavailable'
+  | 'accommodationNotAvailable'
+  | 'numberOfGuestsOrPeriodChanged'
+  | 'noShow'
+  | 'missingIncompletePayment'
+  | 'rebooking'
+  | 'customerOther'
+  | 'unknown'
+  | 'creditcardProblem'
+  | 'fraud'
+  | 'technicalProblemDoubleBooking'
+  | 'providerOther'
+  | 'byAccounting'
+  | 'testBooking'
+  | 'directBookingAccommodation';
+
+export interface Check24CancelBookingPayload {
+  cancelledBy: Check24CancelledBy;
+  cancelReason: Check24CancelReason;
+  cancelMessage?: string;
+  currencyCode?: 'EUR' | 'USD' | 'GBP' | 'CHF';
+  cancelFee?: number;
+}
+
 export interface Check24Booking {
   bookingId: string;
   propertyId: string;
   parkId?: string | null;
-  status: 'requested' | 'booked' | 'declined' | 'canceled' | 'failed' | string;
+  status: Check24BookingStatus;
   createdAt?: string;
   modifiedAt?: string;
   dateFrom: string;

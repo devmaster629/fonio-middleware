@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Check24Module } from '../check24/check24.module';
 import { HostawayModule } from '../hostaway/hostaway.module';
 import { GuestPaymentAutomationService } from './guest-payment-automation.service';
 import { GuestPaymentDeadlineScheduler } from './guest-payment-deadline.scheduler';
@@ -18,7 +19,7 @@ import { QontoPollService } from './qonto-poll.service';
 import { PayPalClient } from './paypal.client';
 
 @Module({
-  imports: [HostawayModule],
+  imports: [HostawayModule, forwardRef(() => Check24Module)],
   controllers: [PaymentAdminController],
   providers: [
     PaymentMatcherService,

@@ -1,6 +1,7 @@
-import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, OnModuleInit, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Listing, ListingStatus, Prisma } from '@prisma/client';
+import { Check24BookingService } from '../check24/check24-booking.service';
 import { mapWithConcurrency } from '../common/utils/concurrency.util';
 import { hashPhoneForStorage, hashValue, maskGuestName } from '../common/utils/crypto.util';
 import { parseCoord } from '../common/utils/geo.util';
@@ -67,6 +68,8 @@ export class HostawaySyncService implements OnModuleInit {
     private readonly conversations: HostawayConversationService,
     private readonly guestInbox: GuestRequestInboxService,
     private readonly paymentInbox: PaymentInboxService,
+    @Inject(forwardRef(() => Check24BookingService))
+    private readonly check24Bookings: Check24BookingService,
   ) {}
 
   async onModuleInit() {
@@ -541,13 +544,47 @@ export class HostawaySyncService implements OnModuleInit {
     });
     if (!listing) return null;
 
+    const previous = await this.prisma.reservation.findUnique({
+      where: { hostawayId },
+      select: { status: true },
+    });
+
     const data = this.buildReservationData(remote, listing);
-    return this.prisma.reservation.upsert({
+    const upserted = await this.prisma.reservation.upsert({
       where: { hostawayId },
       create: data.create,
       update: data.update,
       include: { listing: true },
     });
+
+    const wasActive = !this.isCancelledStatus(previous?.status);
+    const nowCancelled = this.isCancelledStatus(remote.status);
+    if (wasActive && nowCancelled) {
+      await this.check24Bookings
+        .propagateHostawayCancellation(hostawayId, {
+          cancelReason: 'providerOther',
+          cancelMessage: `Hostaway status changed to ${remote.status}`,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `CHECK24 cancel propagate after Hostaway sync ${hostawayId} failed: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        });
+    }
+
+    return upserted;
+  }
+
+  private isCancelledStatus(status?: string | null) {
+    const normalized = (status ?? '').toLowerCase();
+    return (
+      normalized === 'cancelled' ||
+      normalized === 'canceled' ||
+      normalized === 'declined' ||
+      normalized === 'expired'
+    );
   }
 
   async syncReservationsForStayDates(arrival: Date, departure: Date) {

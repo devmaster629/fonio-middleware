@@ -5,6 +5,7 @@ describe('Check24BookingService cancellations', () => {
   const prisma = {
     check24Booking: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
     },
@@ -19,6 +20,8 @@ describe('Check24BookingService cancellations', () => {
   const check24 = {
     describeError: (err: unknown) =>
       err instanceof Error ? err.message : String(err),
+    cancelBooking: jest.fn(),
+    isConfigured: jest.fn().mockReturnValue(true),
   };
   const hostaway = {
     cancelReservation: jest.fn(),
@@ -49,9 +52,13 @@ describe('Check24BookingService cancellations', () => {
   const canceledBooking: Check24Booking = {
     bookingId: 'c24-1',
     propertyId: 'ha-172749',
-    status: 'canceled',
+    status: 'cancelled',
     dateFrom: '2026-09-01',
     dateTo: '2026-09-03',
+  };
+
+  const mapping = {
+    listing: { id: 'listing-1', hostawayId: 172749 },
   };
 
   beforeEach(() => {
@@ -59,6 +66,7 @@ describe('Check24BookingService cancellations', () => {
     prisma.check24Booking.upsert.mockResolvedValue({});
     prisma.check24Booking.update.mockResolvedValue({});
     hostawaySync.syncSingleReservation.mockResolvedValue({});
+    prisma.check24PropertyMapping.findUnique.mockResolvedValue(mapping);
   });
 
   it('does not call Hostaway when a cancel has no imported reservation', async () => {
@@ -72,6 +80,10 @@ describe('Check24BookingService cancellations', () => {
       hostawayReservationId: null,
     });
     expect(hostaway.cancelReservation).not.toHaveBeenCalled();
+    expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
+      'listing-1',
+      172749,
+    );
   });
 
   it('cancels the Hostaway reservation after a CHECK24 cancellation', async () => {
@@ -79,9 +91,6 @@ describe('Check24BookingService cancellations', () => {
       hostawayReservationId: 62144308,
     });
     prisma.reservation.findUnique.mockResolvedValue({ status: 'new' });
-    prisma.check24PropertyMapping.findUnique.mockResolvedValue({
-      listing: { id: 'listing-1', hostawayId: 172749 },
-    });
     hostaway.cancelReservation.mockResolvedValue({ status: 'cancelled' });
 
     const result = await service.processBooking(canceledBooking);
@@ -99,7 +108,7 @@ describe('Check24BookingService cancellations', () => {
     });
   });
 
-  it('skips Hostaway when the reservation is already cancelled', async () => {
+  it('still pushes availability when Hostaway is already cancelled', async () => {
     prisma.check24Booking.findUnique.mockResolvedValue({
       hostawayReservationId: 62144308,
     });
@@ -108,6 +117,10 @@ describe('Check24BookingService cancellations', () => {
     const result = await service.processBooking(canceledBooking);
 
     expect(hostaway.cancelReservation).not.toHaveBeenCalled();
+    expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
+      'listing-1',
+      172749,
+    );
     expect(result).toMatchObject({
       processed: true,
       action: 'already_cancelled',
@@ -135,5 +148,35 @@ describe('Check24BookingService cancellations', () => {
         }),
       }),
     );
+  });
+
+  it('propagates Hostaway cancel to CHECK24 cancel endpoint', async () => {
+    prisma.check24Booking.findFirst.mockResolvedValue({
+      check24BookingId: 'c24-1',
+      check24PropertyId: 'ha-172749',
+      status: 'booked',
+    });
+    check24.cancelBooking.mockResolvedValue({});
+
+    const result = await service.propagateHostawayCancellation(62144308, {
+      cancelReason: 'missingIncompletePayment',
+      cancelMessage: 'unpaid',
+    });
+
+    expect(check24.cancelBooking).toHaveBeenCalledWith('c24-1', {
+      cancelledBy: 'Provider',
+      cancelReason: 'missingIncompletePayment',
+      cancelMessage: 'unpaid',
+      currencyCode: 'EUR',
+      cancelFee: 0,
+    });
+    expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
+      'listing-1',
+      172749,
+    );
+    expect(result).toMatchObject({
+      processed: true,
+      action: 'cancelled_on_check24',
+    });
   });
 });
