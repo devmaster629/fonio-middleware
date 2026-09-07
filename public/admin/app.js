@@ -114,6 +114,14 @@ function setSidebarOpen(open) {
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.setAttribute('aria-label', t(open ? 'nav.closeMenu' : 'nav.openMenu'));
   }
+  resetMobileScrollX();
+}
+
+function resetMobileScrollX() {
+  if (!isMobileNav()) return;
+  if (window.scrollX) window.scrollTo(0, window.scrollY || 0);
+  document.documentElement.scrollLeft = 0;
+  document.body.scrollLeft = 0;
 }
 
 function closeSidebar() {
@@ -171,10 +179,15 @@ function initMobileNav() {
   $('#sidebar-backdrop')?.addEventListener('click', () => closeSidebar());
   window.addEventListener('resize', () => {
     if (!isMobileNav()) setSidebarOpen(false);
+    resetMobileScrollX();
+  });
+  window.addEventListener('orientationchange', () => {
+    requestAnimationFrame(resetMobileScrollX);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSidebar();
   });
+  resetMobileScrollX();
 }
 
 async function api(path, options = {}) {

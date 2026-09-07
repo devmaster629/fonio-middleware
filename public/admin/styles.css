@@ -20,6 +20,7 @@ html {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -30,7 +31,9 @@ body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
   -webkit-text-size-adjust: 100%;
+  position: relative;
 }
 
 .hidden { display: none !important; }
@@ -159,29 +162,38 @@ body {
   margin-bottom: 1rem;
 }
 
+/* Shell: never nest overflow-x clip around fixed sidebar/topbar — that
+   mis-clips and shifts layout on iOS Safari / BrowserStack. Horizontal
+   containment stays on html/body only. */
 #app-screen {
   display: block;
   min-height: 100vh;
   min-height: 100dvh;
+  width: 100%;
   max-width: 100%;
-  overflow-x: clip;
+  min-width: 0;
+  overflow: visible;
 }
 
 .app-main {
   min-height: 100vh;
   min-height: 100dvh;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  overflow-x: clip;
+  overflow: visible;
   padding-top: calc(3.35rem + env(safe-area-inset-top, 0px));
 }
 
 .content {
-  padding: 1rem;
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  overflow-x: clip;
-  overflow-y: auto;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 1rem;
+  /* Extra bottom space so content clears Safari / Chrome mobile toolbars */
+  padding-bottom: max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem));
+  overflow: visible;
 }
 
 .mobile-topbar {
@@ -235,11 +247,15 @@ body.sidebar-open {
 }
 
 .sidebar {
+  --sidebar-width: min(18.5rem, 88vw);
   position: fixed;
   top: 0;
-  left: 0;
   bottom: 0;
-  width: min(18.5rem, 88vw);
+  /* Use left (not transform) so off-canvas drawer does not expand
+     scrollable overflow / shift the visual viewport on iOS. */
+  left: calc(-1 * var(--sidebar-width) - 2px);
+  width: var(--sidebar-width);
+  max-width: 88vw;
   z-index: 190;
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -247,14 +263,19 @@ body.sidebar-open {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  transform: translateX(-105%);
-  transition: transform 0.22s ease;
+  transform: none;
+  transition: left 0.22s ease;
+  overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 body.sidebar-open .sidebar {
-  transform: translateX(0);
+  left: 0;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .brand {
@@ -707,13 +728,6 @@ body.sidebar-open .sidebar {
   color: var(--muted);
   line-height: 1.4;
   word-break: break-word;
-}
-
-.content {
-  padding: 1rem;
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  overflow-x: clip;
-  overflow-y: auto;
 }
 
 .page-header {
@@ -1253,7 +1267,8 @@ th.sortable:hover {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  max-width: min(360px, calc(100vw - 2rem));
+  /* Prefer % over 100vw — vw includes scrollbar and can force horizontal overflow on iOS */
+  max-width: min(360px, calc(100% - 2rem));
   pointer-events: none;
 }
 
@@ -2250,8 +2265,9 @@ form.is-readonly .btn.primary {
   left: 1rem;
   right: 1rem;
   top: auto;
-  bottom: 1rem;
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   max-width: none;
+  width: auto;
 }
 
 .table-wrap.responsive-stack,
@@ -2508,7 +2524,7 @@ form.is-readonly .btn.primary {
     right: 1.25rem;
     top: 1.25rem;
     bottom: auto;
-    max-width: min(360px, calc(100vw - 2rem));
+    max-width: min(360px, calc(100% - 2rem));
   }
 
   .rule-form-grid {
@@ -2554,9 +2570,15 @@ form.is-readonly .btn.primary {
   .sidebar {
     position: sticky;
     top: 0;
+    left: auto;
     width: auto;
+    max-width: none;
     height: 100vh;
+    height: 100dvh;
     transform: none;
+    transition: none;
+    visibility: visible;
+    pointer-events: auto;
     overflow-y: auto;
   }
 
@@ -4698,6 +4720,9 @@ a.payment-suggestion-id:hover {
 
 /* Portrait / phone / tablet: keep a single-column layout until desktop */
 @media (max-width: 1023px) {
+  #app-screen,
+  .app-main,
+  .content,
   .tab,
   .card,
   .page-header,
@@ -4707,10 +4732,69 @@ a.payment-suggestion-id:hover {
   .stats,
   .check24-hero,
   .check24-flow,
-  .check24-actions {
+  .check24-actions,
+  .dashboard-mid-grid,
+  .dashboard-bottom-grid,
+  .listings-board,
+  .groups-page-header {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .content img,
+  .content svg,
+  .content canvas,
+  .content video,
+  .content iframe {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* One title only: mobile topbar owns the page name */
+  .page-header h2,
+  #tab-dashboard .dashboard-header h2,
+  #tab-listings .listings-page-header h2,
+  .groups-page-heading h2 {
+    display: none !important;
+  }
+
+  .page-header:not(:has(.btn)):not(:has(.dashboard-header-actions)):not(:has(.header-actions)) {
+    display: none;
+  }
+
+  #tab-dashboard .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .dashboard-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-sync-meta {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-last-sync,
+  .sync-status-pill {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .sync-now-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .page-header {
@@ -4901,6 +4985,39 @@ a.payment-suggestion-id:hover {
 
   .sidebar {
     padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  }
+
+  .setting-control {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .setting-value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .webhook-filters {
+    width: 100%;
+  }
+
+  .webhook-filters select,
+  .webhook-refresh-btn,
+  .trend-range-select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .trend-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trend-range-select {
+    margin-left: 0;
   }
 }
 
@@ -5464,7 +5581,7 @@ a.payment-suggestion-id:hover {
 
 .trend-kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.55rem;
   margin-bottom: 0.35rem;
 }
@@ -5561,15 +5678,15 @@ a.payment-suggestion-id:hover {
   flex-shrink: 0;
 }
 
-@media (max-width: 900px) {
+@media (min-width: 561px) {
   .trend-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 560px) {
+@media (min-width: 901px) {
   .trend-kpi-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
