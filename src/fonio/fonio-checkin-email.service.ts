@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { GuestCheckinReleaseService } from '../automation/guest-checkin-release.service';
 import { HostawayConversationService } from '../hostaway/hostaway-conversation.service';
 import { HostawayMessagingService } from '../hostaway/hostaway-messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +15,7 @@ export class FonioCheckinEmailService {
     private readonly verification: FonioVerificationService,
     private readonly conversations: HostawayConversationService,
     private readonly messaging: HostawayMessagingService,
+    private readonly checkinRelease: GuestCheckinReleaseService,
   ) {}
 
   async sendCheckinInfo(dto: SendCheckinInfoDto) {
@@ -29,6 +31,33 @@ export class FonioCheckinEmailService {
 
     if (!reservation) {
       throw new NotFoundException('Reservation not found');
+    }
+
+    const paid = await this.checkinRelease.hasQualifyingPayment(
+      reservation.hostawayId,
+    );
+    if (!paid) {
+      return {
+        emailSent: false,
+        templateFound: false,
+        paymentRequired: true,
+        guestMessageDe:
+          'Die Anreiseinformationen sende ich Ihnen, sobald die Anzahlung bei uns eingegangen ist.',
+        message: 'Check-in info is gated until deposit/payment is received',
+        hintDe:
+          'Noch keine Zahlung verbucht — Anreiseinfos erst nach Anzahlung. Dem Gast das so erklären.',
+      };
+    }
+
+    if (reservation.checkinInfoSentAt) {
+      return {
+        emailSent: false,
+        templateFound: true,
+        alreadySent: true,
+        guestMessageDe:
+          'Die Anreiseinformationen wurden bereits nach Zahlungseingang per E-Mail versendet. Bitte prüfen Sie auch den Spam-Ordner.',
+        message: 'Check-in info was already sent after payment',
+      };
     }
 
     const template = await this.messaging.resolveCheckinTemplate({
@@ -77,6 +106,10 @@ export class FonioCheckinEmailService {
       const messageId = await this.messaging.sendCheckinInfoEmail({
         conversationId,
         template,
+      });
+      await this.prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { checkinInfoSentAt: new Date() },
       });
 
       return {

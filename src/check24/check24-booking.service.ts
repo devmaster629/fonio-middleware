@@ -125,14 +125,18 @@ export class Check24BookingService {
     const adults = Math.max(1, booking.numberAdults ?? 1);
     const numberOfGuests = adults + childrenCount;
 
+    const guestEmail = guest.email?.trim() || undefined;
+    const guestPhone = guest.phone?.trim() || undefined;
+
+    // Create WITHOUT guest email/phone so Hostaway "at reservation" automations
+    // (pre-check-in / Anreise / WhatsApp) have no recipient when they fire.
+    // Contact is attached immediately after create, then we send the payment request.
     const payload: Record<string, unknown> = {
       channelId,
       listingMapId: mapping.listing.hostawayId,
       guestName,
       guestFirstName: firstName,
       guestLastName: lastName,
-      guestEmail: guest.email?.trim() || undefined,
-      phone: guest.phone?.trim() || undefined,
       numberOfGuests,
       adults,
       children: childrenCount || undefined,
@@ -149,6 +153,22 @@ export class Check24BookingService {
 
     const created = await this.hostaway.createReservation(payload);
     await this.applyHostawayCheck24Labels(created.id, booking.bookingId);
+
+    if (guestEmail || guestPhone) {
+      try {
+        await this.hostaway.updateReservation(created.id, {
+          ...(guestEmail ? { guestEmail } : {}),
+          ...(guestPhone ? { phone: guestPhone } : {}),
+        });
+      } catch (err) {
+        this.logger.warn(
+          `CHECK24 booking ${booking.bookingId}: attaching guest contact after create failed: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
     await this.hostawaySync.syncSingleReservation(created.id).catch((err) => {
       this.logger.warn(
         `CHECK24 booking ${booking.bookingId} created Hostaway ${created.id} but local sync failed: ${
@@ -160,7 +180,7 @@ export class Check24BookingService {
     const paymentResult = await this.guestPayments
       .requestPaymentOnImport(created.id, {
         hostNote: String(payload.hostNote ?? ''),
-        guestEmail: guest.email?.trim() || undefined,
+        guestEmail,
       })
       .catch((err) => {
         this.logger.warn(

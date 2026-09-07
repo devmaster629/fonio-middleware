@@ -272,6 +272,8 @@ model Reservation {
   /// Current automation phase: deposit | balance | full
   paymentPhase           String?
   autoCanceledAt         DateTime?
+  /// When we sent Anreise / check-in info after deposit/payment was received.
+  checkinInfoSentAt      DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]

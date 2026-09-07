@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AutomationModule } from '../automation/automation.module';
 import { HostawayModule } from '../hostaway/hostaway.module';
 import { RulesModule } from '../rules/rules.module';
 import { FonioActivityService } from './fonio-activity.service';
@@ -17,6 +18,7 @@ import { FonioVerificationService } from './fonio-verification.service';
   imports: [
     HostawayModule,
     RulesModule,
+    AutomationModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

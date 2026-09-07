@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Check24Module } from '../check24/check24.module';
 import { HostawayModule } from '../hostaway/hostaway.module';
+import { GuestCheckinReleaseService } from './guest-checkin-release.service';
 import { GuestPaymentAutomationService } from './guest-payment-automation.service';
 import { GuestPaymentDeadlineScheduler } from './guest-payment-deadline.scheduler';
 import { PaymentAdminController } from './payment-admin.controller';
@@ -31,6 +32,7 @@ import { PayPalClient } from './paypal.client';
     PaymentUnpaidReminderScheduler,
     GuestPaymentAutomationService,
     GuestPaymentDeadlineScheduler,
+    GuestCheckinReleaseService,
     PortalPaymentRulesService,
     QontoClient,
     QontoPollService,
@@ -45,6 +47,7 @@ import { PayPalClient } from './paypal.client';
     PaymentAlertService,
     PaymentApplyService,
     GuestPaymentAutomationService,
+    GuestCheckinReleaseService,
     PortalPaymentRulesService,
     QontoPollService,
     PayPalClient,

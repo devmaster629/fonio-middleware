@@ -99,3 +99,11 @@ Optional Basic auth via `CHECK24_WEBHOOK_*`.
 | Provider cancels in Hostaway (UI / unpaid auto-cancel) | `POST /bookings/{id}/cancel` with `cancelledBy=Provider` → push availability |
 
 Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBooking` schema).
+
+## Pre-check-in / Anreise after payment
+
+CHECK24 imports create the Hostaway reservation **without** guest email/phone first (so Hostaway “at reservation” email/WhatsApp automations have no recipient), then attach contact and send the **payment request** only.
+
+Anreise / check-in templates are sent by the middleware **after the first qualifying payment** is applied (Qonto/PayPal match). Fonio “send check-in info” is also gated until payment.
+
+**Still required in Hostaway:** set the Inbox automation that sends pre-check-in on “reservation” to also require **Payment status = paid** (or disable it for the CHECK24 channel). ChargeAutomation rules that fire on new bookings should be aligned the same way.

@@ -4,6 +4,7 @@ import { HostawayClient } from '../hostaway/hostaway.client';
 import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
 import { PaymentInboxService } from '../hostaway/payment-inbox.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { GuestCheckinReleaseService } from './guest-checkin-release.service';
 import { PaymentAlertService } from './payment-alert.service';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class PaymentApplyService {
     private readonly paymentInbox: PaymentInboxService,
     private readonly alerts: PaymentAlertService,
     private readonly prisma: PrismaService,
+    private readonly checkinRelease: GuestCheckinReleaseService,
   ) {}
 
   async applyToReservation(params: {
@@ -127,6 +129,17 @@ export class PaymentApplyService {
       reviewedBy: params.reviewedBy,
       chargeId: charge.id,
     });
+
+    // Anreise / pre-check-in only after money received (not on booking create).
+    await this.checkinRelease
+      .releaseAfterPayment(params.reservationHostawayId)
+      .catch((err) => {
+        this.logger.warn(
+          `Post-payment check-in release failed for ${params.reservationHostawayId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
 
     return {
       chargeId: charge.id,
