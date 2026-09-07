@@ -15,7 +15,7 @@ import { Check24WebhookController } from './check24-webhook.controller';
 
 @Module({
   imports: [
-    forwardRef(() => HostawayModule),
+    HostawayModule,
     LoggingModule,
     forwardRef(() => AutomationModule),
   ],

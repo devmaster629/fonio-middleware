@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
 import { HostawayClient } from '../hostaway/hostaway.client';
@@ -24,6 +24,7 @@ export class Check24BookingService {
     private readonly hostaway: HostawayClient,
     private readonly hostawaySync: HostawaySyncService,
     private readonly check24Sync: Check24SyncService,
+    @Inject(forwardRef(() => GuestPaymentAutomationService))
     private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
