@@ -132,6 +132,50 @@ describe('PaymentMatcherService', () => {
     expect(result.reason).not.toMatch(/score|threshold/i);
   });
 
+  it('auto-applies recurring installment when next due matches payment plan', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-1',
+        hostawayId: 35902633,
+        guestName: 'Peter Walther',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2026-07-01'),
+        departureDate: new Date('2026-12-31'),
+        totalPrice: 5390,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [{ amount: 1100 }],
+        paymentPlan: {
+          enabled: true,
+          installmentAmount: 550,
+          frequency: 'MONTHLY',
+          nextDueAmount: 550,
+          nextDueAt: new Date('2026-09-01'),
+          paidTowardPlan: 1100,
+        },
+        listing: { name: '43 Sand-Style', aliases: [] },
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-plan-550',
+      amount: 550,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'PETER WALTHER',
+      reference: 'PETER WALTHER September',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('UNAMBIGUOUS');
+    expect(result.best?.paymentPlan?.nextDueAmount).toBe(550);
+    expect(result.best?.reasons.join(' ')).toMatch(/next installment due/i);
+  });
+
   it('boosts score when amount equals outstanding balance', async () => {
     prisma.reservation.findMany.mockResolvedValue([
       {
@@ -524,5 +568,66 @@ describe('PaymentMatcherService', () => {
         }),
       }),
     );
+  });
+
+  it('auto-matches recurring installment when amount equals next due', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-peter',
+        hostawayId: 35902633,
+        guestName: 'Peter Example',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2026-01-01'),
+        departureDate: new Date('2026-12-31'),
+        listing: { name: 'Long Stay Apt', aliases: [] },
+        totalPrice: 5390,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [{ amount: 1100 }],
+        paymentPlan: {
+          enabled: true,
+          installmentAmount: 550,
+          frequency: 'MONTHLY',
+          nextDueAmount: 550,
+          nextDueAt: new Date('2026-09-01'),
+          paidTowardPlan: 1100,
+        },
+      },
+      {
+        id: 'res-other',
+        hostawayId: 111,
+        guestName: 'Other Guest',
+        guestEmail: 'other@example.com',
+        arrivalDate: new Date('2026-08-01'),
+        departureDate: new Date('2026-08-10'),
+        listing: { name: 'Other', aliases: [] },
+        totalPrice: 800,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [],
+        paymentPlan: null,
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-installment-1',
+      amount: 550,
+      currency: 'EUR',
+      occurredAt: new Date(),
+      payerName: 'Peter Example',
+      reference: 'Miete September',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('UNAMBIGUOUS');
+    expect(result.best?.hostawayId).toBe(35902633);
+    expect(result.best?.paymentPlan?.nextDueAmount).toBe(550);
+    expect(result.best?.reasons.join(' ')).toMatch(/next installment due/i);
   });
 });

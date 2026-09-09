@@ -340,6 +340,8 @@ function applyRoleUi() {
   });
   setControlsDisabled($('#portal-rules-list'), !canPaymentsAdmin);
   $('#portal-rules-readonly-hint')?.classList.toggle('hidden', canPaymentsAdmin);
+  setControlsDisabled($('#payment-plan-editor'), !canPaymentsAdmin);
+  $('#payment-plans-readonly-hint')?.classList.toggle('hidden', canPaymentsAdmin);
   $$('.retry-forward-btn').forEach((btn) => {
     btn.classList.toggle('hidden', !canRequestsManage);
     btn.toggleAttribute('disabled', !canRequestsManage);
@@ -2285,6 +2287,7 @@ async function loadReservations() {
       <td>${esc(r.listing?.name || '–')}</td>
       <td class="cell-money">${esc(formatMoney(r.totalPrice))}</td>
       <td class="cell-money">${esc(formatMoney(reservationPaidAmount(r)))}</td>
+      <td>${r.paymentPlan?.enabled ? esc(formatMoney(r.paymentPlan.nextDueAmount, r.paymentPlan.currency)) : '–'}</td>
       <td>${esc(r.listing?.listingGroup?.name || '–')}</td>
       <td>${formatDate(r.arrivalDate)}</td>
       <td>${formatDate(r.departureDate)}</td>
@@ -2299,11 +2302,12 @@ async function loadReservations() {
       ${sortTh('reservations', 'listingName', t('listings.name'))}
       ${sortTh('reservations', 'totalPrice', t('listings.totalAmount'))}
       <th>${t('listings.paidAmount')}</th>
+      <th>${t('payments.suggestionNextDue')}</th>
       <th>${t('listings.group')}</th>
       ${sortTh('reservations', 'arrivalDate', t('listings.arrival'))}
       ${sortTh('reservations', 'departureDate', t('listings.departure'))}
       ${sortTh('reservations', 'status', t('listings.status'))}
-    </tr></thead><tbody>${rows || `<tr><td colspan="11">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+    </tr></thead><tbody>${rows || `<tr><td colspan="12">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#reservations-table', 'reservations', loadReservations);
   renderTableInfo('#reservations-info', data);
   renderPagination('#reservations-pagination', data, 'reservations', loadReservations);
@@ -2782,6 +2786,11 @@ function translatePaymentMatchReason(reason) {
       pick: (m) => ({ amount: m[1] }),
     },
     {
+      re: /^Amount equals next installment due \(([0-9.]+)\)$/,
+      key: 'payments.reason.amountEqualsNextDue',
+      pick: (m) => ({ amount: m[1] }),
+    },
+    {
       re: /^Amount equals reservation total \(([0-9.]+)\)$/,
       key: 'payments.reason.amountEqualsTotal',
       pick: (m) => ({ amount: m[1] }),
@@ -3048,9 +3057,10 @@ function renderPaymentMath(
   channelName,
   hostNote = null,
   alreadyPaid = null,
+  paymentPlan = null,
 ) {
-  if (totalPrice == null && balanceDue == null) return '';
-  const currency = payment?.currency || 'EUR';
+  if (totalPrice == null && balanceDue == null && !(paymentPlan?.nextDueAmount > 0)) return '';
+  const currency = payment?.currency || paymentPlan?.currency || 'EUR';
   const amount = payment?.amount != null ? Number(payment.amount) : null;
   const kind = classifyPaymentKind(payment, totalPrice, balanceDue, channelName, hostNote);
 
@@ -3099,6 +3109,17 @@ function renderPaymentMath(
   }
 
   const lines = [];
+  if (paymentPlan?.enabled && paymentPlan.nextDueAmount != null && Number(paymentPlan.nextDueAmount) > 0) {
+    boxClass += ' has-plan';
+    lines.push(
+      `<div class="payment-math-line is-plan">
+        <span class="payment-math-k">${esc(t('payments.suggestionNextDue'))}</span>
+        <span class="payment-math-v">${esc(formatMoney(paymentPlan.nextDueAmount, currency))}${
+          paymentPlan.nextDueAt ? ` · ${esc(formatDate(paymentPlan.nextDueAt))}` : ''
+        }</span>
+      </div>`,
+    );
+  }
   if (totalPrice != null && (kind === 'partial' || kind === 'full' || kind === 'additional')) {
     lines.push(
       `<div class="payment-math-line">
@@ -3281,7 +3302,15 @@ function renderSuggestedReservation(reservation, candidate, currency = 'EUR', pa
       </div>
     </div>
     <div class="payment-suggestion-board">
-      ${renderPaymentMath(payment, totalPrice, balanceDue, channelName, hostNote, alreadyPaid)}
+      ${renderPaymentMath(
+        payment,
+        totalPrice,
+        balanceDue,
+        channelName,
+        hostNote,
+        alreadyPaid,
+        reservation?.paymentPlan || candidate?.paymentPlan || null,
+      )}
     </div>
   </div>`;
 }
@@ -4353,13 +4382,20 @@ $('#qonto-poll-btn')?.addEventListener('click', async () => {
 
 function activatePaymentsView(view) {
   const next =
-    view === 'portal' ? 'portal' : view === 'history' ? 'history' : 'reconcile';
+    view === 'portal'
+      ? 'portal'
+      : view === 'plans'
+        ? 'plans'
+        : view === 'history'
+          ? 'history'
+          : 'reconcile';
   paymentsView = next;
-  $$('.payments-subnav-btn').forEach((btn) => {
+  $('.payments-subnav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.paymentsView === next);
   });
   $('#payments-view-reconcile')?.classList.toggle('hidden', next !== 'reconcile');
   $('#payments-view-history')?.classList.toggle('hidden', next !== 'history');
+  $('#payments-view-plans')?.classList.toggle('hidden', next !== 'plans');
   $('#payments-view-portal')?.classList.toggle('hidden', next !== 'portal');
   if (activeTab === 'payments') {
     try {
@@ -4372,6 +4408,8 @@ function activatePaymentsView(view) {
     }
     if (next === 'portal') {
       loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
+    } else if (next === 'plans') {
+      loadPaymentPlans().catch((ex) => notify.error(ex.message));
     } else if (next === 'history') {
       loadPaymentsHistory();
     } else {
@@ -4384,6 +4422,7 @@ function applyPaymentsViewFromUrl() {
   try {
     const view = new URLSearchParams(window.location.search).get('paymentsView');
     if (view === 'portal') activatePaymentsView('portal');
+    else if (view === 'plans') activatePaymentsView('plans');
     else if (view === 'history') activatePaymentsView('history');
     else activatePaymentsView('reconcile');
   } catch {

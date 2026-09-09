@@ -10,6 +10,7 @@ import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentIngestService } from './payment-ingest.service';
 import { PaymentMatcherService } from './payment-matcher.service';
+import { PaymentPlanService } from './payment-plan.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { PaymentReviewReminderScheduler } from './payment-review-reminder.scheduler';
 import { PaymentUnpaidReminderScheduler } from './payment-unpaid-reminder.scheduler';
@@ -28,6 +29,7 @@ import { PayPalClient } from './paypal.client';
     PaymentReconciliationService,
     PaymentAlertService,
     PaymentApplyService,
+    PaymentPlanService,
     PaymentReviewReminderScheduler,
     PaymentUnpaidReminderScheduler,
     GuestPaymentAutomationService,
@@ -46,6 +48,7 @@ import { PayPalClient } from './paypal.client';
     PaymentMatcherService,
     PaymentAlertService,
     PaymentApplyService,
+    PaymentPlanService,
     GuestPaymentAutomationService,
     GuestCheckinReleaseService,
     PortalPaymentRulesService,

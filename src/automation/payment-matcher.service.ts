@@ -166,6 +166,7 @@ export class PaymentMatcherService {
     const strongAmount =
       reasons.includes('equals outstanding balance') ||
       reasons.includes('equals reservation total') ||
+      reasons.includes('equals next installment due') ||
       reasons.includes('deposit/installment') ||
       reasons.includes('appears in reservation notes') ||
       reasons.includes('payment amount aligns');
@@ -236,12 +237,22 @@ export class PaymentMatcherService {
     const amountMatches =
       reasons.includes('equals outstanding balance') ||
       reasons.includes('equals reservation total') ||
+      reasons.includes('equals next installment due') ||
       /deposit\/installment share/.test(reasons) ||
       reasons.includes('payment amount aligns') ||
       reasons.includes('appears in reservation notes');
     if (!amountMatches) {
       const amountLabel = `${payment.amount.toFixed(2)} ${payment.currency}`;
-      if (best.balanceDue != null && best.totalPrice != null) {
+      const nextDue = best.paymentPlan?.nextDueAmount;
+      if (
+        nextDue != null &&
+        best.balanceDue != null &&
+        best.totalPrice != null
+      ) {
+        missing.push(
+          `payment amount (${amountLabel}) does not match the next installment due (${nextDue.toFixed(2)}), booking total (${best.totalPrice.toFixed(2)}), or outstanding balance (${best.balanceDue.toFixed(2)})`,
+        );
+      } else if (best.balanceDue != null && best.totalPrice != null) {
         missing.push(
           `payment amount (${amountLabel}) does not match the booking total (${best.totalPrice.toFixed(2)}) or outstanding balance (${best.balanceDue.toFixed(2)})`,
         );
@@ -280,7 +291,7 @@ export class PaymentMatcherService {
         // Inquiry statuses are quotes only — never suggest or auto-match them.
         status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
       },
-      include: { listing: true, notifiedCharges: true },
+      include: { listing: true, notifiedCharges: true, paymentPlan: true },
       take: 2000,
       orderBy: { arrivalDate: 'asc' },
     });
@@ -306,6 +317,14 @@ export class PaymentMatcherService {
         rawMetadata?: unknown;
       };
       notifiedCharges: { amount: number }[];
+      paymentPlan?: {
+        enabled: boolean;
+        installmentAmount: number;
+        frequency: string;
+        nextDueAmount: number;
+        nextDueAt: Date | null;
+        paidTowardPlan: number;
+      } | null;
     },
     payment: NormalizedExternalPayment,
     referenceText: string,
@@ -423,6 +442,9 @@ export class PaymentMatcherService {
       }
     }
 
+    const plan =
+      reservation.paymentPlan?.enabled === true ? reservation.paymentPlan : null;
+
     return {
       reservationId: reservation.id,
       hostawayId: reservation.hostawayId,
@@ -436,6 +458,18 @@ export class PaymentMatcherService {
       hostNote: hostNote ? hostNote.slice(0, 280) : null,
       totalPrice,
       balanceDue,
+      paymentPlan: plan
+        ? {
+            enabled: true,
+            installmentAmount: plan.installmentAmount,
+            frequency: plan.frequency,
+            nextDueAmount: plan.nextDueAmount,
+            nextDueAt: plan.nextDueAt
+              ? plan.nextDueAt.toISOString().slice(0, 10)
+              : null,
+            paidTowardPlan: plan.paidTowardPlan,
+          }
+        : null,
       score,
       reasons,
     };
@@ -471,10 +505,30 @@ export class PaymentMatcherService {
       totalPrice: number | null;
       notifiedCharges: { amount: number }[];
       guestName?: string | null;
+      paymentPlan?: {
+        enabled: boolean;
+        installmentAmount: number;
+        nextDueAmount: number;
+      } | null;
     },
     payment?: NormalizedExternalPayment,
     referenceText = '',
   ): { score: number; reason: string } {
+    const plan =
+      reservation.paymentPlan?.enabled === true ? reservation.paymentPlan : null;
+    // Long-term installment ledger: match bank amount to next due (e.g. €550/month)
+    // instead of the large remaining contract balance.
+    if (
+      plan &&
+      plan.nextDueAmount > 0 &&
+      this.amountsMatch(amount, plan.nextDueAmount)
+    ) {
+      return {
+        score: 38,
+        reason: `Amount equals next installment due (${plan.nextDueAmount.toFixed(2)})`,
+      };
+    }
+
     const total = reservation.totalPrice;
     if (!total || total <= 0) return { score: 0, reason: '' };
 

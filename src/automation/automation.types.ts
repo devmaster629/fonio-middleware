@@ -34,6 +34,15 @@ export interface PaymentMatchCandidate {
   totalPrice: number | null;
   /** Outstanding balance after notified charges, if known */
   balanceDue: number | null;
+  /** Active installment plan next due (middleware ledger), if any */
+  paymentPlan?: {
+    enabled: boolean;
+    installmentAmount: number;
+    frequency: string;
+    nextDueAmount: number;
+    nextDueAt: string | null;
+    paidTowardPlan: number;
+  } | null;
   score: number;
   reasons: string[];
 }

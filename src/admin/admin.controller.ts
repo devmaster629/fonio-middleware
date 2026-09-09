@@ -315,6 +315,7 @@ export class AdminController {
         include: {
           listing: { include: { listingGroup: true } },
           notifiedCharges: { select: { amount: true } },
+          paymentPlan: true,
         },
       }),
     ]);

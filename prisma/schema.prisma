@@ -115,6 +115,14 @@ enum PaymentMatchDecision {
   PLATFORM_PAYOUT
 }
 
+/// Recurring installment schedule for long-term stays (middleware source of truth).
+enum PaymentPlanFrequency {
+  WEEKLY
+  SEMI_MONTHLY
+  MONTHLY
+  CUSTOM
+}
+
 model AdminUser {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -278,6 +286,7 @@ model Reservation {
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]
   paymentAllocations PaymentAllocation[]
+  paymentPlan        ReservationPaymentPlan?
   lastSyncedAt       DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
@@ -286,6 +295,30 @@ model Reservation {
   @@index([emailHash])
   @@index([arrivalDate, departureDate])
   @@index([unpaidReminderSentAt, arrivalDate])
+}
+
+/// Per-reservation installment ledger for long-term stays.
+/// Hostaway remains source of truth for guest/stay/total; this plan drives
+/// "next amount due" matching for recurring bank payments (e.g. €550/month).
+model ReservationPaymentPlan {
+  id                 String               @id @default(uuid())
+  reservationId      String               @unique
+  reservation        Reservation          @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  enabled            Boolean              @default(true)
+  installmentAmount  Float
+  frequency          PaymentPlanFrequency @default(MONTHLY)
+  /// Used when frequency = CUSTOM (days between installments).
+  customIntervalDays Int?
+  nextDueAmount      Float
+  nextDueAt          DateTime?            @db.Date
+  /// Cumulative amount applied toward this plan (from matched bank payments).
+  paidTowardPlan     Float                @default(0)
+  currency           String               @default("EUR")
+  note               String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([enabled, nextDueAt])
 }
 
 model NotifiedGuestCharge {

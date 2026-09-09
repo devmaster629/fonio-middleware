@@ -6,6 +6,7 @@ import { PaymentInboxService } from '../hostaway/payment-inbox.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { GuestCheckinReleaseService } from './guest-checkin-release.service';
 import { PaymentAlertService } from './payment-alert.service';
+import { PaymentPlanService } from './payment-plan.service';
 
 @Injectable()
 export class PaymentApplyService {
@@ -18,6 +19,7 @@ export class PaymentApplyService {
     private readonly alerts: PaymentAlertService,
     private readonly prisma: PrismaService,
     private readonly checkinRelease: GuestCheckinReleaseService,
+    private readonly paymentPlans: PaymentPlanService,
   ) {}
 
   async applyToReservation(params: {
@@ -113,6 +115,18 @@ export class PaymentApplyService {
       inboxPosted: inboxResult.posted,
       hostawayMessageId: inboxResult.messageId,
     });
+
+    if (reservation?.id) {
+      await this.paymentPlans
+        .recordPaymentApplied(reservation.id, params.amount)
+        .catch((err) => {
+          this.logger.warn(
+            `Payment plan advance failed for ${params.reservationHostawayId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        });
+    }
 
     this.logger.log(
       `Applied ${isPartial ? 'partial' : 'full'} external payment to reservation ${params.reservationHostawayId} (charge ${charge.id})`,

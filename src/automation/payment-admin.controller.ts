@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -24,9 +25,11 @@ import {
   ManualPaymentIngestDto,
   SkipPaymentReviewDto,
 } from './dto/payment.dto';
+import { UpdatePaymentPlanDto } from './dto/payment-plan.dto';
 import { UpdatePortalPaymentRuleDto } from './dto/portal-payment-rule.dto';
 import { isInquiryReservationStatus } from './automation.types';
 import { detectCombinedDepositHint } from './payment-split-hint.util';
+import { PaymentPlanService } from './payment-plan.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { PortalPaymentRulesService } from './portal-payment-rules.service';
 import { QontoPollService } from './qonto-poll.service';
@@ -42,6 +45,7 @@ export class PaymentAdminController {
     private readonly qontoPoll: QontoPollService,
     private readonly config: ConfigService,
     private readonly portalRules: PortalPaymentRulesService,
+    private readonly paymentPlans: PaymentPlanService,
   ) {}
 
   @Get('portal-rules')
@@ -97,6 +101,71 @@ export class PaymentAdminController {
     });
   }
 
+  @Get('payment-plans')
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
+  @ApiOperation({ summary: 'List enabled installment payment plans' })
+  async listPaymentPlans(@Query('limit') limit?: string) {
+    const n = limit != null ? Number(limit) : 100;
+    return this.paymentPlans.listEnabled(Number.isFinite(n) ? n : 100);
+  }
+
+  @Get('payment-plans/:hostawayId')
+  @Permissions(AdminPermission.PAYMENTS_VIEW)
+  @ApiOperation({
+    summary: 'Get installment payment plan for a Hostaway reservation',
+  })
+  async getPaymentPlan(@Param('hostawayId') hostawayId: string) {
+    const id = Number(hostawayId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new NotFoundException('Reservation not found');
+    }
+    return this.paymentPlans.getByHostawayId(id);
+  }
+
+  @Patch('payment-plans/:hostawayId')
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
+  @ApiOperation({
+    summary:
+      'Create or update the installment ledger for a Hostaway reservation',
+  })
+  async upsertPaymentPlan(
+    @Param('hostawayId') hostawayId: string,
+    @Body() dto: UpdatePaymentPlanDto,
+  ) {
+    const id = Number(hostawayId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new NotFoundException('Reservation not found');
+    }
+    return this.paymentPlans.upsertByHostawayId(id, {
+      enabled: dto.enabled,
+      installmentAmount: dto.installmentAmount,
+      frequency: dto.frequency,
+      customIntervalDays: dto.customIntervalDays,
+      nextDueAmount:
+        dto.nextDueAmount === undefined
+          ? undefined
+          : dto.nextDueAmount ?? undefined,
+      nextDueAt: dto.nextDueAt,
+      paidTowardPlan:
+        dto.paidTowardPlan === undefined
+          ? undefined
+          : dto.paidTowardPlan ?? undefined,
+      currency: dto.currency,
+      note: dto.note,
+    });
+  }
+
+  @Delete('payment-plans/:hostawayId')
+  @Permissions(AdminPermission.PAYMENTS_ADMIN)
+  @ApiOperation({ summary: 'Delete installment payment plan for a reservation' })
+  async deletePaymentPlan(@Param('hostawayId') hostawayId: string) {
+    const id = Number(hostawayId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new NotFoundException('Reservation not found');
+    }
+    return this.paymentPlans.deleteByHostawayId(id);
+  }
+
   @Get('review-queue')
   @Permissions(AdminPermission.PAYMENTS_VIEW)
   @ApiOperation({ summary: 'List payments waiting for manual review' })
@@ -138,7 +207,7 @@ export class PaymentAdminController {
         ? []
         : await this.prisma.reservation.findMany({
             where: { hostawayId: { in: [...candidateIds] } },
-            include: { listing: true, notifiedCharges: true },
+            include: { listing: true, notifiedCharges: true, paymentPlan: true },
           });
     const byHostawayId = new Map(liveReservations.map((r) => [r.hostawayId, r]));
 
@@ -193,6 +262,8 @@ export class PaymentAdminController {
             listingCoverUrl = images[0].url || images[0].thumbnailUrl || null;
           }
         }
+        const plan =
+          live.paymentPlan?.enabled === true ? live.paymentPlan : null;
         return {
           ...c,
           guestName: c.guestName ?? live.guestName,
@@ -212,6 +283,18 @@ export class PaymentAdminController {
             (live.hostNote ? live.hostNote.slice(0, 280) : null),
           totalPrice: c.totalPrice ?? totalPrice,
           balanceDue: c.balanceDue ?? balanceDue,
+          paymentPlan: plan
+            ? {
+                enabled: true,
+                installmentAmount: plan.installmentAmount,
+                frequency: plan.frequency,
+                nextDueAmount: plan.nextDueAmount,
+                nextDueAt: plan.nextDueAt
+                  ? plan.nextDueAt.toISOString().slice(0, 10)
+                  : null,
+                paidTowardPlan: plan.paidTowardPlan,
+              }
+            : ((c.paymentPlan as unknown) ?? null),
         };
       });
       return { ...item, matchCandidates };

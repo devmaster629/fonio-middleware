@@ -531,6 +531,68 @@ body.sidebar-open .sidebar {
   border-top: 1px solid var(--border);
 }
 
+.payment-plan-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin: 1rem 0;
+}
+
+.payment-plan-lookup label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+}
+
+.payment-plan-editor {
+  margin: 1rem 0 1.5rem;
+}
+
+.payment-plan-editor-card {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.payment-plan-editor-meta {
+  margin-bottom: 0.75rem;
+}
+
+.payment-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.payment-plan-grid label > span,
+.payment-plan-editor-form > label > span {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.payment-plans-list-title {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.payment-suggestion-plan {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.9rem;
+}
+
+.payment-suggestion-plan-amount {
+  font-weight: 600;
+}
+
 #tab-payments #payments-view-reconcile > h3:first-of-type {
   margin-top: 0.25rem;
 }
@@ -6779,4 +6841,58 @@ a.payment-suggestion-id:hover {
 
 @media (max-width: 640px) {
   .groups-stats { grid-template-columns: 1fr; }
+}
+
+/* Installment payment plans */
+.payment-plan-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+.payment-plan-lookup label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+}
+.payment-plan-editor {
+  margin: 1rem 0 1.5rem;
+}
+.payment-plan-editor-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  background: var(--surface, #fff);
+}
+.payment-plan-editor-meta {
+  margin-bottom: 0.85rem;
+  color: var(--muted, #64748b);
+  font-size: 0.92rem;
+}
+.payment-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+.payment-plan-grid label,
+.payment-plan-editor-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.payment-plans-list-title {
+  margin: 1.25rem 0 0.6rem;
+}
+.payment-plans-list table {
+  width: 100%;
+}
+.payment-math.has-plan .payment-math-line.is-plan {
+  font-weight: 600;
+}
+.payment-math-line.is-plan .payment-math-v {
+  color: var(--accent, #0f766e);
 }

@@ -58,6 +58,22 @@ Generic automation platform for importing external payments, matching them to Ho
 | Refunds (negative amounts) | → skipped |
 | Bulk payments (> €50,000) | → skipped |
 | Ambiguous matches | → review queue |
+| **Installment payment plans** (middleware ledger) | Editable next due / frequency; matcher prefers next due over remaining balance |
+
+## Installment payment plans
+
+For long-term stays (e.g. monthly €550), Admin → **Payments → Payment plans** stores per Hostaway reservation:
+
+- installment amount + frequency (weekly / semi-monthly / monthly / custom days)
+- **next amount due** + optional next due date
+- paid toward plan (advanced automatically when a bank payment is applied)
+
+Hostaway remains source of truth for guest, stay dates, and booking total. Matched payments update the local ledger (`paidTowardPlan`, advance `nextDueAt` / `nextDueAmount`). Undo reverses the ledger best-effort.
+
+API:
+
+- `GET /api/v1/admin/payments/payment-plans`
+- `GET|PATCH|DELETE /api/v1/admin/payments/payment-plans/:hostawayId`
 
 ## Testing without Qonto/PayPal
 

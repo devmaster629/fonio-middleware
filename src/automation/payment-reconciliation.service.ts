@@ -18,6 +18,7 @@ import {
 import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
+import { PaymentPlanService } from './payment-plan.service';
 import { HostawayClient } from '../hostaway/hostaway.client';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class PaymentReconciliationService {
     private readonly apply: PaymentApplyService,
     private readonly alerts: PaymentAlertService,
     private readonly hostaway: HostawayClient,
+    private readonly paymentPlans: PaymentPlanService,
   ) {}
 
   async ingestAndReconcile(
@@ -509,6 +511,31 @@ export class PaymentReconciliationService {
       await this.prisma.notifiedGuestCharge.deleteMany({
         where: { hostawayChargeId: target.hostawayChargeId },
       });
+    }
+
+    // Reverse installment ledger after charges are removed so remaining balance is current.
+    if (payment.allocations.length > 0) {
+      for (const allocation of payment.allocations) {
+        await this.paymentPlans
+          .recordPaymentReversed(allocation.reservationId, allocation.amount)
+          .catch((err) => {
+            this.logger.warn(
+              `Payment plan reverse failed for allocation ${allocation.id}: ${
+                err instanceof Error ? err.message : err
+              }`,
+            );
+          });
+      }
+    } else if (payment.matchedReservationId) {
+      await this.paymentPlans
+        .recordPaymentReversed(payment.matchedReservationId, payment.amount)
+        .catch((err) => {
+          this.logger.warn(
+            `Payment plan reverse failed for payment ${payment.id}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        });
     }
 
     await this.prisma.paymentAllocation.deleteMany({
