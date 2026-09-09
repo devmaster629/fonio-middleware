@@ -26,18 +26,34 @@
     const canEdit = hasPermission('PAYMENTS_ADMIN');
     $('#payment-plans-readonly-hint')?.classList.toggle('hidden', canEdit);
     const plans = await api('/payments/payment-plans?limit=200');
-    const rows = (Array.isArray(plans) ? plans : [])
+    const planList = Array.isArray(plans) ? plans : [];
+    const countEl = $('#payment-plans-active-count');
+    if (countEl) countEl.textContent = String(planList.length);
+
+    if (!planList.length) {
+      list.innerHTML = `
+        <div class="payment-plans-empty">
+          <span class="payment-plans-empty-icon" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </span>
+          <p class="payment-plans-empty-title">${t('payments.plansNone')}</p>
+          <p class="payment-plans-empty-hint">${t('payments.plansEmptyHint')}</p>
+        </div>`;
+      return;
+    }
+
+    const rows = planList
       .map((plan) => {
         const res = plan.reservation || {};
         return `<tr>
-          <td>#${esc(String(res.hostawayId ?? ''))}</td>
-          <td>${esc(res.guestName || '–')}</td>
-          <td>${esc(res.listingName || '–')}</td>
-          <td class="cell-money">${esc(formatMoney(plan.installmentAmount, plan.currency))}</td>
-          <td>${esc(freqLabel(plan.frequency))}</td>
-          <td class="cell-money">${esc(formatMoney(plan.nextDueAmount, plan.currency))}</td>
-          <td>${plan.nextDueAt ? esc(formatDate(plan.nextDueAt)) : '–'}</td>
-          <td class="cell-money">${esc(formatMoney(plan.paidTowardPlan, plan.currency))}</td>
+          <td data-label="${esc(t('payments.plansColReservation'))}">#${esc(String(res.hostawayId ?? ''))}</td>
+          <td data-label="${esc(t('listings.guest'))}">${esc(res.guestName || '–')}</td>
+          <td data-label="${esc(t('listings.name'))}">${esc(res.listingName || '–')}</td>
+          <td class="cell-money" data-label="${esc(t('payments.plansInstallment'))}">${esc(formatMoney(plan.installmentAmount, plan.currency))}</td>
+          <td data-label="${esc(t('payments.plansFrequency'))}">${esc(freqLabel(plan.frequency))}</td>
+          <td class="cell-money" data-label="${esc(t('payments.plansNextDue'))}">${esc(formatMoney(plan.nextDueAmount, plan.currency))}</td>
+          <td data-label="${esc(t('payments.plansNextDueAt'))}">${plan.nextDueAt ? esc(formatDate(plan.nextDueAt)) : '–'}</td>
+          <td class="cell-money" data-label="${esc(t('payments.plansPaidToward'))}">${esc(formatMoney(plan.paidTowardPlan, plan.currency))}</td>
           <td>
             <button type="button" class="btn ghost btn-sm payment-plan-edit-btn" data-hostaway-id="${esc(String(res.hostawayId))}">
               ${t('payments.plansEdit')}
@@ -47,20 +63,22 @@
       })
       .join('');
     list.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>${t('payments.plansColReservation')}</th>
-          <th>${t('listings.guest')}</th>
-          <th>${t('listings.name')}</th>
-          <th>${t('payments.plansInstallment')}</th>
-          <th>${t('payments.plansFrequency')}</th>
-          <th>${t('payments.plansNextDue')}</th>
-          <th>${t('payments.plansNextDueAt')}</th>
-          <th>${t('payments.plansPaidToward')}</th>
-          <th></th>
-        </tr></thead>
-        <tbody>${rows || `<tr><td colspan="9">${t('payments.plansNone')}</td></tr>`}</tbody>
-      </table>`;
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>${t('payments.plansColReservation')}</th>
+            <th>${t('listings.guest')}</th>
+            <th>${t('listings.name')}</th>
+            <th>${t('payments.plansInstallment')}</th>
+            <th>${t('payments.plansFrequency')}</th>
+            <th>${t('payments.plansNextDue')}</th>
+            <th>${t('payments.plansNextDueAt')}</th>
+            <th>${t('payments.plansPaidToward')}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
     $$('.payment-plan-edit-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idInput = $('#payment-plan-hostaway-id');

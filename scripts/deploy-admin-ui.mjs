@@ -14,6 +14,7 @@ const FILES = [
   'public/admin/index.html',
   'public/admin/i18n.js',
   'public/admin/styles.css',
+  'public/admin/payment-plans.js',
 ];
 
 function exec(conn, command, timeoutMs = 120_000) {
@@ -58,10 +59,10 @@ conn
       await exec(
         conn,
         `cd ${APP_DIR}
-for f in public/admin/app.js public/admin/index.html public/admin/i18n.js public/admin/styles.css; do
+for f in public/admin/app.js public/admin/index.html public/admin/i18n.js public/admin/styles.css public/admin/payment-plans.js; do
   docker cp "$f" vermietung-api:/app/"$f"
 done
-docker exec vermietung-api grep -c payments-history-table /app/public/admin/index.html
+docker exec vermietung-api grep -c payment-plans-top /app/public/admin/index.html
 curl -fsS https://vermietung.brainions.digital/health > /dev/null
 echo LIVE_OK`,
       );
