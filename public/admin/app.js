@@ -4390,7 +4390,7 @@ function activatePaymentsView(view) {
           ? 'history'
           : 'reconcile';
   paymentsView = next;
-  $('.payments-subnav-btn').forEach((btn) => {
+  $$('.payments-subnav-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.paymentsView === next);
   });
   $('#payments-view-reconcile')?.classList.toggle('hidden', next !== 'reconcile');
