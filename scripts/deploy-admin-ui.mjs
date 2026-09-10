@@ -15,6 +15,9 @@ const FILES = [
   'public/admin/i18n.js',
   'public/admin/styles.css',
   'public/admin/payment-plans.js',
+  'public/admin/assets/check24-logo.png',
+  'public/admin/assets/check24-logo-white.png',
+  'public/admin/assets/check24-logo.svg',
 ];
 
 function exec(conn, command, timeoutMs = 120_000) {
@@ -52,17 +55,27 @@ const conn = new Client();
 conn
   .on('ready', async () => {
     try {
+      await exec(conn, `mkdir -p ${APP_DIR}/public/admin/assets`);
       for (const file of FILES) {
-        await upload(conn, `${APP_DIR}/${file}`, readFileSync(join(process.cwd(), file), 'utf8'));
+        const isBinary =
+          file.endsWith('.png') ||
+          file.endsWith('.jpg') ||
+          file.endsWith('.webp');
+        await upload(
+          conn,
+          `${APP_DIR}/${file}`,
+          readFileSync(join(process.cwd(), file), isBinary ? null : 'utf8'),
+        );
         console.log('Uploaded', file);
       }
       await exec(
         conn,
         `cd ${APP_DIR}
-for f in public/admin/app.js public/admin/index.html public/admin/i18n.js public/admin/styles.css public/admin/payment-plans.js; do
+docker exec vermietung-api mkdir -p /app/public/admin/assets
+for f in public/admin/app.js public/admin/index.html public/admin/i18n.js public/admin/styles.css public/admin/payment-plans.js public/admin/assets/check24-logo.png public/admin/assets/check24-logo-white.png public/admin/assets/check24-logo.svg; do
   docker cp "$f" vermietung-api:/app/"$f"
 done
-docker exec vermietung-api grep -c payment-plans-top /app/public/admin/index.html
+docker exec vermietung-api grep -c check24-logo-white.png /app/public/admin/index.html
 curl -fsS https://vermietung.brainions.digital/health > /dev/null
 echo LIVE_OK`,
       );

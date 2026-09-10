@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260911s" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260912d" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1059,92 +1059,246 @@
       </section>
 
       <section id="tab-check24" class="tab hidden">
-        <header class="page-header">
-          <h2 data-i18n="check24.title">CHECK24</h2>
+        <header class="page-header check24-page-header">
+          <div class="check24-heading">
+            <h2 class="check24-brand-title">
+              <img src="/admin/assets/check24-logo-white.png" alt="CHECK24" class="check24-brand-logo" width="220" height="58" />
+            </h2>
+            <div id="check24-header-status" class="check24-header-status"></div>
+          </div>
+          <div class="check24-header-actions">
+            <button type="button" id="check24-sync-btn" class="btn primary check24-primary-btn">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span data-i18n="check24.syncBtnShort">Send apartments</span>
+            </button>
+            <button type="button" id="check24-refresh-btn" class="btn ghost">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+              <span data-i18n="check24.refresh">Refresh</span>
+            </button>
+          </div>
         </header>
-
-        <div id="check24-hero" class="check24-hero"></div>
-
-        <div class="check24-flow" aria-label="How CHECK24 works">
-          <div class="check24-step">
-            <div class="check24-step-num">1</div>
-            <div>
-              <strong data-i18n="check24.step1Title">Hostaway</strong>
-              <p data-i18n="check24.step1Text">Your apartments and calendars live here.</p>
-            </div>
-          </div>
-          <div class="check24-arrow" aria-hidden="true">-></div>
-          <div class="check24-step">
-            <div class="check24-step-num">2</div>
-            <div>
-              <strong data-i18n="check24.step2Title">This app</strong>
-              <p data-i18n="check24.step2Text">Copies them to CHECK24 with one click.</p>
-            </div>
-          </div>
-          <div class="check24-arrow" aria-hidden="true">-></div>
-          <div class="check24-step">
-            <div class="check24-step-num">3</div>
-            <div>
-              <strong data-i18n="check24.step3Title">CHECK24</strong>
-              <p data-i18n="check24.step3Text">Guests book there. Bookings come back to Hostaway.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="check24-actions">
-          <button type="button" id="check24-sync-btn" class="btn primary check24-primary-btn" data-i18n="check24.syncBtn">Send apartments to CHECK24</button>
-          <button type="button" id="check24-refresh-btn" class="btn ghost" data-i18n="check24.refresh">Refresh</button>
-        </div>
         <p id="check24-action-result" class="check24-action-result"></p>
 
-        <div class="card" id="check24-sync-settings-card">
-          <h3 data-i18n="check24.autoSyncTitle">Automatic updates</h3>
-          <p class="field-hint" data-i18n="check24.autoSyncHint">Keep availability and prices on CHECK24 up to date without clicking Send every time.</p>
-          <form id="check24-sync-settings-form" class="sync-settings-form">
-            <label class="checkbox-row">
-              <input type="checkbox" id="check24-auto-sync-enabled" />
-              <span data-i18n="check24.autoSyncEnable">Auto-update availability &amp; prices</span>
-            </label>
-            <label class="checkbox-row">
-              <input type="checkbox" id="check24-auto-sync-content" />
-              <span data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</span>
-            </label>
-            <label>
-              <span data-i18n="check24.autoSyncInterval">Interval (minutes)</span>
-              <input type="number" id="check24-auto-sync-interval" min="5" max="1440" value="30" />
-            </label>
-            <button type="submit" class="btn primary" data-i18n="check24.autoSyncSave">Save settings</button>
-          </form>
-          <p id="check24-sync-settings-readonly-hint" class="field-hint hidden" data-i18n="check24.autoSyncReadonly">Only EDITOR or ADMIN can change these settings.</p>
-          <p id="check24-auto-sync-hint" class="field-hint"></p>
+        <div id="check24-flow" class="check24-pipeline" aria-label="How CHECK24 works"></div>
+        <div id="check24-kpis" class="check24-kpis" aria-live="polite"></div>
+
+        <nav class="check24-tabs" role="tablist" aria-label="CHECK24 sections">
+          <button type="button" class="check24-tab is-active" data-check24-tab="overview" data-i18n="check24.tab.overview">Overview</button>
+          <button type="button" class="check24-tab" data-check24-tab="bookings" data-i18n="check24.tab.bookings">Imported bookings</button>
+          <button type="button" class="check24-tab" data-check24-tab="apartments" data-i18n="check24.tab.apartments">Apartments</button>
+          <button type="button" class="check24-tab" data-check24-tab="settings" data-i18n="check24.tab.settings">Settings</button>
+        </nav>
+
+        <div id="check24-panel-overview" class="check24-panel" data-check24-panel="overview">
+          <div class="check24-overview-grid">
+            <div id="check24-sync-health" class="card check24-health-card"></div>
+            <div class="card check24-recent-card">
+              <div class="check24-card-head">
+                <h3 data-i18n="check24.recentBookings">Recent imported bookings</h3>
+                <button type="button" class="check24-link-btn" data-check24-tab="bookings" data-i18n="check24.viewAll">View all</button>
+              </div>
+              <div id="check24-recent-bookings" class="check24-recent-bookings"></div>
+            </div>
+          </div>
+          <div class="card check24-apartments-preview-card">
+            <div class="check24-card-head">
+              <div>
+                <h3 data-i18n="check24.apartmentsStatus">Apartments status</h3>
+                <p class="check24-settings-sub" data-i18n="check24.apartmentsStatusHint">Data = photos &amp; description. Needs attention usually means Data was never sent.</p>
+              </div>
+              <button type="button" class="check24-link-btn" data-check24-tab="apartments" data-i18n="check24.viewAll">View all</button>
+            </div>
+            <div id="check24-apartments-preview"></div>
+          </div>
         </div>
 
-        <div class="card check24-list-card">
-          <div class="check24-list-head">
-            <h3 data-i18n="check24.bookingsTitle">Imported bookings</h3>
-            <span id="check24-bookings-badge" class="check24-count-badge">0</span>
+        <div id="check24-panel-bookings" class="check24-panel hidden" data-check24-panel="bookings">
+          <div class="card check24-list-card">
+            <div class="check24-apartments-toolbar">
+              <div class="check24-list-head" style="margin:0">
+                <h3 data-i18n="check24.bookingsTitle">Imported bookings</h3>
+                <span id="check24-bookings-badge" class="check24-count-badge">0</span>
+              </div>
+              <div class="check24-search">
+                <input type="search" id="check24-bookings-search" placeholder="Search bookings..." data-i18n-placeholder="check24.searchBookings" autocomplete="off" />
+              </div>
+            </div>
+            <div id="check24-bookings-table" class="check24-bookings-wrap"></div>
+            <div class="check24-table-footer">
+              <div id="check24-bookings-info" class="table-info"></div>
+              <div class="check24-footer-right">
+                <div id="check24-bookings-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="check24-bookings-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="check24-bookings-page-size" aria-label="Per page">
+                    <option value="10">10 / page</option>
+                    <option value="25" selected>25 / page</option>
+                    <option value="50">50 / page</option>
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
-          <p class="field-hint" data-i18n="check24.bookingsHint">Bookings received from CHECK24 and created in Hostaway.</p>
-          <div id="check24-bookings-table" class="check24-listing-list"></div>
         </div>
 
-        <div class="card check24-list-card">
-          <div class="check24-list-head">
-            <h3 data-i18n="check24.mappingsTitle">Apartments on CHECK24</h3>
-            <span id="check24-count-badge" class="check24-count-badge">0</span>
+        <div id="check24-panel-apartments" class="check24-panel hidden" data-check24-panel="apartments">
+          <div class="card check24-list-card">
+            <div class="check24-apartments-toolbar">
+              <div class="check24-search">
+                <input type="search" id="check24-apartments-search" placeholder="Search property..." data-i18n-placeholder="check24.searchProperty" autocomplete="off" />
+              </div>
+              <div id="check24-count-badge" class="check24-count-chip" title="">0 apartments</div>
+            </div>
+            <div id="check24-mappings-table" class="check24-apartments-wrap"></div>
+            <div class="check24-table-footer">
+              <div id="check24-apartments-info" class="table-info"></div>
+              <div class="check24-footer-right">
+                <div id="check24-apartments-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="check24-apartments-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="check24-apartments-page-size" aria-label="Per page">
+                    <option value="10">10 / page</option>
+                    <option value="25" selected>25 / page</option>
+                    <option value="50">50 / page</option>
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
-          <p class="field-hint" data-i18n="check24.mappingsHint">Green = sent successfully. Red = needs attention.</p>
-          <div id="check24-mappings-table" class="check24-listing-list"></div>
         </div>
 
-        <details class="check24-advanced">
-          <summary data-i18n="check24.advanced">More options</summary>
-          <div class="check24-advanced-body">
-            <button type="button" id="check24-webhook-btn" class="btn ghost" data-i18n="check24.registerWebhook">Turn on booking alerts</button>
-            <button type="button" id="check24-poll-btn" class="btn ghost" data-i18n="check24.pollBookings">Check for new bookings</button>
-            <p id="check24-status-hint" class="field-hint"></p>
+        <div id="check24-panel-settings" class="check24-panel hidden" data-check24-panel="settings">
+          <div class="check24-settings-grid">
+            <section class="card check24-settings-card" id="check24-sync-settings-card">
+              <header class="check24-settings-card-head">
+                <div class="check24-settings-title-wrap">
+                  <span class="check24-settings-icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  </span>
+                  <div>
+                    <h3 data-i18n="check24.autoSyncTitle">Automatic synchronization</h3>
+                    <p class="check24-settings-sub" data-i18n="check24.autoSyncHint">Keep availability and prices on CHECK24 up to date without clicking Send every time.</p>
+                  </div>
+                </div>
+                <label class="check24-switch check24-settings-master">
+                  <span id="check24-auto-sync-master-label" data-i18n="check24.autoSyncCurrentlyOff">Currently off</span>
+                  <input type="checkbox" id="check24-auto-sync-master" />
+                  <span class="check24-switch-ui" aria-hidden="true"></span>
+                </label>
+              </header>
+
+              <form id="check24-sync-settings-form" class="check24-settings-form">
+                <div class="check24-settings-box">
+                  <label class="check24-check-row">
+                    <input type="checkbox" id="check24-auto-sync-enabled" />
+                    <span>
+                      <strong data-i18n="check24.autoSyncEnable">Auto-update availability &amp; prices</strong>
+                      <small data-i18n="check24.autoSyncEnableHelp">Same as the switch above: periodically push calendar availability and prices to CHECK24.</small>
+                    </span>
+                  </label>
+                  <label class="check24-check-row" id="check24-auto-sync-content-row">
+                    <input type="checkbox" id="check24-auto-sync-content" />
+                    <span>
+                      <strong data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</strong>
+                      <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier — leave off unless details changed.</small>
+                    </span>
+                  </label>
+                  <div class="check24-interval-row">
+                    <label class="check24-interval-field">
+                      <span data-i18n="check24.autoSyncInterval">Interval (minutes)</span>
+                      <select id="check24-auto-sync-interval">
+                        <option value="15">15</option>
+                        <option value="30" selected>30</option>
+                        <option value="60">60</option>
+                        <option value="120">120</option>
+                        <option value="360">360</option>
+                      </select>
+                    </label>
+                    <p class="check24-interval-help" data-i18n="check24.autoSyncIntervalHelp">How often the automatic update should run.</p>
+                  </div>
+                </div>
+
+                <div class="check24-settings-footer">
+                  <p id="check24-auto-sync-hint" class="check24-settings-banner"></p>
+                  <button type="submit" class="btn primary" data-i18n="check24.autoSyncSave">Save changes</button>
+                </div>
+              </form>
+              <p id="check24-sync-settings-readonly-hint" class="field-hint hidden" data-i18n="check24.autoSyncReadonly">Only EDITOR or ADMIN can change these settings.</p>
+            </section>
+
+            <section class="card check24-settings-card check24-settings-side" id="check24-sync-controls-card">
+              <header class="check24-settings-title-wrap">
+                <span class="check24-settings-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                </span>
+                <div>
+                  <h3 data-i18n="check24.syncControls">Sync controls</h3>
+                  <p class="check24-settings-sub" data-i18n="check24.syncControlsHint">Manually trigger synchronization or check for new bookings.</p>
+                </div>
+              </header>
+
+              <div class="check24-settings-side-body">
+                <div class="check24-settings-field">
+                  <span class="check24-settings-field-label" data-i18n="check24.currentSyncState">Current sync state</span>
+                  <div id="check24-settings-conn" class="check24-settings-conn"></div>
+                </div>
+                <div class="check24-settings-field">
+                  <span class="check24-settings-field-label" data-i18n="check24.lastAutoUpdate">Last automatic update</span>
+                  <p id="check24-settings-last-auto" class="check24-settings-last-auto"></p>
+                </div>
+                <div class="check24-settings-actions">
+                  <button type="button" id="check24-settings-sync-btn" class="btn primary">
+                    <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span data-i18n="check24.sendNow">Send apartments now</span>
+                  </button>
+                  <button type="button" id="check24-poll-btn" class="btn ghost">
+                    <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+                    <span data-i18n="check24.pollBookings">Check for new bookings</span>
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
-        </details>
+
+          <details class="card check24-advanced-card" open>
+            <summary>
+              <span class="check24-advanced-summary-left">
+                <svg class="check24-advanced-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                <span class="check24-advanced-summary-main">
+                  <strong data-i18n="check24.advanced">Advanced options</strong>
+                  <span data-i18n="check24.advancedHint">Additional settings and technical information.</span>
+                </span>
+              </span>
+              <span id="check24-env-badge" class="check24-env-badge">Staging</span>
+            </summary>
+            <div class="check24-advanced-grid">
+              <button type="button" id="check24-webhook-btn" class="check24-advanced-action">
+                <span class="check24-settings-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </span>
+                <span>
+                  <strong data-i18n="check24.registerWebhook">Turn on booking alerts</strong>
+                  <small data-i18n="check24.registerWebhookHelp">Get notified about new bookings from CHECK24.</small>
+                </span>
+              </button>
+              <div class="check24-advanced-field">
+                <label data-i18n="check24.serverEndpoint">Server endpoint</label>
+                <div class="check24-copy-field">
+                  <input type="text" id="check24-base-url" readonly />
+                  <button type="button" id="check24-copy-base-url" class="btn ghost check24-copy-btn" title="Copy">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="check24-advanced-field">
+                <label data-i18n="check24.lastJob">Last send</label>
+                <div id="check24-status-hint" class="check24-last-send"></div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div id="check24-hero" class="hidden" aria-hidden="true"></div>
       </section>
 
       <section id="tab-users" class="tab hidden">
@@ -1279,10 +1433,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260911s"></script>
+  <script src="/admin/i18n.js?v=20260912d"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260911s"></script>
+  <script src="/admin/app.js?v=20260912d"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

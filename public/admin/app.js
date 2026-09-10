@@ -10452,235 +10452,785 @@ async function loadFonio(opts = {}) {
   }
 }
 
+let check24Cache = { status: null, mappings: [], bookings: [] };
+let check24UiBound = false;
+let check24ActiveTab = 'overview';
+let check24Syncing = false;
+let check24SyncPollTimer = null;
+const check24TableState = {
+  apartments: { page: 1, pageSize: 25, search: '' },
+  bookings: { page: 1, pageSize: 25, search: '' },
+};
+
 function check24FmtTs(value) {
   if (!value) return null;
   try {
-    return new Date(value).toLocaleString();
+    return formatDashboardDateTime(value);
   } catch {
     return String(value);
   }
 }
 
 function check24MappingState(m) {
-  if (m.lastError) return 'error';
+  if (m.listing?.status === 'HIDDEN' || m.listing?.isBookable === false) {
+    return 'archived';
+  }
   const synced =
     m.contentSyncedAt && m.availabilitySyncedAt && m.ratesSyncedAt;
+  // Fully synced apartments are Ready even if a later retry left a stale lastError.
   if (synced) return 'ready';
-  if (m.contentSyncedAt || m.availabilitySyncedAt || m.ratesSyncedAt) {
-    return 'partial';
-  }
+  if (m.lastError) return 'error';
   return 'partial';
 }
 
-async function loadCheck24() {
+function check24AttentionReason(m) {
+  if (m.listing?.status === 'HIDDEN' || m.listing?.isBookable === false) {
+    return t('check24.attentionReason.archived');
+  }
+  if (m.lastError) return String(m.lastError);
+  const missing = [];
+  if (!m.contentSyncedAt) missing.push(t('check24.col.data'));
+  if (!m.availabilitySyncedAt) missing.push(t('check24.col.availability'));
+  if (!m.ratesSyncedAt) missing.push(t('check24.col.prices'));
+  if (missing.length) {
+    return t('check24.attentionReason.missing', { fields: missing.join(', ') });
+  }
+  return t('check24.attentionReason.generic');
+}
+
+function check24InfoIcon(title) {
+  return `<span class="check24-info-tip" title="${esc(title)}" aria-label="${esc(title)}">${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>', 13)}</span>`;
+}
+
+function check24SyncChip(kind, at) {
+  if (!at) {
+    return `<span class="check24-sync-chip is-missing" title="${esc(t('check24.chip.notSyncedHelp.' + kind) || t('check24.chip.notSynced'))}">${fonioSvgIcon('<path d="M18 6 6 18M6 6l12 12"/>', 12)} ${esc(t('check24.chip.notSynced'))}</span>`;
+  }
+  const ageMs = Date.now() - new Date(at).getTime();
+  const stale = Number.isFinite(ageMs) && ageMs > 36 * 60 * 60 * 1000;
+  if (stale) {
+    return `<span class="check24-sync-chip is-stale" title="${esc(t('check24.chip.outdatedHelp'))}">${fonioSvgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>', 12)} ${esc(t('check24.chip.outdated'))}</span>`;
+  }
+  const label =
+    kind === 'data'
+      ? t('check24.chip.complete')
+      : t('check24.chip.synced');
+  return `<span class="check24-sync-chip is-ok">${fonioSvgIcon('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', 12)} ${esc(label)}</span>`;
+}
+
+function check24BookingStatusMeta(status) {
+  const s = String(status || '').toLowerCase();
+  if (['booked', 'requested', 'confirmed', 'accepted'].includes(s)) {
+    return { cls: 'is-booked', label: t('check24.bookingStatus.booked') };
+  }
+  if (['canceled', 'cancelled', 'declined', 'failed'].includes(s)) {
+    return { cls: 'is-cancelled', label: t('check24.bookingStatus.cancelled') };
+  }
+  return { cls: 'is-other', label: String(status || '—').toUpperCase() };
+}
+
+function check24NextRun(settings) {
+  if (!settings?.autoSyncEnabled) return null;
+  const interval = Number(settings.intervalMinutes) || 30;
+  const last = settings.lastAutoSyncAt ? new Date(settings.lastAutoSyncAt).getTime() : Date.now();
+  if (!Number.isFinite(last)) return null;
+  return new Date(last + interval * 60 * 1000);
+}
+
+function ensureCheck24Ui() {
+  if (check24UiBound) return;
+  check24UiBound = true;
+
+  document.addEventListener('click', (e) => {
+    const tabBtn = e.target.closest?.('[data-check24-tab]');
+    if (!tabBtn || !document.getElementById('tab-check24')?.contains(tabBtn)) return;
+    const tab = tabBtn.getAttribute('data-check24-tab');
+    if (!tab) return;
+    activateCheck24Tab(tab);
+  });
+
+  $('#check24-apartments-search')?.addEventListener('input', () => {
+    clearTimeout(searchTimers.check24Apartments);
+    searchTimers.check24Apartments = setTimeout(() => {
+      check24TableState.apartments.search = ($('#check24-apartments-search')?.value || '').trim();
+      check24TableState.apartments.page = 1;
+      renderCheck24ApartmentsTable();
+    }, 200);
+  });
+
+  $('#check24-apartments-page-size')?.addEventListener('change', (e) => {
+    check24TableState.apartments.pageSize = Number(e.target.value) || 25;
+    check24TableState.apartments.page = 1;
+    renderCheck24ApartmentsTable();
+  });
+
+  $('#check24-bookings-search')?.addEventListener('input', () => {
+    clearTimeout(searchTimers.check24Bookings);
+    searchTimers.check24Bookings = setTimeout(() => {
+      check24TableState.bookings.search = ($('#check24-bookings-search')?.value || '').trim();
+      check24TableState.bookings.page = 1;
+      renderCheck24BookingsTable();
+    }, 200);
+  });
+
+  $('#check24-bookings-page-size')?.addEventListener('change', (e) => {
+    check24TableState.bookings.pageSize = Number(e.target.value) || 25;
+    check24TableState.bookings.page = 1;
+    renderCheck24BookingsTable();
+  });
+
+  const syncMaster = $('#check24-auto-sync-master');
+  const syncEnabled = $('#check24-auto-sync-enabled');
+  const syncContent = $('#check24-auto-sync-content');
+  const syncContentRow = $('#check24-auto-sync-content-row');
+
+  const syncAutoUi = (on) => {
+    if (syncEnabled) syncEnabled.checked = on;
+    if (syncMaster) syncMaster.checked = on;
+    updateCheck24AutoSyncMasterLabel(on);
+    if (syncContent) {
+      syncContent.disabled = !on;
+      if (!on) syncContent.checked = false;
+    }
+    syncContentRow?.classList.toggle('is-disabled', !on);
+  };
+
+  syncMaster?.addEventListener('change', () => syncAutoUi(syncMaster.checked));
+  syncEnabled?.addEventListener('change', () => syncAutoUi(syncEnabled.checked));
+
+  $('#check24-settings-sync-btn')?.addEventListener('click', () => {
+    $('#check24-sync-btn')?.click();
+  });
+
+  $('#check24-copy-base-url')?.addEventListener('click', async () => {
+    const url = $('#check24-base-url')?.value || '';
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify.success(t('common.copied'));
+    } catch {
+      notify.error(t('common.copyFailed') || 'Copy failed');
+    }
+  });
+}
+
+function updateCheck24AutoSyncMasterLabel(on) {
+  const label = $('#check24-auto-sync-master-label');
+  if (!label) return;
+  label.textContent = on ? t('check24.autoSyncCurrentlyOn') : t('check24.autoSyncCurrentlyOff');
+}
+
+function activateCheck24Tab(tab) {
+  check24ActiveTab = tab || 'overview';
+  $$('.check24-tab').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.getAttribute('data-check24-tab') === check24ActiveTab);
+  });
+  $$('[data-check24-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.getAttribute('data-check24-panel') !== check24ActiveTab);
+  });
+}
+
+function renderCheck24Header(status, connected) {
+  const el = $('#check24-header-status');
+  if (!el) return;
+  const job = status?.lastJob;
+  const jobStatus = String(job?.status || '').toLowerCase();
+  const jobRunning =
+    check24Syncing ||
+    ['running', 'pending', 'in_progress', 'started', 'queued'].includes(jobStatus);
+  const lastSync = check24FmtTs(job?.finishedAt || job?.startedAt || status?.settings?.lastAutoSyncAt);
+  const syncMeta = jobRunning
+    ? `<span class="check24-header-meta is-syncing">${fonioSvgIcon('<path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>', 13)} ${esc(t('check24.syncing'))}</span>`
+    : `<span class="check24-header-meta">${esc(t('check24.lastSyncLabel', { time: lastSync || t('check24.none') }))}</span>`;
+  el.innerHTML = `
+    <span class="check24-pill-status ${connected ? 'is-ok' : 'is-bad'}">${esc(connected ? t('check24.connected') : t('check24.disconnected'))}</span>
+    ${syncMeta}
+    <span class="check24-header-ops ${jobRunning ? 'is-syncing' : connected ? 'is-ok' : 'is-bad'}">
+      <span class="check24-ops-dot"></span>
+      ${esc(jobRunning ? t('check24.syncingOps') : connected ? t('check24.systemsOk') : t('check24.systemsBad'))}
+    </span>
+  `;
+}
+
+function setCheck24Syncing(on) {
+  check24Syncing = Boolean(on);
+  const status = check24Cache.status;
+  const connected =
+    Boolean(status?.enabled) &&
+    Boolean(status?.configured) &&
+    Boolean(status?.ping?.ok);
+  renderCheck24Header(status, connected);
+  if (check24SyncPollTimer) {
+    clearInterval(check24SyncPollTimer);
+    check24SyncPollTimer = null;
+  }
+  if (!on) return;
+  let polls = 0;
+  check24SyncPollTimer = setInterval(async () => {
+    polls += 1;
+    try {
+      await loadCheck24({ silent: true });
+      if (!check24Syncing || polls >= 48) {
+        clearInterval(check24SyncPollTimer);
+        check24SyncPollTimer = null;
+        check24Syncing = false;
+        await loadCheck24();
+      }
+    } catch {
+      /* keep trying */
+    }
+  }, 2500);
+}
+
+function check24LogoMarkup(className = 'check24-inline-logo') {
+  return `<img src="/admin/assets/check24-logo-white.png" alt="CHECK24" class="${esc(className)}" width="220" height="58" />`;
+}
+
+function renderCheck24Pipeline(connected) {
+  const el = $('#check24-flow');
+  if (!el) return;
+  const badge = connected
+    ? `<span class="check24-mini-badge is-ok">${fonioSvgIcon('<path d="M20 6 9 17l-5-5"/>', 11)} ${esc(t('check24.connected'))}</span>`
+    : `<span class="check24-mini-badge is-bad">${esc(t('check24.disconnected'))}</span>`;
+  const linkIcon = connected
+    ? `<span class="check24-pipe-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12.5 10 17 18.5 7"/></svg></span>`
+    : '';
+  el.innerHTML = `
+    <div class="check24-pipe-step">
+      <div class="check24-pipe-num">1</div>
+      <div class="check24-pipe-copy">
+        <strong>${esc(t('check24.step1Title'))}</strong>
+        <p>${esc(t('check24.step1Role'))}</p>
+        ${badge}
+      </div>
+    </div>
+    <div class="check24-pipe-link ${connected ? 'is-ok' : ''}" aria-hidden="true">${linkIcon}</div>
+    <div class="check24-pipe-step">
+      <div class="check24-pipe-num">2</div>
+      <div class="check24-pipe-copy">
+        <strong>${esc(t('check24.step2Title'))}</strong>
+        <p>${esc(t('check24.step2Role'))}</p>
+        ${badge}
+      </div>
+    </div>
+    <div class="check24-pipe-link ${connected ? 'is-ok' : ''}" aria-hidden="true">${linkIcon}</div>
+    <div class="check24-pipe-step">
+      <div class="check24-pipe-num">3</div>
+      <div class="check24-pipe-copy">
+        <strong class="check24-pipe-brand">${check24LogoMarkup('check24-pipe-logo')}</strong>
+        <p>${esc(t('check24.step3Role'))}</p>
+        ${badge}
+      </div>
+    </div>
+  `;
+}
+
+function renderCheck24Kpis(mappings, bookings) {
+  const el = $('#check24-kpis');
+  if (!el) return;
+  const active = mappings.filter((m) => check24MappingState(m) !== 'archived');
+  const total = active.length;
+  const ready = active.filter((m) => check24MappingState(m) === 'ready').length;
+  const attention = active.filter((m) => check24MappingState(m) !== 'ready').length;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const bookings7d = bookings.filter((b) => {
+    const ts = new Date(b.processedAt || b.createdAt).getTime();
+    return Number.isFinite(ts) && ts >= weekAgo;
+  }).length;
+  const pct = total ? Math.round((ready / total) * 100) : 0;
+
+  el.innerHTML = `
+    <article class="check24-kpi">
+      <span class="check24-kpi-icon is-blue">${fonioSvgIcon('<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>', 18)}</span>
+      <div class="check24-kpi-body">
+        <div class="check24-kpi-value">${formatCount(total)}</div>
+        <div class="check24-kpi-label">${esc(t('check24.kpi.apartmentsSent'))} ${check24InfoIcon(t('check24.kpi.apartmentsSentTip'))}</div>
+        <div class="check24-kpi-sub">${esc(t('check24.kpi.apartmentsSentSub', { pct: String(pct) }))}</div>
+      </div>
+    </article>
+    <article class="check24-kpi">
+      <span class="check24-kpi-icon is-purple">${fonioSvgIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', 18)}</span>
+      <div class="check24-kpi-body">
+        <div class="check24-kpi-value">${formatCount(bookings7d)}</div>
+        <div class="check24-kpi-label">${esc(t('check24.kpi.importedBookings'))} ${check24InfoIcon(t('check24.kpi.importedBookingsTip'))}</div>
+        <div class="check24-kpi-sub">${esc(t('check24.kpi.importedBookingsSub'))}</div>
+      </div>
+    </article>
+    <article class="check24-kpi">
+      <span class="check24-kpi-icon is-ok">${fonioSvgIcon('<path d="M20 6 9 17l-5-5"/>', 18)}</span>
+      <div class="check24-kpi-body">
+        <div class="check24-kpi-value">${formatCount(ready)}</div>
+        <div class="check24-kpi-label is-ok">${esc(t('check24.kpi.readyShort'))} ${check24InfoIcon(t('check24.kpi.readyTip'))}</div>
+        <div class="check24-kpi-sub">${esc(t('check24.kpi.apartmentsNoun'))}</div>
+      </div>
+    </article>
+    <article class="check24-kpi">
+      <span class="check24-kpi-icon is-warn">${fonioSvgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>', 18)}</span>
+      <div class="check24-kpi-body">
+        <div class="check24-kpi-value">${formatCount(attention)}</div>
+        <div class="check24-kpi-label is-warn">${esc(t('check24.kpi.attention'))} ${check24InfoIcon(t('check24.kpi.attentionTip'))}</div>
+        <div class="check24-kpi-sub">${esc(t('check24.kpi.apartmentsNoun'))}</div>
+      </div>
+    </article>
+  `;
+}
+
+function renderCheck24SyncHealth(status, bookings) {
+  const el = $('#check24-sync-health');
+  if (!el) return;
+  const settings = status?.settings || {};
+  const enabled = Boolean(settings.autoSyncEnabled);
+  const interval = Number(settings.intervalMinutes) || 30;
+  const next = check24NextRun(settings);
+  const lastSync = check24FmtTs(status?.lastJob?.finishedAt || status?.lastJob?.startedAt || settings.lastAutoSyncAt) || t('check24.none');
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentCount = (bookings || []).filter((b) => {
+    const ts = new Date(b.processedAt || b.createdAt).getTime();
+    return Number.isFinite(ts) && ts >= weekAgo;
+  }).length;
+  const lastImport = bookings?.[0]
+    ? check24FmtTs(bookings[0].processedAt || bookings[0].createdAt)
+    : null;
+
+  el.innerHTML = `
+    <div class="check24-card-head">
+      <h3>${esc(t('check24.syncHealth'))}</h3>
+      <label class="check24-switch">
+        <span>${esc(t('check24.autoSyncEnableShort'))}</span>
+        <input type="checkbox" id="check24-health-auto-toggle" ${enabled ? 'checked' : ''} />
+        <span class="check24-switch-ui" aria-hidden="true"></span>
+      </label>
+    </div>
+    <div class="check24-health-meta">
+      <span>${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', 14)} ${esc(t('check24.intervalMin', { minutes: String(interval) }))}</span>
+      <span>${fonioSvgIcon('<path d="M5 12h14M12 5l7 7-7 7"/>', 14)} ${esc(t('check24.nextRun', { time: next ? check24FmtTs(next.toISOString()) : t('check24.autoSyncOff') }))}</span>
+    </div>
+    <ul class="check24-health-list">
+      <li class="is-ok"><span class="check24-health-dot"></span><div><strong>${esc(t('check24.health.lastSync'))}</strong><p>${esc(lastSync)}</p></div></li>
+      <li class="is-ok"><span class="check24-health-dot"></span><div><strong>${esc(t('check24.health.availability'))}</strong><p>${esc(t('check24.health.upToDate'))}</p></div></li>
+      <li class="is-ok"><span class="check24-health-dot"></span><div><strong>${esc(t('check24.health.prices'))}</strong><p>${esc(t('check24.health.upToDate'))}</p></div></li>
+      <li class="is-ok"><span class="check24-health-dot"></span><div><strong>${esc(t('check24.health.bookingImport'))}</strong><p>${esc(t('check24.health.lastImport', { time: lastImport || t('check24.none'), count: String(recentCount) }))}</p></div></li>
+    </ul>
+  `;
+
+  const healthToggle = $('#check24-health-auto-toggle');
+  if (healthToggle) {
+    healthToggle.onchange = async (e) => {
+      const on = e.target.checked;
+      const intervalMinutes = Number($('#check24-auto-sync-interval')?.value) || interval;
+      try {
+        await api('/check24/sync/settings', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            autoSyncEnabled: on,
+            autoSyncContent: $('#check24-auto-sync-content')?.checked ?? false,
+            intervalMinutes,
+          }),
+        });
+        if ($('#check24-auto-sync-enabled')) $('#check24-auto-sync-enabled').checked = on;
+        notify.success(t('check24.autoSyncSaved'));
+        await loadCheck24();
+      } catch (ex) {
+        e.target.checked = !on;
+        notify.error(ex.message);
+      }
+    };
+  }
+}
+
+function renderCheck24BookingsRows(bookings, { limit = null } = {}) {
+  const rows = limit != null ? bookings.slice(0, limit) : bookings;
+  if (!rows.length) {
+    return `<div class="check24-empty">${esc(t('check24.bookingsNone'))}</div>`;
+  }
+  return `
+    <div class="table-wrap">
+      <table class="check24-data-table">
+        <thead>
+          <tr>
+            <th>${esc(t('check24.col.status'))}</th>
+            <th>${esc(t('check24.bookingGuest'))}</th>
+            <th>${esc(t('check24.bookingProperty'))}</th>
+            <th>${esc(t('check24.col.stay'))}</th>
+            <th>${esc(t('check24.col.amount'))}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map((b) => {
+              const meta = check24BookingStatusMeta(b.status);
+              const stay =
+                b.dateFrom && b.dateTo ? `${b.dateFrom} → ${b.dateTo}` : '—';
+              const amount =
+                typeof b.totalPrice === 'number'
+                  ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
+                  : '—';
+              return `<tr>
+                <td><span class="check24-booking-pill ${meta.cls}">${esc(meta.label)}</span></td>
+                <td>${esc(b.guestName || '—')}</td>
+                <td>${esc(b.listingName || t('check24.bookingNoProperty'))}</td>
+                <td>${esc(stay)}</td>
+                <td>${esc(amount)}</td>
+              </tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderCheck24ApartmentsRows(mappings) {
+  if (!mappings.length) {
+    return `<div class="check24-empty">${esc(t('check24.none'))}</div>`;
+  }
+  return `
+    <div class="table-wrap">
+      <table class="check24-data-table">
+        <thead>
+          <tr>
+            <th>${esc(t('check24.col.property'))}</th>
+            <th>${esc(t('check24.col.hostawayId'))}</th>
+            <th>${esc(t('check24.col.check24Id'))}</th>
+            <th title="${esc(t('check24.col.dataTip'))}">${esc(t('check24.col.data'))} ${check24InfoIcon(t('check24.col.dataTip'))}</th>
+            <th>${esc(t('check24.col.availability'))}</th>
+            <th>${esc(t('check24.col.prices'))}</th>
+            <th>${esc(t('check24.col.lastSent'))}</th>
+            <th>${esc(t('check24.col.status'))}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${mappings
+            .map((m) => {
+              const state = check24MappingState(m);
+              const statusLabel =
+                state === 'ready'
+                  ? t('check24.statusReady')
+                  : state === 'archived'
+                    ? t('check24.statusArchived')
+                    : t('check24.statusAttention');
+              const statusCls =
+                state === 'ready'
+                  ? 'is-ready'
+                  : state === 'archived'
+                    ? 'is-archived'
+                    : 'is-attention';
+              const reason = state === 'ready' ? '' : check24AttentionReason(m);
+              const dataCell =
+                state === 'archived'
+                  ? `<span class="check24-sync-chip is-stale">${fonioSvgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>', 12)} ${esc(t('check24.chip.archived'))}</span>`
+                  : state !== 'ready' && m.lastError && !m.contentSyncedAt
+                    ? `${check24SyncChip('data', m.contentSyncedAt)}<div class="check24-row-error" title="${esc(m.lastError)}">${esc(m.lastError)}</div>`
+                    : check24SyncChip('data', m.contentSyncedAt);
+              const last =
+                check24FmtTs(
+                  m.ratesSyncedAt || m.availabilitySyncedAt || m.contentSyncedAt,
+                ) || t('check24.notSynced');
+              return `<tr class="${state === 'ready' ? '' : state === 'archived' ? 'is-archived-row' : 'is-attention-row'}">
+                <td><strong>${esc(m.listing?.name || '—')}</strong></td>
+                <td><code>${esc(String(m.listing?.hostawayId ?? '—'))}</code></td>
+                <td><code>${esc(m.check24PropertyId || '—')}</code></td>
+                <td>${dataCell}</td>
+                <td>${state === 'archived' ? '—' : check24SyncChip('availability', m.availabilitySyncedAt)}</td>
+                <td>${state === 'archived' ? '—' : check24SyncChip('prices', m.ratesSyncedAt)}</td>
+                <td>${esc(last)}</td>
+                <td><span class="check24-status-badge ${statusCls}" title="${esc(reason)}">${esc(statusLabel)}</span></td>
+              </tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderCheck24ApartmentsTable() {
+  const all = check24Cache.mappings || [];
+  const q = (check24TableState.apartments.search || '').toLowerCase();
+  const filtered = q
+    ? all.filter((m) => {
+        const hay = [
+          m.listing?.name,
+          m.listing?.hostawayId,
+          m.check24PropertyId,
+          m.lastError,
+        ]
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      })
+    : all;
+
+  const pageSize = check24TableState.apartments.pageSize || 25;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  if (check24TableState.apartments.page > totalPages) {
+    check24TableState.apartments.page = totalPages;
+  }
+  const page = check24TableState.apartments.page;
+  const start = (page - 1) * pageSize;
+  const items = filtered.slice(start, start + pageSize);
+
+  const list = $('#check24-mappings-table');
+  if (list) list.innerHTML = renderCheck24ApartmentsRows(items);
+  const preview = $('#check24-apartments-preview');
+  if (preview) preview.innerHTML = renderCheck24ApartmentsRows(filtered.slice(0, 5));
+
+  const badge = $('#check24-count-badge');
+  if (badge) {
+    const active = all.filter((m) => check24MappingState(m) !== 'archived');
+    const ready = active.filter((m) => check24MappingState(m) === 'ready').length;
+    const attention = active.length - ready;
+    const archived = all.length - active.length;
+    badge.textContent = t('check24.apartmentsCount', { count: String(active.length) });
+    badge.title = t('check24.apartmentsCountTip', {
+      ready: String(ready),
+      attention: String(attention),
+    }) + (archived ? ` · ${t('check24.apartmentsArchivedTip', { count: String(archived) })}` : '');
+  }
+
+  const info = {
+    page,
+    pageSize,
+    total: filtered.length,
+    totalPages,
+  };
+  renderTableInfo('#check24-apartments-info', info, all.length);
+
+  // Custom pagination binding
+  const pager = $('#check24-apartments-pagination');
+  if (pager) {
+    pager.innerHTML = `
+      <div class="paginate" role="navigation">
+        <button type="button" class="page-btn prev" data-c24-apt-page="prev" ${page <= 1 ? 'disabled' : ''}>‹</button>
+        ${Array.from({ length: totalPages }, (_, i) => i + 1)
+          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+          .reduce((acc, p, idx, arr) => {
+            if (idx && p - arr[idx - 1] > 1) acc.push('…');
+            acc.push(p);
+            return acc;
+          }, [])
+          .map((p) =>
+            p === '…'
+              ? `<span class="page-btn ellipsis">…</span>`
+              : `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-c24-apt-page="${p}">${p}</button>`,
+          )
+          .join('')}
+        <button type="button" class="page-btn next" data-c24-apt-page="next" ${page >= totalPages ? 'disabled' : ''}>›</button>
+      </div>`;
+    pager.querySelectorAll('[data-c24-apt-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-c24-apt-page');
+        if (v === 'prev') check24TableState.apartments.page = Math.max(1, page - 1);
+        else if (v === 'next') check24TableState.apartments.page = Math.min(totalPages, page + 1);
+        else check24TableState.apartments.page = Number(v) || 1;
+        renderCheck24ApartmentsTable();
+      });
+    });
+  }
+}
+
+function renderCheck24BookingsTable() {
+  const all = check24Cache.bookings || [];
+  const q = (check24TableState.bookings.search || '').toLowerCase();
+  const filtered = q
+    ? all.filter((b) => {
+        const hay = [
+          b.guestName,
+          b.listingName,
+          b.status,
+          b.dateFrom,
+          b.dateTo,
+          b.hostawayReservationId,
+          b.check24BookingId,
+        ]
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      })
+    : all;
+
+  const pageSize = check24TableState.bookings.pageSize || 25;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  if (check24TableState.bookings.page > totalPages) check24TableState.bookings.page = totalPages;
+  const page = check24TableState.bookings.page;
+  const start = (page - 1) * pageSize;
+  const items = filtered.slice(start, start + pageSize);
+
+  const list = $('#check24-bookings-table');
+  if (list) list.innerHTML = renderCheck24BookingsRows(items);
+  const recent = $('#check24-recent-bookings');
+  if (recent) recent.innerHTML = renderCheck24BookingsRows(all, { limit: 5 });
+
+  const badge = $('#check24-bookings-badge');
+  if (badge) badge.textContent = String(all.length);
+
+  const info = {
+    page,
+    pageSize,
+    total: filtered.length,
+    totalPages,
+  };
+  renderTableInfo('#check24-bookings-info', info, all.length);
+  const pager = $('#check24-bookings-pagination');
+  if (pager) {
+    pager.innerHTML = `
+      <div class="paginate" role="navigation">
+        <button type="button" class="page-btn prev" data-c24-bk-page="prev" ${page <= 1 ? 'disabled' : ''}>‹</button>
+        ${Array.from({ length: totalPages }, (_, i) => i + 1)
+          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+          .reduce((acc, p, idx, arr) => {
+            if (idx && p - arr[idx - 1] > 1) acc.push('…');
+            acc.push(p);
+            return acc;
+          }, [])
+          .map((p) =>
+            p === '…'
+              ? `<span class="page-btn ellipsis">…</span>`
+              : `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-c24-bk-page="${p}">${p}</button>`,
+          )
+          .join('')}
+        <button type="button" class="page-btn next" data-c24-bk-page="next" ${page >= totalPages ? 'disabled' : ''}>›</button>
+      </div>`;
+    pager.querySelectorAll('[data-c24-bk-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-c24-bk-page');
+        if (v === 'prev') check24TableState.bookings.page = Math.max(1, page - 1);
+        else if (v === 'next') check24TableState.bookings.page = Math.min(totalPages, page + 1);
+        else check24TableState.bookings.page = Number(v) || 1;
+        renderCheck24BookingsTable();
+      });
+    });
+  }
+}
+
+async function loadCheck24(opts = {}) {
+  ensureCheck24Ui();
   const [status, mappings, bookings] = await Promise.all([
     api('/check24/status'),
     api('/check24/mappings'),
-    api('/check24/bookings?limit=50'),
+    api('/check24/bookings?limit=200'),
   ]);
+
+  check24Cache = {
+    status,
+    mappings: Array.isArray(mappings) ? mappings : [],
+    bookings: Array.isArray(bookings) ? bookings : [],
+  };
 
   const connected =
     Boolean(status?.enabled) &&
     Boolean(status?.configured) &&
     Boolean(status?.ping?.ok);
   const baseUrl = String(status?.baseUrl || '');
-  const mapCount = mappings?.length ?? status?.mappings ?? 0;
-  const bookingCount = bookings?.length ?? status?.bookings ?? 0;
 
-  const hero = $('#check24-hero');
-  if (hero) {
-    hero.className = `check24-hero ${connected ? 'is-ok' : 'is-bad'}`;
-    hero.innerHTML = `
-      <div class="check24-hero-main">
-        <div class="check24-hero-dot" aria-hidden="true"></div>
-        <div>
-          <h3>${esc(connected ? t('check24.heroOkTitle') : t('check24.heroBadTitle'))}</h3>
-          <p>${esc(connected ? t('check24.heroOkText') : t('check24.heroBadText'))}</p>
-        </div>
-      </div>
-      <div class="check24-hero-stats">
-        <span class="check24-pill">${esc(
-          t('check24.statApartments', { count: String(mapCount) }),
-        )}</span>
-        <span class="check24-pill">${esc(
-          t('check24.statBookings', { count: String(bookingCount) }),
-        )}</span>
-      </div>
-    `;
+  const jobStatus = String(status?.lastJob?.status || '').toLowerCase();
+  const jobStillRunning = ['running', 'pending', 'in_progress', 'started', 'queued'].includes(jobStatus);
+  if (check24Syncing && !jobStillRunning && status?.lastJob?.finishedAt) {
+    check24Syncing = false;
+    if (check24SyncPollTimer) {
+      clearInterval(check24SyncPollTimer);
+      check24SyncPollTimer = null;
+    }
   }
 
-  const badge = $('#check24-count-badge');
-  if (badge) badge.textContent = String(mapCount);
-  const bookingsBadge = $('#check24-bookings-badge');
-  if (bookingsBadge) bookingsBadge.textContent = String(bookingCount);
+  renderCheck24Header(status, connected);
+  if (opts.silent) {
+    // Keep tables/settings as-is during poll; only header status updates above.
+    applyRoleUi();
+    return;
+  }
+  renderCheck24Pipeline(connected);
+  renderCheck24Kpis(check24Cache.mappings, check24Cache.bookings);
+  renderCheck24SyncHealth(status, check24Cache.bookings);
+  renderCheck24BookingsTable();
+  renderCheck24ApartmentsTable();
+  activateCheck24Tab(check24ActiveTab);
 
   const job = status.lastJob;
-  const jobWhen = job
-    ? check24FmtTs(job.finishedAt || job.startedAt)
-    : null;
-  const jobText = job
-    ? `${job.status}${jobWhen ? ` · ${jobWhen}` : ''}${job.error ? ` · ${job.error}` : ''}`
-    : t('check24.none');
+  const jobWhen = job ? check24FmtTs(job.finishedAt || job.startedAt) : null;
+  const jobStatusRaw = String(job?.status || '');
+  const jobStatusLower = jobStatusRaw.toLowerCase();
+  const jobOk =
+    !job ||
+    ['completed', 'completed_with_errors', 'success', 'ok', 'done'].includes(jobStatusLower);
   const hint = $('#check24-status-hint');
   if (hint) {
-    hint.innerHTML = `
-      <strong>${t('check24.baseUrl')}:</strong> <code>${esc(baseUrl)}</code><br>
-      <strong>${t('check24.lastJob')}:</strong> ${esc(jobText)}
-      ${status.ping?.error ? `<br><span class="error">${esc(status.ping.error)}</span>` : ''}
+    if (!job) {
+      hint.innerHTML = `<span class="check24-last-send-line">${esc(t('check24.none'))}</span>`;
+    } else {
+      const statusLabel = jobOk ? t('check24.jobCompleted') : esc(jobStatusRaw || '—');
+      hint.innerHTML = `
+        <span class="check24-last-send-line ${jobOk ? 'is-ok' : 'is-bad'}">
+          <span class="check24-ops-dot"></span>
+          <span class="check24-job-pill ${jobOk ? 'is-ok' : 'is-bad'}">${jobOk ? esc(statusLabel) : esc(jobStatusRaw)}</span>
+          ${jobWhen ? `<span class="check24-job-when">· ${esc(jobWhen)}</span>` : ''}
+        </span>
+        ${job.error ? `<span class="error">${esc(job.error)}</span>` : ''}
+      `;
+    }
+  }
+
+  const baseUrlEl = $('#check24-base-url');
+  if (baseUrlEl) baseUrlEl.value = baseUrl;
+  const envBadge = $('#check24-env-badge');
+  if (envBadge) {
+    const isStaging = /staging|test|check24-test/i.test(baseUrl);
+    envBadge.textContent = isStaging ? t('check24.envStaging') : t('check24.envLive');
+    envBadge.title = isStaging ? t('check24.envStagingTip') : t('check24.envLiveTip');
+    envBadge.classList.toggle('is-live', !isStaging);
+  }
+
+  const conn = $('#check24-settings-conn');
+  if (conn) {
+    conn.innerHTML = `
+      <div class="check24-settings-conn-row ${connected ? 'is-ok' : 'is-bad'}">
+        <span class="check24-ops-dot"></span>
+        <div>
+          <strong>${esc(connected ? t('check24.connected') : t('check24.disconnected'))}</strong>
+          <p>${esc(connected ? t('check24.systemsOk') : t('check24.systemsBad'))}</p>
+        </div>
+      </div>
     `;
-  }
-
-  const bookingsList = $('#check24-bookings-table');
-  if (bookingsList) {
-    if (!bookings?.length) {
-      bookingsList.innerHTML = `<div class="check24-empty">${esc(t('check24.bookingsNone'))}</div>`;
-    } else {
-      bookingsList.innerHTML = bookings
-        .map((b) => {
-          const propertyName =
-            b.listingName || t('check24.bookingNoProperty');
-          const propertyId = b.check24PropertyId || '—';
-          const hostawayListing =
-            b.listingHostawayId != null ? String(b.listingHostawayId) : null;
-          const dates =
-            b.dateFrom && b.dateTo
-              ? `${b.dateFrom} → ${b.dateTo}`
-              : '—';
-          const guest = b.guestName || '—';
-          const price =
-            typeof b.totalPrice === 'number'
-              ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
-              : null;
-          const statusLabel = String(b.status || 'unknown').toUpperCase();
-          const statusClass = ['booked', 'requested'].includes(
-            String(b.status || '').toLowerCase(),
-          )
-            ? 'is-ready'
-            : ['canceled', 'cancelled', 'declined', 'failed'].includes(
-                  String(b.status || '').toLowerCase(),
-                )
-              ? 'is-error'
-              : 'is-partial';
-          const imported =
-            check24FmtTs(b.processedAt || b.createdAt) || '—';
-          return `
-            <article class="check24-listing check24-booking ${statusClass}">
-              <div class="check24-listing-top">
-                <div>
-                  <h4>${esc(propertyName)}</h4>
-                  <p class="check24-listing-meta">
-                    ${esc(propertyId)}${
-                      hostawayListing
-                        ? ` · Hostaway #${esc(hostawayListing)}`
-                        : ''
-                    }
-                  </p>
-                </div>
-                <span class="check24-status-badge ${statusClass}">${esc(statusLabel)}</span>
-              </div>
-              <p class="check24-listing-sent">
-                <strong>${esc(t('check24.bookingGuest'))}:</strong> ${esc(guest)}
-                · <strong>${esc(t('check24.bookingDates'))}:</strong> ${esc(dates)}
-                ${price ? ` · ${esc(price)}` : ''}
-              </p>
-              <p class="check24-listing-meta">
-                ${esc(
-                  t('check24.bookingCheck24', {
-                    id: String(b.check24BookingId || '—'),
-                  }),
-                )}
-                ${
-                  b.hostawayReservationId
-                    ? ` · ${esc(
-                        t('check24.bookingHostaway', {
-                          id: String(b.hostawayReservationId),
-                        }),
-                      )}`
-                    : ''
-                }
-                · ${esc(t('check24.bookingImportedAt', { time: imported }))}
-              </p>
-              ${
-                b.lastError
-                  ? `<p class="check24-listing-error">${esc(b.lastError)}</p>`
-                  : ''
-              }
-            </article>
-          `;
-        })
-        .join('');
-    }
-  }
-
-  const list = $('#check24-mappings-table');
-  if (list) {
-    if (!mappings?.length) {
-      list.innerHTML = `<div class="check24-empty">${esc(t('check24.none'))}</div>`;
-    } else {
-      list.innerHTML = mappings
-        .map((m) => {
-          const state = check24MappingState(m);
-          const label =
-            state === 'ready'
-              ? t('check24.statusReady')
-              : state === 'error'
-                ? t('check24.statusError')
-                : t('check24.statusPartial');
-          const last =
-            check24FmtTs(
-              m.ratesSyncedAt ||
-                m.availabilitySyncedAt ||
-                m.contentSyncedAt,
-            ) || t('check24.notSynced');
-          return `
-            <article class="check24-listing ${state === 'error' ? 'is-error' : state === 'ready' ? 'is-ready' : 'is-partial'}">
-              <div class="check24-listing-top">
-                <div>
-                  <h4>${esc(m.listing?.name || '—')}</h4>
-                  <p class="check24-listing-meta">Hostaway #${esc(
-                    String(m.listing?.hostawayId ?? '—'),
-                  )} · CHECK24 ${esc(m.check24PropertyId || '—')}</p>
-                </div>
-                <span class="check24-status-badge is-${state}">${esc(label)}</span>
-              </div>
-              <p class="check24-listing-sent">${esc(
-                t('check24.sentAt', { time: last }),
-              )}</p>
-              ${
-                m.lastError
-                  ? `<p class="check24-listing-error">${esc(m.lastError)}</p>`
-                  : ''
-              }
-            </article>
-          `;
-        })
-        .join('');
-    }
   }
 
   const settings = status.settings || {};
+  const enabled = Boolean(settings.autoSyncEnabled);
   const enabledEl = $('#check24-auto-sync-enabled');
   const contentEl = $('#check24-auto-sync-content');
   const intervalEl = $('#check24-auto-sync-interval');
-  if (enabledEl) enabledEl.checked = Boolean(settings.autoSyncEnabled);
-  if (contentEl) contentEl.checked = Boolean(settings.autoSyncContent);
-  if (intervalEl) {
-    intervalEl.value = String(settings.intervalMinutes ?? 30);
+  const masterEl = $('#check24-auto-sync-master');
+  if (enabledEl) enabledEl.checked = enabled;
+  if (masterEl) masterEl.checked = enabled;
+  updateCheck24AutoSyncMasterLabel(enabled);
+  if (contentEl) {
+    contentEl.checked = Boolean(settings.autoSyncContent) && enabled;
+    contentEl.disabled = !enabled;
   }
+  $('#check24-auto-sync-content-row')?.classList.toggle('is-disabled', !enabled);
+  if (intervalEl) {
+    const minutes = String(settings.intervalMinutes ?? 30);
+    if (![...intervalEl.options].some((o) => o.value === minutes)) {
+      const opt = document.createElement('option');
+      opt.value = minutes;
+      opt.textContent = minutes;
+      intervalEl.appendChild(opt);
+    }
+    intervalEl.value = minutes;
+  }
+
+  const lastAuto = check24FmtTs(settings.lastAutoSyncAt);
+  const lastAutoEl = $('#check24-settings-last-auto');
+  if (lastAutoEl) {
+    lastAutoEl.innerHTML = `${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', 14)} <span>${esc(lastAuto || t('check24.none'))}</span>`;
+  }
+
   const autoHint = $('#check24-auto-sync-hint');
   if (autoHint) {
     const parts = [
       settings.autoSyncEnabled
-        ? t('check24.autoSyncNext', {
-            minutes: String(settings.intervalMinutes ?? 30),
-          })
+        ? t('check24.autoSyncNext', { minutes: String(settings.intervalMinutes ?? 30) })
         : t('check24.autoSyncOff'),
     ];
-    const lastAuto = check24FmtTs(settings.lastAutoSyncAt);
-    if (lastAuto) {
-      parts.push(t('check24.autoSyncLast', { time: lastAuto }));
-    }
-    autoHint.textContent = parts.join(' · ');
+    if (lastAuto) parts.push(t('check24.autoSyncLast', { time: lastAuto }));
+    autoHint.innerHTML = `${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>', 14)} <span>${esc(parts.join(' · '))}</span>`;
   }
 
   applyRoleUi();
@@ -10697,11 +11247,14 @@ $('#check24-sync-settings-form')?.addEventListener('submit', async (e) => {
     notify.error(t('check24.autoSyncIntervalInvalid'));
     return;
   }
+  const enabled =
+    Boolean($('#check24-auto-sync-master')?.checked) ||
+    Boolean($('#check24-auto-sync-enabled')?.checked);
   try {
     await api('/check24/sync/settings', {
       method: 'PATCH',
       body: JSON.stringify({
-        autoSyncEnabled: $('#check24-auto-sync-enabled').checked,
+        autoSyncEnabled: enabled,
         autoSyncContent: $('#check24-auto-sync-content').checked,
         intervalMinutes,
       }),
@@ -10720,19 +11273,22 @@ $('#check24-refresh-btn')?.addEventListener('click', () => {
 $('#check24-sync-btn')?.addEventListener('click', async () => {
   const el = $('#check24-action-result');
   try {
+    setCheck24Syncing(true);
     const data = await api('/check24/sync', {
       method: 'POST',
       body: JSON.stringify({ content: true, availability: true, rates: true }),
     });
     if (data.started === false) {
+      setCheck24Syncing(false);
       el.textContent = t('check24.syncAlready');
       notify.info(t('check24.syncAlready'));
+      await loadCheck24();
     } else {
       el.textContent = t('check24.syncStarted');
       notify.success(t('check24.syncStarted'));
-      setTimeout(() => loadCheck24().catch(() => {}), 8000);
     }
   } catch (ex) {
+    setCheck24Syncing(false);
     el.textContent = ex.message;
     notify.error(ex.message);
   }
