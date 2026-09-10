@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260911q" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260911s" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1048,8 +1048,14 @@
       </section>
 
       <section id="tab-fonio" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="fonio.title">fonio.ai integration</h2></header>
-        <div class="card" id="fonio-setup"></div>
+        <header class="page-header fonio-setup-page-header">
+          <div class="fonio-setup-heading">
+            <h2 data-i18n="fonio.title">fonio.ai integration</h2>
+            <div id="fonio-setup-status" class="fonio-setup-status" aria-live="polite"></div>
+          </div>
+          <div id="fonio-setup-actions" class="fonio-setup-actions"></div>
+        </header>
+        <div id="fonio-setup" class="fonio-setup"></div>
       </section>
 
       <section id="tab-check24" class="tab hidden">
@@ -1273,10 +1279,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260911q"></script>
+  <script src="/admin/i18n.js?v=20260911s"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260911q"></script>
+  <script src="/admin/app.js?v=20260911s"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

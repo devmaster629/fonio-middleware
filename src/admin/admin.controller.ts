@@ -953,9 +953,11 @@ export class AdminController {
   @ApiOperation({ summary: 'fonio integration URLs for dashboard (production only)' })
   getFonioSetup() {
     const urls = this.fonioSetup.getSetupUrls();
+    const fonioApiKey = this.config.get<string>('FONIO_API_KEY')?.trim() || '';
     return {
       production: urls.production,
       fonioApiKeyConfigured: urls.fonioApiKeyConfigured,
+      fonioApiKey,
       notes: urls.notes,
     };
   }

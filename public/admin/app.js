@@ -10061,27 +10061,395 @@ $('#user-delete-btn')?.addEventListener('click', async () => {
   }
 });
 
-async function loadFonio() {
-  const data = await api('/fonio-setup');
-  const renderUrls = (title, urls) => {
-    const rows = Object.entries(urls).map(([key, url]) => `
-      <div class="url-row">
-        <div><strong>${key}</strong><br><code>${esc(url)}</code></div>
-        <div class="copy-wrap">
-          <span class="copy-toast">${t('common.copied')}</span>
-          <button type="button" class="btn copy" data-copy="${esc(url)}">${t('common.copy')}</button>
+const FONIO_SETUP_GROUPS = [
+  {
+    id: 'call_context',
+    titleKey: 'fonio.group.callContext',
+    icon: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    keys: ['call_context_webhook'],
+  },
+  {
+    id: 'availability',
+    titleKey: 'fonio.group.availability',
+    icon: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    keys: ['availability', 'availability_weekends'],
+  },
+  {
+    id: 'verification',
+    titleKey: 'fonio.group.verification',
+    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>',
+    keys: ['guest_verify', 'guest_verify_requirements'],
+  },
+  {
+    id: 'guest_actions',
+    titleKey: 'fonio.group.guestActions',
+    icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    keys: ['guest_reservation', 'guest_requests', 'guest_payments', 'guest_send_checkin_info'],
+  },
+  {
+    id: 'booking',
+    titleKey: 'fonio.group.booking',
+    icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    keys: ['booking_offer'],
+  },
+  {
+    id: 'webhooks',
+    titleKey: 'fonio.group.webhooks',
+    icon: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    keys: ['hostaway_webhook', 'swagger_docs'],
+  },
+];
+
+const FONIO_ENDPOINT_META = {
+  call_context_webhook: { method: 'POST', descKey: 'fonio.ep.call_context' },
+  availability: { method: 'GET', descKey: 'fonio.ep.availability' },
+  availability_weekends: { method: 'GET', descKey: 'fonio.ep.availability_weekends' },
+  guest_verify: { method: 'POST', descKey: 'fonio.ep.guest_verify' },
+  guest_verify_requirements: { method: 'GET', descKey: 'fonio.ep.guest_verify_requirements' },
+  guest_reservation: { method: 'GET', descKey: 'fonio.ep.guest_reservation' },
+  guest_requests: { method: 'POST', descKey: 'fonio.ep.guest_requests' },
+  guest_payments: { method: 'POST', descKey: 'fonio.ep.guest_payments' },
+  guest_send_checkin_info: { method: 'POST', descKey: 'fonio.ep.guest_send_checkin_info' },
+  booking_offer: { method: 'POST', descKey: 'fonio.ep.booking_offer' },
+  hostaway_webhook: { method: 'POST', descKey: 'fonio.ep.hostaway_webhook' },
+  swagger_docs: { method: 'GET', descKey: 'fonio.ep.swagger_docs' },
+};
+
+let fonioSetupCache = null;
+let fonioSetupUiBound = false;
+let fonioSetupOpenGroups = new Set(['verification']);
+
+function fonioSvgIcon(paths, size = 16) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+function fonioProductionBase(urls) {
+  const first = Object.values(urls || {})[0];
+  if (!first) return '';
+  try {
+    return new URL(String(first)).origin;
+  } catch {
+    return String(first).replace(/\/api\/.*$/, '').replace(/\/$/, '');
+  }
+}
+
+function fonioApiBasePath(urls) {
+  const base = fonioProductionBase(urls);
+  return base ? `${base}/api/v1/fonio` : '';
+}
+
+function ensureFonioSetupUi() {
+  if (fonioSetupUiBound) return;
+  fonioSetupUiBound = true;
+
+  $('#fonio-setup-actions')?.addEventListener('click', async (e) => {
+    const docs = e.target.closest?.('[data-fonio-open-docs]');
+    if (docs) {
+      const url = docs.getAttribute('data-fonio-open-docs');
+      if (url) window.open(url, '_blank', 'noopener');
+      return;
+    }
+    const testBtn = e.target.closest?.('[data-fonio-test-connection]');
+    if (testBtn) {
+      await testFonioConnection();
+    }
+  });
+
+  $('#fonio-setup')?.addEventListener('click', async (e) => {
+    const toggle = e.target.closest?.('[data-fonio-group-toggle]');
+    if (toggle) {
+      const id = toggle.getAttribute('data-fonio-group-toggle');
+      if (fonioSetupOpenGroups.has(id)) fonioSetupOpenGroups.delete(id);
+      else fonioSetupOpenGroups.add(id);
+      renderFonioSetup(fonioSetupCache);
+      return;
+    }
+
+    const copyUrl = e.target.closest?.('[data-fonio-copy-url]');
+    if (copyUrl) {
+      const url = copyUrl.getAttribute('data-fonio-copy-url');
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        notify.success(t('common.copied'));
+      } catch {
+        notify.error(t('common.copyFailed') !== 'common.copyFailed' ? t('common.copyFailed') : 'Copy failed');
+      }
+      return;
+    }
+
+    const copyHeader = e.target.closest?.('[data-fonio-copy-header]');
+    if (copyHeader) {
+      const key = String(fonioSetupCache?.fonioApiKey || '').trim();
+      if (!key) {
+        notify.error(t('fonio.check.keyMissing'));
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(`x-api-key: ${key}`);
+        notify.success(t('common.copied'));
+      } catch {
+        notify.error(t('common.copyFailed') !== 'common.copyFailed' ? t('common.copyFailed') : 'Copy failed');
+      }
+      return;
+    }
+
+    const reveal = e.target.closest?.('[data-fonio-reveal-key]');
+    if (reveal) {
+      const field = $('#fonio-setup-key-value');
+      const key = String(fonioSetupCache?.fonioApiKey || '').trim();
+      if (!field || !key) return;
+      const shown = field.dataset.revealed === '1';
+      if (shown) {
+        field.dataset.revealed = '0';
+        field.textContent = '*'.repeat(Math.min(16, Math.max(8, key.length)));
+        reveal.innerHTML = `${fonioSvgIcon('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>', 14)} ${esc(t('fonio.reveal'))}`;
+      } else {
+        field.dataset.revealed = '1';
+        field.textContent = key;
+        reveal.innerHTML = `${fonioSvgIcon('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-8-10-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m1 1 22 22"/>', 14)} ${esc(t('fonio.hide'))}`;
+      }
+    }
+  });
+}
+
+async function testFonioConnection() {
+  const started = performance.now();
+  try {
+    await api('/fonio-setup');
+    const ms = Math.round(performance.now() - started);
+    notify.success(t('fonio.testOk', { ms: String(ms) }));
+    await loadFonio({ silent: true });
+  } catch (ex) {
+    notify.error(ex.message || t('fonio.testFail'));
+  }
+}
+
+function pickLastFonioSuccess(logs) {
+  const list = Array.isArray(logs) ? logs : [];
+  for (const log of list) {
+    const kind = typeof fonioOutcomeKind === 'function' ? fonioOutcomeKind(log) : null;
+    const ok =
+      kind === 'success' ||
+      (Number(log.statusCode) >= 200 && Number(log.statusCode) < 300);
+    if (ok) return log;
+  }
+  return null;
+}
+
+function renderFonioSetup(data) {
+  if (!data) return;
+  const urls = data.production ?? {};
+  const keyOk = !!data.fonioApiKeyConfigured || !!String(data.fonioApiKey || '').trim();
+  const apiKey = String(data.fonioApiKey || '').trim();
+  const maskedKey = apiKey ? '*'.repeat(Math.min(16, Math.max(8, apiKey.length))) : '****************';
+  const base = fonioProductionBase(urls);
+  const apiBase = fonioApiBasePath(urls);
+  const docsUrl = urls.swagger_docs || (base ? `${base}/docs` : '');
+  const endpointCount = Object.keys(urls).length;
+  const last = data.lastSuccess || null;
+  const lastAt = last?.createdAt ? formatDashboardDateTime(last.createdAt) : t('fonio.noRecentCall');
+  const lastMs =
+    last?.durationMs != null && Number.isFinite(Number(last.durationMs))
+      ? t('fonio.responseMs', { ms: String(last.durationMs) })
+      : t('fonio.noLatency');
+
+  const statusEl = $('#fonio-setup-status');
+  if (statusEl) {
+    statusEl.innerHTML = `
+      <span class="fonio-setup-pill is-ok">${fonioSvgIcon('<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>', 10)} ${esc(t('fonio.statusConnected'))}</span>
+      <span class="fonio-setup-pill is-ok subtle">${esc(t('fonio.statusHealthy'))}</span>
+    `;
+  }
+
+  const actionsEl = $('#fonio-setup-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button type="button" class="btn ghost" data-fonio-open-docs="${esc(docsUrl)}" ${docsUrl ? '' : 'disabled'}>
+        ${fonioSvgIcon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>', 15)}
+        ${esc(t('fonio.openDocs'))}
+        ${fonioSvgIcon('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>', 13)}
+      </button>
+      <button type="button" class="btn primary" data-fonio-test-connection>
+        ${fonioSvgIcon('<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>', 15)}
+        ${esc(t('fonio.testConnection'))}
+      </button>
+    `;
+  }
+
+  const groupsHtml = FONIO_SETUP_GROUPS.map((group) => {
+    const entries = group.keys
+      .filter((k) => urls[k])
+      .map((k) => ({ key: k, url: urls[k], meta: FONIO_ENDPOINT_META[k] || { method: 'POST', descKey: '' } }));
+    if (!entries.length) return '';
+    const open = fonioSetupOpenGroups.has(group.id);
+    const rows = entries
+      .map((ep) => {
+        const desc = ep.meta.descKey ? t(ep.meta.descKey) : '';
+        const methodCls = ep.meta.method === 'GET' ? 'is-get' : 'is-post';
+        return `
+          <div class="fonio-setup-endpoint">
+            <span class="fonio-setup-method ${methodCls}">${esc(ep.meta.method)}</span>
+            <div class="fonio-setup-endpoint-main">
+              <div class="fonio-setup-endpoint-title">${esc(ep.key)}</div>
+              ${desc && desc !== ep.meta.descKey ? `<div class="fonio-setup-endpoint-desc">${esc(desc)}</div>` : ''}
+              <code class="fonio-setup-endpoint-url">${esc(ep.url)}</code>
+            </div>
+            <div class="fonio-setup-endpoint-actions">
+              <button type="button" class="btn ghost btn-sm" data-fonio-copy-url="${esc(ep.url)}">
+                ${fonioSvgIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', 14)}
+                ${esc(t('common.copy'))}
+              </button>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    return `
+      <section class="fonio-setup-accordion ${open ? 'is-open' : ''}">
+        <button type="button" class="fonio-setup-accordion-head" data-fonio-group-toggle="${esc(group.id)}" aria-expanded="${open ? 'true' : 'false'}">
+          <span class="fonio-setup-accordion-icon">${fonioSvgIcon(group.icon, 16)}</span>
+          <span class="fonio-setup-accordion-title">${esc(t(group.titleKey))}</span>
+          <span class="fonio-setup-accordion-count">${entries.length}</span>
+          <span class="fonio-setup-accordion-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="fonio-setup-accordion-body">${rows}</div>
+      </section>`;
+  }).join('');
+
+  const checklist = [
+    {
+      ok: keyOk,
+      title: t('fonio.check.key'),
+      detail: keyOk ? t('fonio.check.keyOk') : t('fonio.check.keyMissing'),
+    },
+    {
+      ok: !!urls.hostaway_webhook,
+      title: t('fonio.check.webhook'),
+      detail: t('fonio.check.webhookOk'),
+    },
+    {
+      ok: true,
+      title: t('fonio.check.masking'),
+      detail: t('fonio.check.maskingOk'),
+    },
+    {
+      ok: !!docsUrl,
+      title: t('fonio.check.docs'),
+      detail: t('fonio.check.docsOk'),
+    },
+    {
+      ok: null,
+      warn: true,
+      title: t('fonio.check.rotate'),
+      detail: t('fonio.check.rotateHint'),
+    },
+  ];
+
+  const checklistHtml = checklist
+    .map((item) => {
+      const cls = item.warn ? 'is-warn' : item.ok ? 'is-ok' : 'is-fail';
+      const icon = item.warn
+        ? fonioSvgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>', 14)
+        : item.ok
+          ? fonioSvgIcon('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', 14)
+          : fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>', 14);
+      return `
+        <li class="fonio-setup-check ${cls}">
+          <span class="fonio-setup-check-icon">${icon}</span>
+          <div>
+            <div class="fonio-setup-check-title">${esc(item.title)}</div>
+            <div class="fonio-setup-check-detail">${esc(item.detail)}</div>
+          </div>
+        </li>`;
+    })
+    .join('');
+
+  $('#fonio-setup').innerHTML = `
+    <div class="fonio-setup-stats">
+      <article class="fonio-setup-stat">
+        <span class="fonio-setup-stat-icon">${fonioSvgIcon('<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>', 18)}</span>
+        <div class="fonio-setup-stat-value">${endpointCount}</div>
+        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.endpoints'))}</div>
+        <div class="fonio-setup-stat-sub">${esc(t('fonio.stat.endpointsSub'))}</div>
+      </article>
+      <article class="fonio-setup-stat">
+        <span class="fonio-setup-stat-icon">${fonioSvgIcon('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>', 18)}</span>
+        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.auth'))}</div>
+        <div class="fonio-setup-stat-value ${keyOk ? 'is-ok' : 'is-fail'}">${esc(keyOk ? t('fonio.stat.authConfigured') : t('fonio.stat.authMissing'))}</div>
+        <div class="fonio-setup-stat-sub">${esc(t('fonio.stat.authSub'))}</div>
+      </article>
+      <article class="fonio-setup-stat">
+        <span class="fonio-setup-stat-icon">${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', 18)}</span>
+        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.lastCall'))}</div>
+        <div class="fonio-setup-stat-value is-sm">${esc(lastAt)}</div>
+        <div class="fonio-setup-stat-sub ${last ? 'is-ok' : ''}">${esc(lastMs)}</div>
+      </article>
+      <article class="fonio-setup-stat">
+        <span class="fonio-setup-stat-icon">${fonioSvgIcon('<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/>', 18)}</span>
+        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.env'))}</div>
+        <div class="fonio-setup-stat-value is-ok">${esc(t('fonio.stat.envProd'))}</div>
+        <div class="fonio-setup-stat-sub"><a class="fonio-setup-link" href="${esc(base)}" target="_blank" rel="noopener">${esc(base || '—')}</a></div>
+      </article>
+    </div>
+
+    <div class="fonio-setup-layout">
+      <div class="fonio-setup-main">
+        ${groupsHtml}
+        <div class="fonio-setup-https-note">
+          ${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>', 15)}
+          <span>${esc(t('fonio.httpsNote', { base: apiBase || base || '—' }))}</span>
         </div>
       </div>
-    `).join('');
-    return `<h3>${title}</h3>${rows}`;
-  };
-  const urls = data.production ?? data;
-  $('#fonio-setup').innerHTML = `
-    ${renderUrls(t('fonio.production'), urls)}
-    <p style="margin-top:1rem;color:var(--muted);font-size:0.85rem">
-      ${t('fonio.headerNote')} <code>x-api-key: &lt;FONIO_API_KEY&gt;</code>
-    </p>
+
+      <aside class="fonio-setup-side">
+        <div class="card fonio-setup-side-card">
+          <h3>${esc(t('fonio.checklistTitle'))}</h3>
+          <ul class="fonio-setup-checklist">${checklistHtml}</ul>
+          ${
+            docsUrl
+              ? `<a class="fonio-setup-side-link" href="${esc(docsUrl)}" target="_blank" rel="noopener">${esc(t('fonio.viewChecklist'))} ${fonioSvgIcon('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>', 13)}</a>`
+              : ''
+          }
+        </div>
+
+        <div class="card fonio-setup-side-card">
+          <h3>${esc(t('fonio.apiKeyTitle'))}</h3>
+          <p class="fonio-setup-side-hint">${esc(t('fonio.apiKeyHint'))}</p>
+          <div class="fonio-setup-key-box">
+            <code>x-api-key:</code>
+            <span id="fonio-setup-key-value" data-revealed="0">${esc(maskedKey)}</span>
+            <button type="button" class="btn ghost btn-sm" data-fonio-reveal-key ${apiKey ? '' : 'disabled'}>
+              ${fonioSvgIcon('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>', 14)}
+              ${esc(t('fonio.reveal'))}
+            </button>
+          </div>
+          <button type="button" class="btn ghost fonio-setup-copy-header" data-fonio-copy-header ${apiKey ? '' : 'disabled'}>
+            ${fonioSvgIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', 14)}
+            ${esc(t('fonio.copyHeader'))}
+          </button>
+          <p class="fonio-setup-key-note">${esc(apiKey ? t('fonio.apiKeyReadyNote') : t('fonio.check.keyMissing'))}</p>
+        </div>
+      </aside>
+    </div>
   `;
+}
+
+async function loadFonio(opts = {}) {
+  ensureFonioSetupUi();
+  const [setup, activity] = await Promise.all([
+    api('/fonio-setup'),
+    api('/fonio-activity?limit=50').catch(() => []),
+  ]);
+  const lastSuccess = pickLastFonioSuccess(activity);
+  fonioSetupCache = {
+    ...(setup || {}),
+    lastSuccess,
+  };
+  renderFonioSetup(fonioSetupCache);
+  if (!opts.silent) {
+    // keep accordion state
+  }
 }
 
 function check24FmtTs(value) {
