@@ -254,6 +254,8 @@ model Reservation {
   emailHash          String?
   guestNameMasked    String?
   guestFirstNameHint String?
+  /// Guest profile photo URL from Hostaway (guestPicture), when available.
+  guestPictureUrl    String?
   totalPrice         Float?
   /// Hostaway reservation isPaid (UI: Fully Paid). Synced from API.
   isPaid             Boolean?

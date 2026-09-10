@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260911c" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260911g" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -625,15 +625,78 @@
       </section>
 
       <section id="tab-requests" class="tab hidden">
-        <header class="page-header">
-          <h2 data-i18n="requests.title">Guest requests</h2>
-          <button type="button" id="inbox-backfill-btn" class="btn ghost" data-i18n="requests.backfillBtn">Link Hostaway inbox &amp; retry</button>
+        <header class="page-header requests-page-header">
+          <div class="requests-page-heading">
+            <h2 data-i18n="requests.title">Guest requests</h2>
+            <p class="page-subtitle" data-i18n="requests.hint">Manual requests are sent to the Hostaway guest conversation inbox.</p>
+          </div>
+          <button type="button" id="inbox-backfill-btn" class="btn requests-backfill-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span data-i18n="requests.backfillBtn">Link inbox &amp; retry pending</span>
+          </button>
         </header>
-        <p class="field-hint" data-i18n="requests.hint">Manual requests are posted to the Hostaway guest conversation. Use retry if forwarding failed.</p>
-        <div id="requests-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="requests-table"></div>
-        <div id="requests-info" class="table-info"></div>
-        <div id="requests-pagination" class="table-pagination"></div>
+
+        <div id="requests-stats" class="requests-stats" aria-live="polite"></div>
+
+        <div class="requests-board">
+          <div class="requests-tabs" role="tablist" aria-label="Request status">
+            <button type="button" class="requests-tab is-active" data-requests-tab="all" role="tab" aria-selected="true">
+              <span data-i18n="requests.tabAll">All requests</span>
+            </button>
+            <button type="button" class="requests-tab" data-requests-tab="pending" role="tab" aria-selected="false">
+              <span data-i18n="requests.tabPending">Pending</span>
+              <span class="requests-tab-count" data-requests-count="pending">0</span>
+            </button>
+            <button type="button" class="requests-tab" data-requests-tab="forwarded" role="tab" aria-selected="false">
+              <span data-i18n="requests.tabForwarded">Forwarded</span>
+              <span class="requests-tab-count" data-requests-count="forwarded">0</span>
+            </button>
+            <button type="button" class="requests-tab" data-requests-tab="auto" role="tab" aria-selected="false">
+              <span data-i18n="requests.tabAuto">Auto-approved</span>
+              <span class="requests-tab-count" data-requests-count="auto">0</span>
+            </button>
+            <button type="button" class="requests-tab" data-requests-tab="failed" role="tab" aria-selected="false">
+              <span data-i18n="requests.tabFailed">Failed</span>
+              <span class="requests-tab-count" data-requests-count="failed">0</span>
+            </button>
+          </div>
+
+          <div id="requests-toolbar" class="requests-toolbar"></div>
+          <div class="requests-board-divider" aria-hidden="true"></div>
+          <div class="table-wrap requests-table-wrap" id="requests-table"></div>
+          <div class="requests-table-footer">
+            <div id="requests-info" class="table-info"></div>
+            <div class="requests-footer-right">
+              <div id="requests-pagination" class="table-pagination"></div>
+              <label class="table-page-size" for="requests-page-size">
+                <span class="sr-only" data-i18n="table.show">Show</span>
+                <select id="requests-page-size" aria-label="Per page">
+                  <option value="10">10 / page</option>
+                  <option value="25">25 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div id="request-drawer" class="request-drawer hidden" aria-hidden="true">
+          <div class="request-drawer-backdrop" data-request-drawer-close></div>
+          <aside class="request-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="request-drawer-title">
+            <header class="request-drawer-header">
+              <div class="request-drawer-heading">
+                <span id="request-drawer-icon" class="request-drawer-icon" aria-hidden="true"></span>
+                <div>
+                  <h3 id="request-drawer-title">—</h3>
+                  <div id="request-drawer-id" class="request-drawer-id">—</div>
+                </div>
+              </div>
+              <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">×</button>
+            </header>
+            <div id="request-drawer-body" class="request-drawer-body"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="tab-payments" class="tab hidden">
@@ -1115,10 +1178,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260911c"></script>
+  <script src="/admin/i18n.js?v=20260911g"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260911c"></script>
+  <script src="/admin/app.js?v=20260911g"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

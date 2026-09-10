@@ -499,6 +499,11 @@ export class HostawaySyncService implements OnModuleInit {
         remote.guestFirstName?.trim() ||
         remote.guestName?.trim().split(/\s+/)[0] ||
         null,
+      guestPictureUrl:
+        typeof remote.guestPicture === 'string' &&
+        /^https?:\/\//i.test(remote.guestPicture.trim())
+          ? remote.guestPicture.trim()
+          : null,
       totalPrice:
         typeof remote.totalPrice === 'number' && Number.isFinite(remote.totalPrice)
           ? remote.totalPrice

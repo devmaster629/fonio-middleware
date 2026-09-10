@@ -51,7 +51,19 @@ const tableState = {
     channel: 'all',
   },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'desc', mode: 'all', status: 'all' },
-  requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  requests: {
+    page: 1,
+    pageSize: 10,
+    search: '',
+    sortBy: 'createdAt',
+    sortDir: 'desc',
+    tab: 'all',
+    type: 'all',
+    listingId: 'all',
+    delivery: 'all',
+    dateFrom: '',
+    dateTo: '',
+  },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
   paymentsHistory: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
   logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
@@ -4351,43 +4363,405 @@ async function loadRules() {
   activateRulesView(rulesActiveView);
 }
 
-async function loadRequests() {
-  const requests = await api('/guest-requests');
-  ensureTableToolbar('#requests-toolbar', 'requests', loadRequests);
-  const data = paginateClient(requests, 'requests', (r) => [
-    r.createdAt,
-    r.requestType,
-    r.status,
-    r.reservation?.listing?.name,
-    r.forwardedToHostaway,
-  ].join(' '));
-  const rows = data.items.map((r) => {
-    const inboxCell = r.status === 'FORWARDED'
-      ? (r.forwardedToHostaway
-        ? t('requests.inboxYes')
-        : (hasPermission('REQUESTS_MANAGE')
-          ? `<button type="button" class="btn ghost btn-sm retry-forward-btn" data-request-id="${r.id}">${t('requests.retry')}</button> <span class="field-hint">${t('requests.inboxPending')}</span>`
-          : `<span class="field-hint">${t('requests.inboxPending')}</span>`))
-      : t('requests.inboxNa');
-    return `
-    <tr>
-      <td>${formatDateTime(r.createdAt)}</td>
-      <td>${t(`requestType.${r.requestType}`) || r.requestType}</td>
-      <td><span class="badge manual">${r.status}</span></td>
-      <td>${r.reservation?.listing?.name || '–'}</td>
-      <td>${inboxCell}</td>
-    </tr>`;
-  }).join('');
-  $('#requests-table').innerHTML = `
-    <table><thead><tr>
-      <th>${t('requests.time')}</th><th>${t('requests.type')}</th><th>${t('requests.status')}</th>
-      <th>${t('requests.listing')}</th><th>${t('requests.hostaway')}</th>
-    </tr></thead>
-    <tbody>${rows || `<tr><td colspan="5">${t('requests.none')}</td></tr>`}</tbody></table>`;
-  renderTableInfo('#requests-info', data, data.maxTotal);
-  renderPagination('#requests-pagination', data, 'requests', loadRequests);
-  $$('.retry-forward-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+let requestsListCache = [];
+let selectedRequestId = null;
+
+function requestPayload(r) {
+  const p = r?.payload;
+  return p && typeof p === 'object' ? p : {};
+}
+
+function requestNeedsDelivery(r) {
+  return r?.status === 'FORWARDED' && !r?.forwardedToHostaway;
+}
+
+function requestDeliveryKind(r) {
+  if (r?.forwardedToHostaway) return 'delivered';
+  if (requestNeedsDelivery(r)) return 'failed';
+  if (r?.status === 'PENDING') return 'pending';
+  return 'na';
+}
+
+function requestGuestLabel(r) {
+  const res = r?.reservation;
+  if (!res) return t('requests.unknownGuest');
+  return res.guestName || res.guestNameMasked || t('requests.unknownGuest');
+}
+
+function requestGuestAvatarHtml(r) {
+  const url = String(r?.reservation?.guestPictureUrl || '').trim();
+  const fallback = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+  const safeUrl = /^https?:\/\//i.test(url) ? url : '';
+  return `
+    <span class="requests-guest-avatar${safeUrl ? ' has-photo' : ''}" aria-hidden="true">
+      ${safeUrl ? `<img class="requests-guest-avatar-img" src="${esc(safeUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async" />` : ''}
+      <span class="requests-guest-avatar-fallback">${fallback}</span>
+    </span>`;
+}
+
+function requestReservationCode(r) {
+  const id = r?.reservation?.hostawayId;
+  return id != null ? `RES-${id}` : '—';
+}
+
+function requestTypeIconSvg(type) {
+  const common = 'xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  switch (type) {
+    case 'ADD_GUEST':
+      return `<svg ${common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+    case 'ADD_PET':
+      return `<svg ${common}><circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.07Q6.6 17.8 6 16.5 5 14 9 10z"/></svg>`;
+    case 'EARLY_CHECKIN':
+    case 'LATE_CHECKOUT':
+      return `<svg ${common}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`;
+    case 'CANCELLATION':
+      return `<svg ${common}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+    case 'MODIFICATION':
+      return `<svg ${common}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+    default:
+      return `<svg ${common}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+  }
+}
+
+function requestTypeTone(type) {
+  switch (type) {
+    case 'ADD_GUEST': return 'guest';
+    case 'ADD_PET': return 'pet';
+    case 'EARLY_CHECKIN': return 'early';
+    case 'LATE_CHECKOUT': return 'late';
+    case 'CANCELLATION': return 'cancel';
+    case 'MODIFICATION': return 'mod';
+    default: return 'other';
+  }
+}
+
+function requestDecisionMeta(status) {
+  switch (status) {
+    case 'FORWARDED':
+      return { cls: 'is-forwarded', label: t('requests.decision.forwarded') };
+    case 'AUTO_APPROVED':
+      return { cls: 'is-auto', label: t('requests.decision.auto') };
+    case 'PENDING':
+      return { cls: 'is-pending', label: t('requests.decision.pending') };
+    case 'REJECTED':
+      return { cls: 'is-rejected', label: t('requests.decision.rejected') };
+    case 'COMPLETED':
+      return { cls: 'is-completed', label: t('requests.decision.completed') };
+    default:
+      return { cls: 'is-pending', label: status || '—' };
+  }
+}
+
+function requestDeliveryMeta(r) {
+  const kind = requestDeliveryKind(r);
+  if (kind === 'delivered') {
+    return {
+      kind,
+      cls: 'is-delivered',
+      label: t('requests.delivery.forwarded'),
+      icon: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>`,
+    };
+  }
+  if (kind === 'failed') {
+    return {
+      kind,
+      cls: 'is-failed',
+      label: t('requests.delivery.failed'),
+      icon: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`,
+    };
+  }
+  if (kind === 'pending') {
+    return {
+      kind,
+      cls: 'is-pending',
+      label: t('requests.delivery.pending'),
+      icon: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+    };
+  }
+  return { kind: 'na', cls: 'is-na', label: t('requests.inboxNa'), icon: '' };
+}
+
+function formatRequestDetailsSummary(details) {
+  if (!details || typeof details !== 'object') return '';
+  const skip = new Set(['note']);
+  const parts = Object.entries(details)
+    .filter(([k, v]) => !skip.has(k) && v != null && String(v).trim() !== '')
+    .map(([k, v]) => `${k}: ${v}`);
+  return parts.join(' · ');
+}
+
+function formatRequestStay(res) {
+  if (!res?.arrivalDate || !res?.departureDate) return '—';
+  const start = formatDate(res.arrivalDate);
+  const end = formatDate(res.departureDate);
+  const a = new Date(res.arrivalDate);
+  const b = new Date(res.departureDate);
+  let nights = '';
+  if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime())) {
+    const n = Math.max(0, Math.round((b - a) / 86400000));
+    nights = ` (${n} ${t('requests.nights')})`;
+  }
+  return `${start} – ${end}${nights}`;
+}
+
+function formatRequestGuests(res) {
+  if (!res) return '—';
+  const adults = res.adults ?? res.numberOfGuests;
+  const children = res.children ?? 0;
+  const parts = [];
+  if (adults != null) parts.push(`${adults} ${t('requests.adults')}`);
+  if (children) parts.push(`${children} ${t('requests.children')}`);
+  return parts.join(', ') || '—';
+}
+
+function ensureRequestsToolbar() {
+  const el = $('#requests-toolbar');
+  if (!el) return;
+  const s = tableState.requests;
+  const types = [...new Set(requestsListCache.map((r) => r.requestType).filter(Boolean))].sort();
+  const listings = [];
+  const seen = new Set();
+  for (const r of requestsListCache) {
+    const listing = r.reservation?.listing;
+    if (!listing?.id || seen.has(listing.id)) continue;
+    seen.add(listing.id);
+    listings.push({ id: listing.id, name: listing.name || listing.id });
+  }
+  listings.sort((a, b) => a.name.localeCompare(b.name));
+
+  el.innerHTML = `
+    <div class="requests-toolbar-row">
+      <div class="requests-search">
+        <svg class="requests-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" id="requests-search" value="${esc(s.search)}" placeholder="${esc(t('requests.searchPlaceholder'))}" autocomplete="off" aria-label="${esc(t('requests.searchPlaceholder'))}" />
+      </div>
+      <label>
+        <span>${esc(t('requests.dateFrom'))}</span>
+        <span class="requests-date-field">
+          <input type="date" id="requests-date-from" value="${esc(s.dateFrom || '')}" />
+          <button type="button" class="requests-date-picker-btn" data-requests-date-picker="from" aria-label="${esc(t('reservations.openDatePicker'))}">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </button>
+        </span>
+      </label>
+      <label>
+        <span>${esc(t('requests.dateTo'))}</span>
+        <span class="requests-date-field">
+          <input type="date" id="requests-date-to" value="${esc(s.dateTo || '')}" />
+          <button type="button" class="requests-date-picker-btn" data-requests-date-picker="to" aria-label="${esc(t('reservations.openDatePicker'))}">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </button>
+        </span>
+      </label>
+      <label>
+        <span>${esc(t('requests.filterType'))}</span>
+        <select id="requests-filter-type">
+          <option value="all">${esc(t('requests.filterAll'))}</option>
+          ${types.map((type) => `<option value="${esc(type)}"${s.type === type ? ' selected' : ''}>${esc(t(`requestType.${type}`) || type)}</option>`).join('')}
+        </select>
+      </label>
+      <label>
+        <span>${esc(t('requests.filterProperty'))}</span>
+        <select id="requests-filter-listing">
+          <option value="all">${esc(t('requests.filterAll'))}</option>
+          ${listings.map((l) => `<option value="${esc(l.id)}"${s.listingId === l.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
+        </select>
+      </label>
+      <label>
+        <span>${esc(t('requests.filterDelivery'))}</span>
+        <select id="requests-filter-delivery">
+          <option value="all">${esc(t('requests.filterAll'))}</option>
+          <option value="delivered"${s.delivery === 'delivered' ? ' selected' : ''}>${esc(t('requests.delivery.forwarded'))}</option>
+          <option value="pending"${s.delivery === 'pending' ? ' selected' : ''}>${esc(t('requests.delivery.pending'))}</option>
+          <option value="failed"${s.delivery === 'failed' ? ' selected' : ''}>${esc(t('requests.delivery.failed'))}</option>
+        </select>
+      </label>
+      <button type="button" class="btn ghost btn-sm requests-clear-filters" id="requests-clear-filters">${esc(t('requests.clearFilters'))}</button>
+    </div>
+  `;
+
+  const search = $('#requests-search');
+  search?.addEventListener('input', () => {
+    clearTimeout(searchTimers.requests);
+    searchTimers.requests = setTimeout(() => {
+      tableState.requests.search = search.value.trim();
+      tableState.requests.page = 1;
+      renderRequestsTable();
+    }, 200);
+  });
+  const openRequestsDatePicker = (input) => {
+    if (!input) return;
+    try {
+      if (typeof input.showPicker === 'function') {
+        input.showPicker();
+        return;
+      }
+    } catch (_) {
+      /* fall through */
+    }
+    input.focus();
+    input.click();
+  };
+  $$('[data-requests-date-picker]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const which = btn.dataset.requestsDatePicker;
+      openRequestsDatePicker($(which === 'to' ? '#requests-date-to' : '#requests-date-from'));
+    });
+  });
+  $('#requests-date-from')?.addEventListener('change', (e) => {
+    tableState.requests.dateFrom = e.target.value;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+  $('#requests-date-to')?.addEventListener('change', (e) => {
+    tableState.requests.dateTo = e.target.value;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+  $('#requests-filter-type')?.addEventListener('change', (e) => {
+    tableState.requests.type = e.target.value;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+  $('#requests-filter-listing')?.addEventListener('change', (e) => {
+    tableState.requests.listingId = e.target.value;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+  $('#requests-filter-delivery')?.addEventListener('change', (e) => {
+    tableState.requests.delivery = e.target.value;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+  $('#requests-clear-filters')?.addEventListener('click', () => {
+    tableState.requests.search = '';
+    tableState.requests.dateFrom = '';
+    tableState.requests.dateTo = '';
+    tableState.requests.type = 'all';
+    tableState.requests.listingId = 'all';
+    tableState.requests.delivery = 'all';
+    tableState.requests.page = 1;
+    ensureRequestsToolbar();
+    renderRequestsTable();
+  });
+}
+
+function filterRequestsList(list) {
+  const s = tableState.requests;
+  const q = (s.search || '').toLowerCase();
+  const fromMs = s.dateFrom ? new Date(`${s.dateFrom}T00:00:00`).getTime() : null;
+  const toMs = s.dateTo ? new Date(`${s.dateTo}T23:59:59`).getTime() : null;
+
+  return list.filter((r) => {
+    if (s.tab === 'pending' && r.status !== 'PENDING') return false;
+    if (s.tab === 'forwarded' && r.status !== 'FORWARDED') return false;
+    if (s.tab === 'auto' && r.status !== 'AUTO_APPROVED') return false;
+    if (s.tab === 'failed' && !requestNeedsDelivery(r)) return false;
+
+    if (s.type !== 'all' && r.requestType !== s.type) return false;
+    if (s.listingId !== 'all' && r.reservation?.listing?.id !== s.listingId) return false;
+    if (s.delivery !== 'all' && requestDeliveryKind(r) !== s.delivery) return false;
+
+    const created = new Date(r.createdAt).getTime();
+    if (fromMs != null && !Number.isNaN(fromMs) && created < fromMs) return false;
+    if (toMs != null && !Number.isNaN(toMs) && created > toMs) return false;
+
+    if (!q) return true;
+    const hay = [
+      r.createdAt,
+      r.requestType,
+      r.status,
+      requestGuestLabel(r),
+      requestReservationCode(r),
+      r.reservation?.listing?.name,
+      r.reservation?.hostawayId,
+      r.id,
+      formatRequestDetailsSummary(requestPayload(r).details),
+    ].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderRequestsStats(list) {
+  const el = $('#requests-stats');
+  if (!el) return;
+  const total = list.length;
+  const forwarded = list.filter((r) => r.status === 'FORWARDED').length;
+  const auto = list.filter((r) => r.status === 'AUTO_APPROVED').length;
+  const attention = list.filter((r) => requestNeedsDelivery(r) || r.status === 'PENDING').length;
+  const pct = (n) => (total ? `${((n / total) * 100).toFixed(1)}%` : '0%');
+
+  el.innerHTML = `
+    <article class="requests-stat-card">
+      <span class="requests-stat-icon is-total" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </span>
+      <div>
+        <div class="requests-stat-value">${formatCount(total)}</div>
+        <div class="requests-stat-label">${esc(t('requests.statTotal'))}</div>
+        <div class="requests-stat-hint">${esc(t('requests.statAllTime'))}</div>
+      </div>
+    </article>
+    <article class="requests-stat-card">
+      <span class="requests-stat-icon is-forwarded" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+      </span>
+      <div>
+        <div class="requests-stat-value">${formatCount(forwarded)}</div>
+        <div class="requests-stat-label">${esc(t('requests.statForwarded'))}</div>
+        <div class="requests-stat-hint">${esc(t('requests.statOfTotal', { pct: pct(forwarded) }))}</div>
+      </div>
+    </article>
+    <article class="requests-stat-card">
+      <span class="requests-stat-icon is-auto" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+      </span>
+      <div>
+        <div class="requests-stat-value">${formatCount(auto)}</div>
+        <div class="requests-stat-label">${esc(t('requests.statAuto'))}</div>
+        <div class="requests-stat-hint">${esc(t('requests.statOfTotal', { pct: pct(auto) }))}</div>
+      </div>
+    </article>
+    <article class="requests-stat-card">
+      <span class="requests-stat-icon is-attention" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      </span>
+      <div>
+        <div class="requests-stat-value">${formatCount(attention)}</div>
+        <div class="requests-stat-label">${esc(t('requests.statAttention'))}</div>
+        <div class="requests-stat-hint">${esc(t('requests.statOfTotal', { pct: pct(attention) }))}</div>
+      </div>
+    </article>
+  `;
+
+  const counts = {
+    pending: list.filter((r) => r.status === 'PENDING').length,
+    forwarded,
+    auto,
+    failed: list.filter((r) => requestNeedsDelivery(r)).length,
+  };
+  Object.entries(counts).forEach(([key, n]) => {
+    const badge = $(`[data-requests-count="${key}"]`);
+    if (badge) badge.textContent = String(n);
+  });
+  $$('.requests-tab').forEach((btn) => {
+    const active = btn.dataset.requestsTab === tableState.requests.tab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function bindRequestRowActions() {
+  $$('#requests-table [data-open-request]').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
+      openRequestDrawer(row.dataset.openRequest);
+    });
+  });
+  $$('#requests-table .retry-forward-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       if (!hasPermission('REQUESTS_MANAGE')) return;
       try {
         const result = await api(`/guest-requests/${btn.dataset.requestId}/retry-forward`, { method: 'POST' });
@@ -4399,8 +4773,296 @@ async function loadRequests() {
       }
     });
   });
+  $$('#requests-table [data-request-more]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRequestDrawer(btn.dataset.requestMore);
+    });
+  });
+}
+
+function renderRequestsTable() {
+  const filtered = filterRequestsList(requestsListCache);
+  const savedSearch = tableState.requests.search;
+  tableState.requests.search = '';
+  const pageData = paginateClient(filtered, 'requests', () => '');
+  tableState.requests.search = savedSearch;
+
+  const rows = pageData.items.map((r) => {
+    const decision = requestDecisionMeta(r.status);
+    const delivery = requestDeliveryMeta(r);
+    const listing = r.reservation?.listing;
+    const listingLine = listing
+      ? `${esc(listing.name || '—')}<span class="requests-sub">${esc(listing.hostawayId != null ? String(listing.hostawayId) : '')}</span>`
+      : '—';
+    const canRetry = requestNeedsDelivery(r) && hasPermission('REQUESTS_MANAGE');
+    const typeLabel = t(`requestType.${r.requestType}`) || r.requestType;
+    return `
+    <tr class="requests-row${selectedRequestId === r.id ? ' is-selected' : ''}" data-open-request="${esc(r.id)}">
+      <td class="requests-col-time">${esc(formatDashboardDateTime(r.createdAt))}</td>
+      <td>
+        <div class="requests-guest-cell">
+          ${requestGuestAvatarHtml(r)}
+          <div>
+            <strong>${esc(requestGuestLabel(r))}</strong>
+            <span class="requests-sub">${esc(requestReservationCode(r))}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <span class="requests-type-chip tone-${requestTypeTone(r.requestType)}">
+          <span class="requests-type-icon" aria-hidden="true">${requestTypeIconSvg(r.requestType)}</span>
+          ${esc(typeLabel)}
+        </span>
+      </td>
+      <td><div class="requests-property-cell">${listingLine}</div></td>
+      <td><span class="requests-decision-badge ${decision.cls}">${esc(decision.label)}</span></td>
+      <td>
+        <span class="requests-delivery ${delivery.cls}">
+          ${delivery.icon ? `<span aria-hidden="true">${delivery.icon}</span>` : ''}
+          ${esc(delivery.label)}
+        </span>
+      </td>
+      <td class="requests-col-actions" onclick="event.stopPropagation()">
+        <div class="requests-actions">
+          ${canRetry ? `<button type="button" class="btn btn-sm requests-retry-btn retry-forward-btn" data-request-id="${esc(r.id)}">${esc(t('requests.retry'))}</button>` : ''}
+          <button type="button" class="requests-more-btn" data-request-more="${esc(r.id)}" aria-label="${esc(t('requests.openDetails'))}">⋮</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('#requests-table').innerHTML = `
+    <table class="requests-table">
+      <thead><tr>
+        <th>${esc(t('requests.time'))}</th>
+        <th>${esc(t('requests.guestReservation'))}</th>
+        <th>${esc(t('requests.requestType'))}</th>
+        <th>${esc(t('requests.property'))}</th>
+        <th>${esc(t('requests.ruleDecision'))}</th>
+        <th>${esc(t('requests.hostawayDelivery'))}</th>
+        <th>${esc(t('requests.actions'))}</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="requests-empty">${esc(t('requests.none'))}</td></tr>`}</tbody>
+    </table>`;
+
+  renderTableInfo('#requests-info', pageData, pageData.maxTotal);
+  renderPagination('#requests-pagination', pageData, 'requests', () => renderRequestsTable());
+  syncRequestsPageSizeSelect();
+  bindRequestRowActions();
+  $$('#requests-table .requests-guest-avatar-img').forEach((img) => {
+    img.addEventListener('error', () => {
+      img.remove();
+      img.closest('.requests-guest-avatar')?.classList.remove('has-photo');
+    });
+  });
   applyRoleUi();
 }
+
+function syncRequestsPageSizeSelect() {
+  const sel = $('#requests-page-size');
+  if (!sel) return;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...sel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      sel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== sel) {
+    sel.value = String(tableState.requests.pageSize || 10);
+  }
+  if (sel.dataset.bound === '1') return;
+  sel.dataset.bound = '1';
+  sel.addEventListener('change', () => {
+    tableState.requests.pageSize = Number(sel.value) || 10;
+    tableState.requests.page = 1;
+    renderRequestsTable();
+  });
+}
+
+function openRequestDrawer(id) {
+  const r = requestsListCache.find((item) => item.id === id);
+  const drawer = $('#request-drawer');
+  if (!r || !drawer) return;
+  selectedRequestId = id;
+  $$('#requests-table .requests-row').forEach((row) => {
+    row.classList.toggle('is-selected', row.dataset.openRequest === id);
+  });
+
+  const payload = requestPayload(r);
+  const details = payload.details || {};
+  const typeLabel = t(`requestType.${r.requestType}`) || r.requestType;
+  const decision = requestDecisionMeta(r.status);
+  const delivery = requestDeliveryMeta(r);
+  const res = r.reservation;
+  const canPii = hasPermission('RESERVATIONS_VIEW_PII') || adminRole === 'SUPER_ADMIN';
+  const email = canPii ? (res?.guestEmail || '—') : (res?.guestEmail ? '••••' : '—');
+  const phone = canPii ? (res?.guestPhone || '—') : (res?.guestPhone ? '••••' : '—');
+  const note = details.note ? String(details.note) : '';
+  const proposed = formatRequestDetailsSummary(details);
+  const canRetry = requestNeedsDelivery(r) && hasPermission('REQUESTS_MANAGE');
+
+  $('#request-drawer-title').textContent = t('requests.drawerTitle', { type: typeLabel });
+  $('#request-drawer-id').textContent = `REQ-${r.id.slice(0, 8).toUpperCase()}`;
+  $('#request-drawer-icon').className = `request-drawer-icon tone-${requestTypeTone(r.requestType)}`;
+  $('#request-drawer-icon').innerHTML = requestTypeIconSvg(r.requestType);
+
+  const timeline = [];
+  timeline.push({
+    done: true,
+    title: t('requests.timeline.received'),
+    at: r.createdAt,
+  });
+  timeline.push({
+    done: r.status !== 'PENDING',
+    title: t('requests.timeline.evaluated', { decision: decision.label }),
+    at: r.createdAt,
+    meta: payload.ruleReason ? `${t('requests.timeline.rule')}: ${payload.ruleReason}` : (payload.ruleId ? `${t('requests.timeline.rule')}: ${payload.ruleId}` : ''),
+  });
+  if (r.status === 'FORWARDED' || r.forwardedToHostaway) {
+    timeline.push({
+      done: !!r.forwardedToHostaway,
+      title: t('requests.timeline.forwardedHostaway'),
+      at: r.updatedAt || r.createdAt,
+      meta: t('requests.timeline.inbox'),
+    });
+  }
+
+  const deliveryBlock = delivery.kind === 'na'
+    ? ''
+    : `
+    <section class="request-drawer-section">
+      <h4>${esc(t('requests.hostawayDelivery'))}</h4>
+      <div class="request-delivery-card ${delivery.cls}">
+        <div class="request-delivery-card-top">
+          <span class="requests-delivery ${delivery.cls}">${delivery.icon || ''}${esc(delivery.label)}</span>
+          <span class="request-delivery-time">${esc(formatDashboardDateTime(r.updatedAt || r.createdAt))}</span>
+        </div>
+        ${delivery.kind === 'failed' ? `<p class="request-delivery-error">${esc(t('requests.deliveryErrorDefault'))}</p>
+        <p class="request-delivery-attempt">${esc(t('requests.lastAttempt'))}: ${esc(formatDashboardDateTime(r.updatedAt || r.createdAt))}</p>` : ''}
+        ${delivery.kind === 'delivered' && r.hostawayMessageId != null ? `<p class="muted">${esc(t('requests.messageId'))}: ${esc(String(r.hostawayMessageId))}</p>` : ''}
+      </div>
+    </section>`;
+
+  const retryBlock = canRetry
+    ? `
+    <section class="request-drawer-section request-drawer-retry">
+      <p class="muted">${esc(t('requests.retryHint'))}</p>
+      <button type="button" class="btn requests-retry-delivery-btn retry-forward-btn" data-request-id="${esc(r.id)}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        ${esc(t('requests.retryDelivery'))}
+      </button>
+    </section>`
+    : '';
+
+  $('#request-drawer-body').innerHTML = `
+    <section class="request-drawer-section">
+      <h4>${esc(t('requests.summary'))}</h4>
+      <dl class="request-kv">
+        <div><dt>${esc(t('requests.requestedOn'))}</dt><dd>${esc(formatDashboardDateTime(r.createdAt))}</dd></div>
+        <div><dt>${esc(t('requests.guestMessage'))}</dt><dd>${esc(note || t('requests.noGuestMessage'))}</dd></div>
+        <div><dt>${esc(t('requests.proposedChange'))}</dt><dd>${esc(proposed || '—')}</dd></div>
+      </dl>
+    </section>
+    <section class="request-drawer-section">
+      <h4>${esc(t('requests.verifiedGuest'))}</h4>
+      <dl class="request-kv">
+        <div><dt>${esc(t('requests.guestName'))}</dt><dd>${esc(requestGuestLabel(r))}</dd></div>
+        <div><dt>${esc(t('requests.email'))}</dt><dd>${esc(email)}</dd></div>
+        <div><dt>${esc(t('requests.phone'))}</dt><dd>${esc(phone)}</dd></div>
+        <div><dt>${esc(t('requests.reservation'))}</dt><dd>
+          ${res?.hostawayId != null
+            ? `<button type="button" class="link-btn" data-open-reservation="${esc(String(res.hostawayId))}">${esc(requestReservationCode(r))} ↗</button>`
+            : '—'}
+        </dd></div>
+        <div><dt>${esc(t('requests.stay'))}</dt><dd>${esc(formatRequestStay(res))}</dd></div>
+        <div><dt>${esc(t('requests.guests'))}</dt><dd>${esc(formatRequestGuests(res))}</dd></div>
+      </dl>
+    </section>
+    <section class="request-drawer-section">
+      <h4>${esc(t('requests.decisionTimeline'))}</h4>
+      <ol class="request-timeline">
+        ${timeline.map((item) => `
+          <li class="${item.done ? 'is-done' : 'is-todo'}">
+            <div class="request-timeline-dot" aria-hidden="true"></div>
+            <div>
+              <div class="request-timeline-title">${esc(item.title)}</div>
+              <div class="request-timeline-at">${esc(formatDashboardDateTime(item.at))}</div>
+              ${item.meta ? `<div class="request-timeline-meta">${esc(item.meta)}</div>` : ''}
+            </div>
+          </li>`).join('')}
+      </ol>
+    </section>
+    ${deliveryBlock}
+    ${retryBlock}
+  `;
+
+  drawer.classList.remove('hidden');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('request-drawer-open');
+
+  $('#request-drawer-body .retry-forward-btn')?.addEventListener('click', async () => {
+    if (!hasPermission('REQUESTS_MANAGE')) return;
+    try {
+      const result = await api(`/guest-requests/${r.id}/retry-forward`, { method: 'POST' });
+      if (result.forwarded) notify.success(t('requests.retryOk'));
+      else notify.error(t('requests.retryFail', { message: result.error || result.message || 'unknown' }));
+      await loadRequests();
+      if (selectedRequestId) openRequestDrawer(selectedRequestId);
+    } catch (ex) {
+      notify.error(t('requests.retryFail', { message: ex.message }));
+    }
+  });
+  $('#request-drawer-body [data-open-reservation]')?.addEventListener('click', (e) => {
+    const hostawayId = Number(e.currentTarget.dataset.openReservation);
+    if (Number.isFinite(hostawayId) && typeof openReservationDrawer === 'function') {
+      openReservationDrawer(hostawayId);
+    }
+  });
+}
+
+function closeRequestDrawer() {
+  const drawer = $('#request-drawer');
+  if (!drawer) return;
+  drawer.classList.add('hidden');
+  drawer.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('request-drawer-open');
+  selectedRequestId = null;
+  $$('#requests-table .requests-row').forEach((row) => row.classList.remove('is-selected'));
+}
+
+async function loadRequests() {
+  const requests = await api('/guest-requests');
+  requestsListCache = Array.isArray(requests) ? requests : [];
+  renderRequestsStats(requestsListCache);
+  ensureRequestsToolbar();
+  renderRequestsTable();
+  if (selectedRequestId && requestsListCache.some((r) => r.id === selectedRequestId)) {
+    openRequestDrawer(selectedRequestId);
+  }
+}
+
+$$('.requests-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    tableState.requests.tab = btn.dataset.requestsTab || 'all';
+    tableState.requests.page = 1;
+    renderRequestsStats(requestsListCache);
+    renderRequestsTable();
+  });
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-request-drawer-close]')) closeRequestDrawer();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#request-drawer')?.classList.contains('hidden')) {
+    closeRequestDrawer();
+  }
+});
 
 function paymentStatusBadge(status) {
   const cls =
