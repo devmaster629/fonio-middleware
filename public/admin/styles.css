@@ -162,7 +162,7 @@ body {
   margin-bottom: 1rem;
 }
 
-/* Shell: never nest overflow-x clip around fixed sidebar/topbar Ã¢ÂÂ that
+/* Shell: never nest overflow-x clip around fixed sidebar/topbar ÃÂ¢ÃÂÃÂ that
    mis-clips and shifts layout on iOS Safari / BrowserStack. Horizontal
    containment stays on html/body only. */
 #app-screen {
@@ -1284,7 +1284,7 @@ th.sortable:hover {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  /* Prefer % over 100vw Ã¢ÂÂ vw includes scrollbar and can force horizontal overflow on iOS */
+  /* Prefer % over 100vw ÃÂ¢ÃÂÃÂ vw includes scrollbar and can force horizontal overflow on iOS */
   max-width: min(360px, calc(100% - 2rem));
   pointer-events: none;
 }
@@ -1570,7 +1570,7 @@ body.modal-open {
   margin-top: 0.35rem;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Rules & verification redesign Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Rules & verification redesign ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .rules-page-header {
   display: flex;
   align-items: flex-start;
@@ -1922,7 +1922,7 @@ body.modal-open {
   background: rgba(59, 130, 246, 0.08);
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Approval rules tab Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Approval rules tab ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .rules-approval-hint {
   margin: 0 0 1rem;
   max-width: 52rem;
@@ -2512,7 +2512,7 @@ body.modal-open {
   margin: 0.35rem 0 0.5rem 1.25rem;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Conversations inbox (3-pane) Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Conversations inbox (3-pane) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .conversations-page-header {
   display: flex;
   align-items: flex-start;
@@ -3779,12 +3779,12 @@ body.modal-open {
 }
 
 .payment-notes summary::before {
-  content: 'Ã¢ÂÂ¸ ';
+  content: 'ÃÂ¢ÃÂÃÂ¸ ';
   color: var(--muted);
 }
 
 .payment-notes[open] summary::before {
-  content: 'Ã¢ÂÂ¾ ';
+  content: 'ÃÂ¢ÃÂÃÂ¾ ';
 }
 
 .payment-notes-body {
@@ -3892,7 +3892,7 @@ form.is-readonly .btn.primary {
   grid-column: 1 / -1;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Mobile-first responsive layout Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Mobile-first responsive layout ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 
 .table-toolbar {
   flex-direction: column;
@@ -4770,7 +4770,7 @@ form.is-readonly .btn.primary {
   white-space: nowrap;
 }
 
-/* Custom assign picker Ã¢ÂÂ native <select> popups ignore container width on mobile */
+/* Custom assign picker ÃÂ¢ÃÂÃÂ native <select> popups ignore container width on mobile */
 .payment-assign-wrap {
   position: relative;
   display: block;
@@ -6317,7 +6317,7 @@ a.payment-suggestion-id:hover {
   font-size: 0.85rem;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ CHECK24 tab Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CHECK24 tab ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .check24-hero {
   display: flex;
   flex-wrap: wrap;
@@ -6840,7 +6840,7 @@ a.payment-suggestion-id:hover {
     align-self: flex-start;
   }
 
-  /* Keep stacked table cards on tablets in portrait (768Ã¢ÂÂ1023px) */
+  /* Keep stacked table cards on tablets in portrait (768ÃÂ¢ÃÂÃÂ1023px) */
   .table-wrap.responsive-stack,
   .table-wrap:has(.responsive-stack) {
     overflow-x: visible;
@@ -9332,7 +9332,7 @@ a.payment-suggestion-id:hover {
   }
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Reservations redesign Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Reservations redesign ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .reservations-page-header {
   margin-bottom: 1rem;
 }
@@ -9502,7 +9502,7 @@ a.payment-suggestion-id:hover {
   color: var(--text);
 }
 
-/* Keep typing area free Ã¢ÂÂ calendar opens via the button on the right */
+/* Keep typing area free ÃÂ¢ÃÂÃÂ calendar opens via the button on the right */
 .reservations-filters input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
   width: 0;
@@ -11007,5 +11007,1213 @@ a.payment-suggestion-id:hover {
 
   .request-drawer-panel {
     width: 100%;
+  }
+}
+
+/* Fonio activity tab */
+.fonio-activity-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.fonio-activity-page-heading h2 {
+  margin: 0;
+}
+
+.fonio-activity-page-heading .page-subtitle {
+  margin: 0.35rem 0 0;
+  max-width: 42rem;
+}
+
+.fonio-activity-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem 1rem;
+  flex-shrink: 0;
+}
+
+.fonio-activity-last-updated {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.fonio-activity-auto-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fonio-activity-auto-refresh input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.fonio-activity-switch {
+  width: 2.1rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.fonio-activity-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.fonio-activity-auto-refresh input:checked + .fonio-activity-switch {
+  background: rgba(34, 197, 94, 0.75);
+}
+
+.fonio-activity-auto-refresh input:checked + .fonio-activity-switch::after {
+  transform: translateX(0.9rem);
+}
+
+.fonio-activity-overview {
+  display: grid;
+  grid-template-columns: minmax(17.5rem, 0.92fr) minmax(0, 1.55fr);
+  gap: 0.85rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.fonio-activity-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.fonio-activity-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.95rem 1rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-height: 0;
+  height: 100%;
+}
+
+.fonio-activity-stat-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 0.55rem;
+}
+
+.fonio-activity-stat-icon.is-calls {
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+}
+
+.fonio-activity-stat-icon.is-success {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+}
+
+.fonio-activity-stat-icon.is-verify,
+.fonio-activity-stat-icon.is-fail {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+.fonio-activity-stat-icon.is-availability,
+.fonio-activity-stat-icon.is-search {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+}
+
+.fonio-activity-stat-value {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.fonio-activity-stat-label {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.fonio-activity-stat-delta,
+.fonio-activity-delta {
+  margin-top: auto;
+  padding-top: 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.fonio-activity-stat-delta span,
+.fonio-activity-delta span {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.fonio-activity-stat-delta.is-up,
+.fonio-activity-delta.is-up {
+  color: #4ade80;
+}
+
+.fonio-activity-stat-delta.is-down,
+.fonio-activity-delta.is-down {
+  color: #f87171;
+}
+
+.fonio-activity-stat-delta.is-flat,
+.fonio-activity-delta.is-flat {
+  color: var(--muted);
+}
+
+.fonio-activity-chart-card {
+  margin: 0;
+  padding: 0.95rem 1.05rem 1rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.fonio-activity-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 0.85rem;
+  margin-bottom: 0.55rem;
+}
+
+.fonio-activity-chart-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  min-width: 0;
+}
+
+.fonio-activity-chart-head h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: #e2e8f0;
+}
+
+.fonio-activity-chart-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.12rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.fonio-activity-range-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.26rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.fonio-activity-range-btn:hover {
+  color: #e2e8f0;
+}
+
+.fonio-activity-range-btn.is-active {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+
+.fonio-activity-chart-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  font-size: 0.74rem;
+  color: #94a3b8;
+}
+
+.fonio-activity-legend-calls,
+.fonio-activity-legend-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.fonio-activity-legend-calls::before,
+.fonio-activity-legend-success::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.fonio-activity-legend-calls::before {
+  background: #3b82f6;
+}
+
+.fonio-activity-legend-success::before {
+  background: #34d399;
+}
+
+.fonio-activity-chart {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 13.5rem;
+  display: flex;
+  align-items: stretch;
+}
+
+.fonio-activity-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 13.5rem;
+  max-height: 16rem;
+}
+
+.fonio-activity-chart .field-hint {
+  margin: auto;
+}
+
+.fonio-chart-bar {
+  fill: rgba(59, 130, 246, 0.55);
+}
+
+.fonio-chart-line {
+  fill: none;
+  stroke: #34d399;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fonio-chart-dot {
+  fill: #34d399;
+  stroke: #0f1419;
+  stroke-width: 1.2;
+}
+
+.fonio-chart-label {
+  fill: #8b9cb3;
+  font-size: 11px;
+}
+
+.fonio-activity-board {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.fonio-activity-toolbar {
+  padding: 0.85rem 1rem;
+}
+
+.fonio-activity-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.65rem;
+  align-items: flex-end;
+}
+
+.fonio-activity-toolbar-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.fonio-activity-search {
+  position: relative;
+  flex: 0 1 16rem;
+  width: 16rem;
+  max-width: 100%;
+  min-width: 12rem;
+}
+
+.fonio-activity-search input {
+  display: block;
+  width: 100%;
+  height: 2.35rem;
+  padding: 0 0.75rem 0 2.2rem;
+  margin: 0;
+  box-sizing: border-box;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.fonio-activity-search-icon {
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fonio-activity-toolbar-row select,
+.fonio-activity-toolbar-row input[type="date"] {
+  min-width: 7.5rem;
+  height: 2.35rem;
+  margin: 0;
+  font-size: 0.85rem;
+  box-sizing: border-box;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.fonio-activity-toolbar-row input[type="date"] {
+  min-width: 10rem;
+  color-scheme: dark;
+}
+
+.fonio-activity-toolbar-row .btn {
+  height: 2.35rem;
+  margin: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fonio-activity-board-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.fonio-activity-table-wrap {
+  overflow-x: auto;
+}
+
+.fonio-activity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fonio-activity-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 650;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  white-space: nowrap;
+}
+
+.fonio-activity-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  vertical-align: middle;
+  font-size: 0.88rem;
+}
+
+.fonio-activity-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.fonio-activity-row:hover,
+.fonio-activity-row.is-selected {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.fonio-activity-col-time {
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.fonio-activity-col-callid code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 6px;
+  padding: 0.12rem 0.4rem;
+}
+
+.fonio-activity-col-duration {
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.fonio-activity-action-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.fonio-activity-action-chip.tone-context {
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+}
+
+.fonio-activity-action-chip.tone-availability {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+}
+
+.fonio-activity-action-chip.tone-verify {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+}
+
+.fonio-activity-action-chip.tone-request {
+  background: rgba(249, 115, 22, 0.16);
+  color: #fb923c;
+}
+
+.fonio-activity-action-chip.tone-offer {
+  background: rgba(20, 184, 166, 0.16);
+  color: #2dd4bf;
+}
+
+.fonio-activity-action-chip.tone-payment {
+  background: rgba(234, 179, 8, 0.16);
+  color: #facc15;
+}
+
+.fonio-activity-action-chip.tone-other {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+.fonio-activity-status-pill,
+.fonio-activity-outcome-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.fonio-activity-status-pill.is-ok,
+.fonio-activity-outcome-pill.is-ok {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+}
+
+.fonio-activity-status-pill.is-err,
+.fonio-activity-outcome-pill.is-fail,
+.fonio-activity-outcome-pill.is-err {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+}
+
+.fonio-activity-status-pill.is-warn {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+}
+
+.fonio-activity-status-pill.is-unknown,
+.fonio-activity-outcome-pill.is-unknown {
+  background: rgba(148, 163, 184, 0.14);
+  color: #94a3b8;
+}
+
+.fonio-activity-table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.fonio-activity-footer-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem 0.65rem;
+  margin-left: auto;
+}
+
+.fonio-activity-footer-right .table-page-size select,
+#fonio-activity-page-size {
+  min-width: 6.5rem;
+  margin: 0;
+  font-size: 0.82rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  color-scheme: dark;
+}
+
+.fonio-activity-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+}
+
+.fonio-activity-drawer.hidden {
+  display: none;
+}
+
+.fonio-activity-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.fonio-activity-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(36rem, 100%);
+  background: #0b1220;
+  border-left: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
+}
+
+.fonio-activity-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.05rem 1.15rem 0.95rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.fonio-activity-drawer-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.fonio-activity-drawer-icon {
+  width: 2.45rem;
+  height: 2.45rem;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+}
+
+.fonio-activity-drawer-icon.tone-call {
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
+}
+
+.fonio-activity-drawer-icon.tone-availability {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+}
+
+.fonio-activity-drawer-icon.tone-verify {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+}
+
+.fonio-activity-drawer-icon.tone-guest {
+  background: rgba(249, 115, 22, 0.16);
+  color: #fb923c;
+}
+
+.fonio-activity-drawer-icon.tone-money {
+  background: rgba(45, 212, 191, 0.16);
+  color: #2dd4bf;
+}
+
+.fonio-activity-drawer-icon.tone-setup,
+.fonio-activity-drawer-icon.tone-default {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.fonio-activity-drawer-title-wrap {
+  min-width: 0;
+}
+
+.fonio-activity-drawer-heading h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.25;
+}
+
+.fonio-activity-drawer-id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.28rem;
+  min-width: 0;
+}
+
+#fonio-activity-drawer-id {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 18rem;
+}
+
+.fonio-activity-copy-btn {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 7px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.fonio-activity-copy-btn:hover {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.fonio-activity-drawer-close {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.35rem;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.fonio-activity-drawer-close:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #fff;
+}
+
+.fonio-activity-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0.95rem 1.15rem 1.1rem;
+}
+
+.fonio-activity-drawer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 0.85rem;
+  margin-bottom: 0.9rem;
+}
+
+.fonio-activity-drawer-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.fonio-activity-drawer-when {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.fonio-activity-hero {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 1.05rem 1.1rem 0;
+  margin-bottom: 1.15rem;
+  overflow: hidden;
+}
+
+.fonio-activity-hero.is-ok {
+  border-color: rgba(34, 197, 94, 0.22);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.07), rgba(15, 23, 42, 0.4));
+}
+
+.fonio-activity-hero.is-fail {
+  border-color: rgba(239, 68, 68, 0.22);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.08), rgba(15, 23, 42, 0.4));
+}
+
+.fonio-activity-hero-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding-bottom: 1rem;
+}
+
+.fonio-activity-hero-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.fonio-activity-hero.is-ok .fonio-activity-hero-icon {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.fonio-activity-hero.is-fail .fonio-activity-hero-icon {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.fonio-activity-hero-copy {
+  min-width: 0;
+  padding-top: 0.1rem;
+}
+
+.fonio-activity-hero-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.3;
+}
+
+.fonio-activity-hero-sub {
+  margin-top: 0.28rem;
+  font-size: 0.84rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.fonio-activity-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.fonio-activity-hero-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.fonio-activity-hero-metric:last-child {
+  border-right: none;
+}
+
+.fonio-activity-hero-metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.fonio-activity-hero-metric-label svg {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.fonio-activity-hero-metric strong {
+  color: #f8fafc;
+  font-size: 0.92rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fonio-activity-hero-metric code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #93c5fd;
+}
+
+.fonio-activity-drawer-section {
+  margin-bottom: 1.15rem;
+}
+
+.fonio-activity-drawer-section:last-child {
+  margin-bottom: 0;
+}
+
+.fonio-activity-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 650;
+  color: #e2e8f0;
+}
+
+.fonio-activity-section-title svg {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.fonio-activity-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.5rem;
+}
+
+.fonio-activity-detail-item {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  min-width: 0;
+}
+
+.fonio-activity-detail-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-bottom: 0.22rem;
+}
+
+.fonio-activity-detail-value {
+  font-size: 0.9rem;
+  color: #f8fafc;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.fonio-activity-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.fonio-activity-step {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr;
+  gap: 0.7rem;
+  position: relative;
+  padding-bottom: 0.95rem;
+}
+
+.fonio-activity-step:last-child {
+  padding-bottom: 0;
+}
+
+.fonio-activity-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 0.45rem;
+  top: 1.05rem;
+  bottom: 0;
+  width: 2px;
+  background: rgba(34, 197, 94, 0.35);
+}
+
+.fonio-activity-step.is-fail:not(:last-child)::before,
+.fonio-activity-step.is-failed:not(:last-child)::before {
+  background: rgba(239, 68, 68, 0.35);
+}
+
+.fonio-activity-step-dot {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.15rem;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.45);
+  background: var(--surface);
+  position: relative;
+  z-index: 1;
+}
+
+.fonio-activity-step.is-done .fonio-activity-step-dot,
+.fonio-activity-step.is-ok .fonio-activity-step-dot {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.85);
+}
+
+.fonio-activity-step.is-failed .fonio-activity-step-dot,
+.fonio-activity-step.is-fail .fonio-activity-step-dot {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.85);
+}
+
+.fonio-activity-step.is-todo .fonio-activity-step-dot,
+.fonio-activity-step.is-skip .fonio-activity-step-dot {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: transparent;
+}
+
+.fonio-activity-step-body {
+  min-width: 0;
+}
+
+.fonio-activity-step-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.fonio-activity-step-title {
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: #e2e8f0;
+}
+
+.fonio-activity-step-time {
+  font-size: 0.72rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.fonio-activity-step-detail {
+  margin-top: 0.18rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.fonio-activity-outcome-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.fonio-activity-outcome-banner.is-ok {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.1);
+  color: #bbf7d0;
+}
+
+.fonio-activity-outcome-banner.is-fail {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecaca;
+}
+
+.fonio-activity-outcome-banner p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: inherit;
+}
+
+.fonio-activity-collapse,
+.fonio-activity-raw {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.fonio-activity-collapse summary,
+.fonio-activity-raw summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  user-select: none;
+}
+
+.fonio-activity-collapse summary::-webkit-details-marker,
+.fonio-activity-raw summary::-webkit-details-marker {
+  display: none;
+}
+
+.fonio-activity-collapse summary::after,
+.fonio-activity-raw summary::after {
+  content: '';
+  margin-left: auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.fonio-activity-collapse[open] summary::after,
+.fonio-activity-raw[open] summary::after {
+  transform: rotate(-135deg);
+}
+
+.fonio-activity-collapse summary svg,
+.fonio-activity-raw summary svg {
+  color: #64748b;
+}
+
+.fonio-activity-collapse-body {
+  padding: 0 0.9rem 0.9rem;
+}
+
+.fonio-activity-raw-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.fonio-activity-raw pre.json-block {
+  margin: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 0 0 10px 10px;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.fonio-activity-drawer-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.85rem 1.15rem 1.05rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.fonio-activity-drawer-footer .btn {
+  flex: 1 1 10rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+body.fonio-activity-drawer-open {
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .fonio-activity-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .fonio-activity-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .fonio-activity-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .fonio-activity-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fonio-activity-header-meta {
+    justify-content: flex-start;
+  }
+
+  .fonio-activity-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fonio-activity-search {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .fonio-activity-drawer-panel {
+    width: 100%;
+  }
+
+  .fonio-activity-hero-metrics,
+  .fonio-activity-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .fonio-activity-stats {
+    grid-template-columns: 1fr;
   }
 }

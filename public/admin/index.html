@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260911h" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260911q" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -423,7 +423,7 @@
                     <div id="conversations-chat-guest" class="conversations-chat-guest">-</div>
                     <div class="conversations-chat-sub">
                       <span id="conversations-chat-listing">-</span>
-                      <span class="conversations-dot" aria-hidden="true">Â·</span>
+                      <span class="conversations-dot" aria-hidden="true">Ã‚Â·</span>
                       <span id="conversations-chat-convid">-</span>
                       <button type="button" class="conversations-icon-btn" id="conversations-copy-convid" title="Copy" hidden>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -569,7 +569,7 @@
                     autocomplete="off"
                     maxlength="80"
                     data-i18n-placeholder="rules.typePlaceholder"
-                    placeholder="Type a rule name…"
+                    placeholder="Type a rule nameâ€¦"
                   />
                   <datalist id="rule-type-suggestions"></datalist>
                 </label>
@@ -710,11 +710,11 @@
               <div class="request-drawer-heading">
                 <span id="request-drawer-icon" class="request-drawer-icon" aria-hidden="true"></span>
                 <div>
-                  <h3 id="request-drawer-title">—</h3>
-                  <div id="request-drawer-id" class="request-drawer-id">—</div>
+                  <h3 id="request-drawer-title">â€”</h3>
+                  <div id="request-drawer-id" class="request-drawer-id">â€”</div>
                 </div>
               </div>
-              <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">×</button>
+              <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">Ã—</button>
             </header>
             <div id="request-drawer-body" class="request-drawer-body"></div>
           </aside>
@@ -966,12 +966,85 @@
       </section>
 
       <section id="tab-fonioActivity" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="fonioActivity.title">fonio call activity</h2></header>
-        <p class="field-hint" data-i18n="fonioActivity.hint">Each row is one fonio API call to the middleware. Shows sanitized request data, what the middleware did, and the outcome. Phone numbers and emails are masked. Full call transcripts remain in fonio - only tool requests are logged here.</p>
-        <div id="fonio-activity-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="fonio-activity-table"></div>
-        <div id="fonio-activity-info" class="table-info"></div>
-        <div id="fonio-activity-pagination" class="table-pagination"></div>
+        <header class="page-header fonio-activity-page-header">
+          <div class="fonio-activity-page-heading">
+            <h2 data-i18n="fonioActivity.title">fonio call activity</h2>
+            <p class="page-subtitle" data-i18n="fonioActivity.hint">Monitor sanitized middleware API calls between brainions and fonio. All contacts are masked for privacy.</p>
+          </div>
+          <div class="fonio-activity-header-meta">
+            <span id="fonio-activity-last-updated" class="fonio-activity-last-updated"></span>
+            <label class="fonio-activity-auto-refresh">
+              <span data-i18n="fonioActivity.autoRefresh">Auto-refresh</span>
+              <input type="checkbox" id="fonio-activity-auto-refresh" />
+              <span class="fonio-activity-switch" aria-hidden="true"></span>
+            </label>
+          </div>
+        </header>
+
+        <div class="fonio-activity-overview">
+          <div id="fonio-activity-stats" class="fonio-activity-stats" aria-live="polite"></div>
+
+          <div class="card fonio-activity-chart-card">
+            <div class="fonio-activity-chart-head">
+              <div class="fonio-activity-chart-title-row">
+                <h3 id="fonio-activity-chart-title" data-i18n="fonioActivity.chartTitleWeek">Call volume &amp; success rate (last 7 days)</h3>
+                <div class="fonio-activity-chart-range" role="group" aria-label="Chart range">
+                  <button type="button" class="fonio-activity-range-btn is-active" data-fonio-chart-range="7" data-i18n="fonioActivity.chartRangeWeek">7 days</button>
+                  <button type="button" class="fonio-activity-range-btn" data-fonio-chart-range="30" data-i18n="fonioActivity.chartRangeMonth">30 days</button>
+                </div>
+              </div>
+              <div class="fonio-activity-chart-legend">
+                <span class="fonio-activity-legend-calls" data-i18n="fonioActivity.chartCalls">Calls</span>
+                <span class="fonio-activity-legend-success" data-i18n="fonioActivity.chartSuccessRate">Success rate (%)</span>
+              </div>
+            </div>
+            <div id="fonio-activity-chart" class="fonio-activity-chart"></div>
+          </div>
+        </div>
+
+        <div class="fonio-activity-board">
+          <div id="fonio-activity-toolbar" class="fonio-activity-toolbar"></div>
+          <div class="fonio-activity-board-divider" aria-hidden="true"></div>
+          <div class="table-wrap fonio-activity-table-wrap" id="fonio-activity-table"></div>
+          <div class="fonio-activity-table-footer">
+            <div id="fonio-activity-info" class="table-info"></div>
+            <div class="fonio-activity-footer-right">
+              <div id="fonio-activity-pagination" class="table-pagination"></div>
+              <label class="table-page-size" for="fonio-activity-page-size">
+                <span class="sr-only" data-i18n="table.show">Show</span>
+                <select id="fonio-activity-page-size" aria-label="Per page">
+                  <option value="10">10 / page</option>
+                  <option value="25">25 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div id="fonio-activity-drawer" class="fonio-activity-drawer hidden" aria-hidden="true">
+          <div class="fonio-activity-drawer-backdrop" data-fonio-drawer-close></div>
+          <aside class="fonio-activity-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="fonio-activity-drawer-title">
+            <header class="fonio-activity-drawer-header">
+              <div class="fonio-activity-drawer-heading">
+                <span id="fonio-activity-drawer-icon" class="fonio-activity-drawer-icon" aria-hidden="true"></span>
+                <div class="fonio-activity-drawer-title-wrap">
+                  <h3 id="fonio-activity-drawer-title">â€”</h3>
+                  <div class="fonio-activity-drawer-id-row">
+                    <span id="fonio-activity-drawer-id">â€”</span>
+                    <button type="button" id="fonio-activity-copy-callid" class="fonio-activity-copy-btn" aria-label="Copy call ID" title="Copy">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="fonio-activity-drawer-close" data-fonio-drawer-close aria-label="Close">Ã—</button>
+            </header>
+            <div id="fonio-activity-drawer-body" class="fonio-activity-drawer-body"></div>
+            <footer id="fonio-activity-drawer-footer" class="fonio-activity-drawer-footer"></footer>
+          </aside>
+        </div>
       </section>
 
       <section id="tab-fonio" class="tab hidden">
@@ -1200,10 +1273,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260911h"></script>
+  <script src="/admin/i18n.js?v=20260911q"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260911h"></script>
+  <script src="/admin/app.js?v=20260911q"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
