@@ -1993,6 +1993,7 @@ async function loadListings() {
   });
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
+  ensureListingsPageSizeControl();
   applyRoleUi();
   scheduleEnhanceResponsiveTables();
 }
@@ -2074,14 +2075,12 @@ function ensureListingsToolbar() {
   const el = $('#listings-toolbar');
   if (!el) return;
   const s = tableState.listings;
-  if (el.dataset.toolbarInit === 'listings-v3') {
+  if (el.dataset.toolbarInit === 'listings-v4') {
     const search = el.querySelector('[data-table-search="listings"]');
     if (search && document.activeElement !== search) search.value = s.search;
-    const lengthSel = el.querySelector('[data-table-length="listings"]');
-    if (lengthSel && document.activeElement !== lengthSel) lengthSel.value = String(s.pageSize);
     return;
   }
-  el.dataset.toolbarInit = 'listings-v3';
+  el.dataset.toolbarInit = 'listings-v4';
   el.innerHTML = `
     <div class="listings-toolbar-row">
       <label class="listings-search">
@@ -2116,14 +2115,6 @@ function ensureListingsToolbar() {
             <option value="no">${t('common.no')}</option>
           </select>
         </label>
-        <label class="listings-page-size">
-          <span>${t('table.perPage')}</span>
-          <select data-table-length="listings">
-            ${PAGE_SIZE_OPTIONS.map((n) =>
-              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-            ).join('')}
-          </select>
-        </label>
       </div>
     </div>
   `;
@@ -2136,11 +2127,6 @@ function ensureListingsToolbar() {
       loadListings();
     }, 300);
   });
-  el.querySelector('[data-table-length="listings"]')?.addEventListener('change', (e) => {
-    tableState.listings.pageSize = Number(e.target.value);
-    tableState.listings.page = 1;
-    loadListings();
-  });
   el.querySelectorAll('[data-listing-filter]').forEach((sel) => {
     sel.addEventListener('change', () => {
       const key = sel.dataset.listingFilter;
@@ -2148,6 +2134,32 @@ function ensureListingsToolbar() {
       tableState.listings.page = 1;
       loadListings();
     });
+  });
+}
+
+function ensureListingsPageSizeControl() {
+  const lengthSel = $('#listings-page-size');
+  if (!lengthSel) return;
+  const s = tableState.listings;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.listings.pageSize = Number(lengthSel.value) || 10;
+    tableState.listings.page = 1;
+    loadListings().catch((ex) => notify.error(ex.message));
   });
 }
 
@@ -2380,6 +2392,8 @@ async function loadGroups() {
   });
   renderTableInfo('#groups-info', data);
   renderPagination('#groups-pagination', data, 'groups', loadGroups);
+  ensureGroupsPageSizeControl();
+  applyRoleUi();
   scheduleEnhanceResponsiveTables();
 }
 
@@ -2497,14 +2511,12 @@ function ensureGroupsToolbar() {
   const el = $('#groups-toolbar');
   if (!el) return;
   const s = tableState.groups;
-  if (el.dataset.toolbarInit === 'groups-v1') {
+  if (el.dataset.toolbarInit === 'groups-v2') {
     const search = el.querySelector('[data-table-search="groups"]');
     if (search && document.activeElement !== search) search.value = s.search;
-    const lengthSel = el.querySelector('[data-table-length="groups"]');
-    if (lengthSel && document.activeElement !== lengthSel) lengthSel.value = String(s.pageSize);
     return;
   }
-  el.dataset.toolbarInit = 'groups-v1';
+  el.dataset.toolbarInit = 'groups-v2';
   el.innerHTML = `
     <div class="groups-toolbar-row">
       <label class="groups-search">
@@ -2521,14 +2533,6 @@ function ensureGroupsToolbar() {
           <span>${t('groups.colMode')}</span>
           <select data-group-filter="mode"></select>
         </label>
-        <label class="groups-page-size">
-          <span>${t('table.perPage')}</span>
-          <select data-table-length="groups">
-            ${PAGE_SIZE_OPTIONS.map((n) =>
-              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-            ).join('')}
-          </select>
-        </label>
       </div>
     </div>
   `;
@@ -2541,11 +2545,6 @@ function ensureGroupsToolbar() {
       loadGroups();
     }, 300);
   });
-  el.querySelector('[data-table-length="groups"]')?.addEventListener('change', (e) => {
-    tableState.groups.pageSize = Number(e.target.value);
-    tableState.groups.page = 1;
-    loadGroups();
-  });
   el.querySelectorAll('[data-group-filter]').forEach((sel) => {
     sel.addEventListener('change', () => {
       const key = sel.dataset.groupFilter;
@@ -2553,6 +2552,32 @@ function ensureGroupsToolbar() {
       tableState.groups.page = 1;
       loadGroups();
     });
+  });
+}
+
+function ensureGroupsPageSizeControl() {
+  const lengthSel = $('#groups-page-size');
+  if (!lengthSel) return;
+  const s = tableState.groups;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.groups.pageSize = Number(lengthSel.value) || 10;
+    tableState.groups.page = 1;
+    loadGroups().catch((ex) => notify.error(ex.message));
   });
 }
 
@@ -3462,6 +3487,32 @@ function conversationInitials(name) {
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
 }
 
+function conversationAvatarHtml(r, sizeClass = '') {
+  const name = conversationGuestName(r);
+  const initials = conversationInitials(name);
+  const url = String(r?.guestPictureUrl || '').trim();
+  const safeUrl = /^https?:\/\//i.test(url) ? url : '';
+  const cls = ['conversations-avatar', sizeClass, safeUrl ? 'has-photo' : '']
+    .filter(Boolean)
+    .join(' ');
+  return `
+    <div class="${cls}" aria-hidden="true">
+      ${safeUrl ? `<img class="conversations-avatar-img" src="${esc(safeUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async" />` : ''}
+      <span class="conversations-avatar-fallback">${esc(initials)}</span>
+    </div>`;
+}
+
+function bindConversationAvatarFallbacks(root = document) {
+  (root.querySelectorAll?.('.conversations-avatar-img') || []).forEach((img) => {
+    if (img.dataset.bound === '1') return;
+    img.dataset.bound = '1';
+    img.addEventListener('error', () => {
+      img.remove();
+      img.closest('.conversations-avatar')?.classList.remove('has-photo');
+    });
+  });
+}
+
 function conversationSyncMeta(r) {
   if (!r?.hostawayConversationId) {
     return { key: 'missing', cls: 'is-error', label: t('conversations.syncMissing') };
@@ -3664,6 +3715,7 @@ async function loadConversations(opts = {}) {
       );
     });
   });
+  bindConversationAvatarFallbacks(list);
 
   renderTableInfo('#conversations-info', data);
   renderPagination('#conversations-pagination', data, 'conversations', loadConversations);
@@ -3691,7 +3743,7 @@ function renderConversationListItem(r) {
   const selected = String(r.hostawayId) === String(conversationsSelectedId);
   return `
     <button type="button" class="conversations-list-item${selected ? ' is-selected' : ''}" data-conversation-id="${esc(String(r.hostawayId))}">
-      <div class="conversations-avatar" aria-hidden="true">${esc(conversationInitials(name))}</div>
+      ${conversationAvatarHtml(r)}
       <div class="conversations-list-main">
         <div class="conversations-list-top">
           <span class="conversations-list-name">${esc(name)}</span>
@@ -3760,7 +3812,15 @@ function renderConversationChatShell(r, conversation) {
       conversation?.hostawayConversationId ?? r.hostawayConversationId,
   });
   const avatar = $('#conversations-chat-avatar');
-  if (avatar) avatar.textContent = conversationInitials(name);
+  if (avatar) {
+    const url = String(r.guestPictureUrl || '').trim();
+    const safeUrl = /^https?:\/\//i.test(url) ? url : '';
+    avatar.className = `conversations-avatar is-lg${safeUrl ? ' has-photo' : ''}`;
+    avatar.innerHTML = `
+      ${safeUrl ? `<img class="conversations-avatar-img" src="${esc(safeUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async" />` : ''}
+      <span class="conversations-avatar-fallback">${esc(conversationInitials(name))}</span>`;
+    bindConversationAvatarFallbacks(avatar);
+  }
   const guest = $('#conversations-chat-guest');
   if (guest) guest.textContent = name;
   const listing = $('#conversations-chat-listing');

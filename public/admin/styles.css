@@ -162,7 +162,7 @@ body {
   margin-bottom: 1rem;
 }
 
-/* Shell: never nest overflow-x clip around fixed sidebar/topbar â that
+/* Shell: never nest overflow-x clip around fixed sidebar/topbar Ã¢ÂÂ that
    mis-clips and shifts layout on iOS Safari / BrowserStack. Horizontal
    containment stays on html/body only. */
 #app-screen {
@@ -1284,7 +1284,7 @@ th.sortable:hover {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  /* Prefer % over 100vw â vw includes scrollbar and can force horizontal overflow on iOS */
+  /* Prefer % over 100vw Ã¢ÂÂ vw includes scrollbar and can force horizontal overflow on iOS */
   max-width: min(360px, calc(100% - 2rem));
   pointer-events: none;
 }
@@ -1570,7 +1570,7 @@ body.modal-open {
   margin-top: 0.35rem;
 }
 
-/* ââ Rules & verification redesign ââ */
+/* Ã¢ÂÂÃ¢ÂÂ Rules & verification redesign Ã¢ÂÂÃ¢ÂÂ */
 .rules-page-header {
   display: flex;
   align-items: flex-start;
@@ -1922,7 +1922,7 @@ body.modal-open {
   background: rgba(59, 130, 246, 0.08);
 }
 
-/* ââ Approval rules tab ââ */
+/* Ã¢ÂÂÃ¢ÂÂ Approval rules tab Ã¢ÂÂÃ¢ÂÂ */
 .rules-approval-hint {
   margin: 0 0 1rem;
   max-width: 52rem;
@@ -2512,7 +2512,7 @@ body.modal-open {
   margin: 0.35rem 0 0.5rem 1.25rem;
 }
 
-/* ââ Conversations inbox (3-pane) ââ */
+/* Ã¢ÂÂÃ¢ÂÂ Conversations inbox (3-pane) Ã¢ÂÂÃ¢ÂÂ */
 .conversations-page-header {
   display: flex;
   align-items: flex-start;
@@ -2852,6 +2852,7 @@ body.modal-open {
 }
 
 .conversations-avatar {
+  position: relative;
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 999px;
@@ -2859,6 +2860,7 @@ body.modal-open {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
   background: rgba(59, 130, 246, 0.18);
   color: #93c5fd;
   font-size: 0.72rem;
@@ -2877,6 +2879,27 @@ body.modal-open {
   font-size: 0.65rem;
   background: rgba(148, 163, 184, 0.2);
   color: #cbd5e1;
+}
+
+.conversations-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.conversations-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  background: var(--surface2);
+}
+
+.conversations-avatar.has-photo .conversations-avatar-fallback {
+  opacity: 0;
 }
 
 .conversations-list-main {
@@ -3756,12 +3779,12 @@ body.modal-open {
 }
 
 .payment-notes summary::before {
-  content: 'â¸ ';
+  content: 'Ã¢ÂÂ¸ ';
   color: var(--muted);
 }
 
 .payment-notes[open] summary::before {
-  content: 'â¾ ';
+  content: 'Ã¢ÂÂ¾ ';
 }
 
 .payment-notes-body {
@@ -3869,7 +3892,7 @@ form.is-readonly .btn.primary {
   grid-column: 1 / -1;
 }
 
-/* ââ Mobile-first responsive layout âââââââââââââââââââââââââââââ */
+/* Ã¢ÂÂÃ¢ÂÂ Mobile-first responsive layout Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ */
 
 .table-toolbar {
   flex-direction: column;
@@ -4747,7 +4770,7 @@ form.is-readonly .btn.primary {
   white-space: nowrap;
 }
 
-/* Custom assign picker â native <select> popups ignore container width on mobile */
+/* Custom assign picker Ã¢ÂÂ native <select> popups ignore container width on mobile */
 .payment-assign-wrap {
   position: relative;
   display: block;
@@ -6294,7 +6317,7 @@ a.payment-suggestion-id:hover {
   font-size: 0.85rem;
 }
 
-/* ââ CHECK24 tab ââ */
+/* Ã¢ÂÂÃ¢ÂÂ CHECK24 tab Ã¢ÂÂÃ¢ÂÂ */
 .check24-hero {
   display: flex;
   flex-wrap: wrap;
@@ -6817,7 +6840,7 @@ a.payment-suggestion-id:hover {
     align-self: flex-start;
   }
 
-  /* Keep stacked table cards on tablets in portrait (768â1023px) */
+  /* Keep stacked table cards on tablets in portrait (768Ã¢ÂÂ1023px) */
   .table-wrap.responsive-stack,
   .table-wrap:has(.responsive-stack) {
     overflow-x: visible;
@@ -8256,6 +8279,28 @@ a.payment-suggestion-id:hover {
   border-top: 1px solid var(--border);
 }
 
+.listings-footer-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem 0.65rem;
+  margin-left: auto;
+}
+
+.listings-footer-right .table-page-size select,
+#listings-page-size {
+  min-width: 6.5rem;
+  margin: 0;
+  font-size: 0.82rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  color-scheme: dark;
+}
+
 @media (max-width: 1023px) {
   .listings-search {
     flex: 1 1 100%;
@@ -8688,6 +8733,28 @@ a.payment-suggestion-id:hover {
   gap: 0.75rem;
   padding: 0.85rem 1rem;
   border-top: 1px solid var(--border);
+}
+
+.groups-footer-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem 0.65rem;
+  margin-left: auto;
+}
+
+.groups-footer-right .table-page-size select,
+#groups-page-size {
+  min-width: 6.5rem;
+  margin: 0;
+  font-size: 0.82rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  color-scheme: dark;
 }
 
 @media (max-width: 1100px) {
@@ -9265,7 +9332,7 @@ a.payment-suggestion-id:hover {
   }
 }
 
-/* ââ Reservations redesign ââ */
+/* Ã¢ÂÂÃ¢ÂÂ Reservations redesign Ã¢ÂÂÃ¢ÂÂ */
 .reservations-page-header {
   margin-bottom: 1rem;
 }
@@ -9435,7 +9502,7 @@ a.payment-suggestion-id:hover {
   color: var(--text);
 }
 
-/* Keep typing area free â calendar opens via the button on the right */
+/* Keep typing area free Ã¢ÂÂ calendar opens via the button on the right */
 .reservations-filters input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
   width: 0;
