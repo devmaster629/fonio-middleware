@@ -41,7 +41,15 @@ const tableState = {
     dateTo: '',
     cancelledRecordedToday: false,
   },
-  conversations: { page: 1, pageSize: 10, search: '' },
+  conversations: {
+    page: 1,
+    pageSize: 25,
+    search: '',
+    sortBy: 'updatedAt',
+    sortDir: 'desc',
+    status: 'all',
+    channel: 'all',
+  },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
@@ -454,6 +462,8 @@ function manageDashboardPoll() {
   dashboardPoll = null;
   if (paymentsStatusPoll) clearInterval(paymentsStatusPoll);
   paymentsStatusPoll = null;
+  if (conversationsPoll) clearInterval(conversationsPoll);
+  conversationsPoll = null;
   if (activeTab === 'dashboard' && token) {
     dashboardPoll = setInterval(() => {
       if (activeTab === 'dashboard') loadDashboard();
@@ -466,6 +476,9 @@ function manageDashboardPoll() {
         loadPaypalStatus();
       }
     }, 15000);
+  }
+  if (activeTab === 'conversations' && token) {
+    manageConversationsPoll();
   }
 }
 
@@ -565,6 +578,10 @@ function tableQuery(tabKey) {
     if (s.dateFrom) params.set('dateFrom', s.dateFrom);
     if (s.dateTo) params.set('dateTo', s.dateTo);
     if (s.cancelledRecordedToday) params.set('cancelledRecordedToday', '1');
+  }
+  if (tabKey === 'conversations') {
+    if (s.status && s.status !== 'all') params.set('status', s.status);
+    if (s.channel && s.channel !== 'all') params.set('channel', s.channel);
   }
   return params.toString();
 }
@@ -990,17 +1007,46 @@ function formatMessageDate(value) {
 
 function renderConversationMessage(message) {
   const incoming = message.isIncoming === 1;
-  const direction = incoming ? t('conversations.incoming') : t('conversations.outgoing');
+  const time = formatMessageTime(message.insertedOn);
+  const who = incoming ? t('conversations.incoming') : 'Hostaway';
+  const initial = incoming ? 'G' : 'H';
   return `
-    <div class="conversation-msg ${incoming ? 'incoming' : 'outgoing'}">
-      <div class="meta">
-        <span class="channel">${channelLabel(message.communicationType)}</span>
-        <span>${direction}</span>
-        <span>${formatMessageDate(message.insertedOn)}</span>
+    <div class="conv-bubble-row ${incoming ? 'is-guest' : 'is-host'}">
+      ${incoming ? '' : `<div class="conversations-avatar is-sm" aria-hidden="true">${initial}</div>`}
+      <div class="conv-bubble ${incoming ? 'is-guest' : 'is-host'}">
+        ${incoming ? '' : `<div class="conv-bubble-who">${esc(who)}</div>`}
+        <div class="message-body">${formatMessageContent(message)}</div>
+        <div class="conv-bubble-meta">${esc(time)}</div>
       </div>
-      <div class="message-body">${formatMessageContent(message)}</div>
     </div>
   `;
+}
+
+function formatMessageTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+}
+
+function conversationMessageDayKey(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function conversationDayLabel(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  const yday = new Date();
+  yday.setDate(today.getDate() - 1);
+  const key = conversationMessageDayKey(value);
+  if (key === conversationMessageDayKey(today)) return t('conversations.today');
+  if (key === conversationMessageDayKey(yday)) return t('conversations.yesterday');
+  return d.toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function updateRuleSelects() {
@@ -3247,80 +3293,609 @@ function initReservationDrawer() {
 
 initReservationDrawer();
 
-async function loadConversations() {
-  ensureTableToolbar('#conversations-toolbar', 'conversations', loadConversations);
-  const data = await api(`/reservations?${tableQuery('conversations')}`);
-  const canManageConversations = hasPermission('CONVERSATIONS_MANAGE');
-  const rows = data.items.map((r) => `
-    <tr>
-      <td>${r.hostawayId}</td>
-      <td>${esc(r.guestName || '–')}</td>
-      <td>${esc(r.listing?.name || '–')}</td>
-      <td>${r.hostawayConversationId ?? '–'}</td>
-      <td>${r.lastSyncedAt ? formatDateTime(r.lastSyncedAt) : '–'}</td>
-      <td>
-        <button type="button" class="btn ghost btn-sm" data-view-conv="${r.hostawayId}">${t('conversations.view')}</button>
-        ${canManageConversations
-          ? `<button type="button" class="btn ghost btn-sm" data-refresh-conv="${r.hostawayId}">${t('conversations.refresh')}</button>`
-          : ''}
-      </td>
-    </tr>
-  `).join('');
-  $('#conversations-table').innerHTML = `
-    <table><thead><tr>
-      <th>ID</th><th>${t('listings.guest')}</th><th>${t('listings.name')}</th>
-      <th>${t('listings.conversation')}</th><th>${t('conversations.synced')}</th><th></th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="6">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
-  renderTableInfo('#conversations-info', data);
-  renderPagination('#conversations-pagination', data, 'conversations', loadConversations);
-  bindConversationButtons();
-  applyRoleUi();
+let conversationsCache = [];
+let conversationsSelectedId = null;
+let conversationsDetailCache = null;
+let conversationsMessagesCache = [];
+let conversationsPoll = null;
+let conversationsUiBound = false;
+
+function conversationGuestName(r) {
+  return r.guestName || r.guestNameMasked || t('conversations.unknownGuest');
 }
 
-function bindConversationButtons() {
-  $$('[data-view-conv]').forEach((btn) => {
-    btn.addEventListener('click', () => openConversationModal(btn.dataset.viewConv));
-  });
-  $$('[data-refresh-conv]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        const result = await api(`/reservations/${btn.dataset.refreshConv}/refresh-conversation`, { method: 'POST' });
-        notify.success(t('conversations.refreshed', { id: result.hostawayConversationId || '–' }));
-        loadConversations();
-      } catch (ex) {
-        notify.error(ex.message);
-      }
+function conversationInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+}
+
+function conversationSyncMeta(r) {
+  if (!r?.hostawayConversationId) {
+    return { key: 'missing', cls: 'is-error', label: t('conversations.syncMissing') };
+  }
+  if (!r.lastSyncedAt) {
+    return { key: 'delayed', cls: 'is-delayed', label: t('conversations.syncDelayed') };
+  }
+  const ageMs = Date.now() - new Date(r.lastSyncedAt).getTime();
+  if (!Number.isFinite(ageMs) || ageMs > 24 * 60 * 60 * 1000) {
+    return { key: 'delayed', cls: 'is-delayed', label: t('conversations.syncDelayed') };
+  }
+  return { key: 'ok', cls: 'is-ok', label: t('conversations.syncOk') };
+}
+
+function conversationListTime(r) {
+  const value = r.lastSyncedAt || r.updatedAt || r.arrivalDate;
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const todayKey = conversationMessageDayKey(new Date());
+  const yday = new Date();
+  yday.setDate(yday.getDate() - 1);
+  const key = conversationMessageDayKey(d);
+  if (key === todayKey) {
+    return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  }
+  if (key === conversationMessageDayKey(yday)) return t('conversations.yesterday');
+  return d.toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+}
+
+function conversationPreviewText(r) {
+  if (!r.hostawayConversationId) return t('conversations.previewUnlinked');
+  const channel = r.channelName ? String(r.channelName) : '';
+  if (channel) return t('conversations.previewChannel', { channel });
+  return t('conversations.previewOpen');
+}
+
+function ensureConversationsUi() {
+  if (conversationsUiBound) {
+    syncConversationsControls();
+    return;
+  }
+  conversationsUiBound = true;
+
+  const search = $('#conversations-search');
+  if (search) {
+    search.placeholder = t('conversations.searchPlaceholder');
+    search.addEventListener('input', () => {
+      clearTimeout(searchTimers.conversations);
+      searchTimers.conversations = setTimeout(() => {
+        tableState.conversations.search = search.value;
+        tableState.conversations.page = 1;
+        loadConversations().catch((ex) => notify.error(ex.message));
+      }, 300);
     });
+  }
+
+  const channel = $('#conversations-channel');
+  channel?.addEventListener('change', () => {
+    tableState.conversations.channel = channel.value;
+    tableState.conversations.page = 1;
+    loadConversations().catch((ex) => notify.error(ex.message));
   });
+
+  const status = $('#conversations-status');
+  if (status) {
+    status.innerHTML = `
+      <option value="all">${esc(t('reservations.filterAllStatuses'))}</option>
+      <option value="new">${esc(t('reservations.statusNew'))}</option>
+      <option value="modified">${esc(t('reservations.statusModified'))}</option>
+      <option value="confirmed">${esc(t('reservations.statusConfirmed'))}</option>
+      <option value="payment_due">${esc(t('reservations.statusPaymentDue'))}</option>
+      <option value="cancelled">${esc(t('reservations.statusCancelled'))}</option>
+      <option value="inquiry">${esc(t('reservations.statusInquiry'))}</option>
+    `;
+    status.addEventListener('change', () => {
+      tableState.conversations.status = status.value;
+      tableState.conversations.page = 1;
+      loadConversations().catch((ex) => notify.error(ex.message));
+    });
+  }
+
+  const sort = $('#conversations-sort');
+  if (sort) {
+    sort.innerHTML = `
+      <option value="updatedAt:desc">${esc(t('conversations.sortUpdated'))}</option>
+      <option value="arrivalDate:desc">${esc(t('conversations.sortArrival'))}</option>
+      <option value="guestName:asc">${esc(t('conversations.sortGuest'))}</option>
+    `;
+    sort.addEventListener('change', () => {
+      const [sortBy, sortDir] = String(sort.value || 'updatedAt:desc').split(':');
+      tableState.conversations.sortBy = sortBy || 'updatedAt';
+      tableState.conversations.sortDir = sortDir || 'desc';
+      tableState.conversations.page = 1;
+      loadConversations().catch((ex) => notify.error(ex.message));
+    });
+  }
+
+  const pageSize = $('#conversations-page-size');
+  pageSize?.addEventListener('change', () => {
+    tableState.conversations.pageSize = Number(pageSize.value) || 25;
+    tableState.conversations.page = 1;
+    loadConversations().catch((ex) => notify.error(ex.message));
+  });
+
+  const auto = $('#conversations-auto-refresh');
+  auto?.addEventListener('change', () => {
+    manageConversationsPoll();
+  });
+
+  $('#conversations-refresh-btn')?.addEventListener('click', () => {
+    if (!conversationsSelectedId) return;
+    refreshSelectedConversation().catch((ex) => notify.error(ex.message));
+  });
+
+  $('#conversations-copy-convid')?.addEventListener('click', async () => {
+    const id = conversationsDetailCache?.hostawayConversationId
+      || conversationsCache.find((r) => String(r.hostawayId) === String(conversationsSelectedId))?.hostawayConversationId;
+    if (!id) return;
+    try {
+      await navigator.clipboard.writeText(String(id));
+      notify.success(t('conversations.copied'));
+    } catch {
+      notify.error(t('common.copyFailed') || 'Copy failed');
+    }
+  });
+
+  syncConversationsControls();
 }
 
-async function openConversationModal(hostawayId) {
-  const modal = $('#conversation-modal');
-  const body = $('#conversation-modal-body');
-  $('#conversation-modal-title').textContent = `${t('nav.conversations')} #${hostawayId}`;
-  body.innerHTML = `<p>${t('dashboard.syncRunning')}</p>`;
-  modal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+function syncConversationsControls() {
+  const s = tableState.conversations;
+  const search = $('#conversations-search');
+  if (search && document.activeElement !== search) search.value = s.search || '';
+  const channel = $('#conversations-channel');
+  if (channel) channel.value = s.channel || 'all';
+  const status = $('#conversations-status');
+  if (status) status.value = s.status || 'all';
+  const sort = $('#conversations-sort');
+  if (sort) sort.value = `${s.sortBy || 'updatedAt'}:${s.sortDir || 'desc'}`;
+  const pageSize = $('#conversations-page-size');
+  if (pageSize) pageSize.value = String(s.pageSize || 25);
+}
+
+async function loadConversationsChannels() {
+  const sel = $('#conversations-channel');
+  if (!sel || sel.dataset.loaded === '1') return;
   try {
-    const result = await api(`/reservations/${hostawayId}/conversation`);
-    if (!result.hostawayConversationId) {
-      body.innerHTML = `<p class="field-hint">${t('conversations.none')}</p>`;
-      return;
-    }
-    const msgs = (result.messages || []).map((m) => renderConversationMessage(m)).join('');
-    body.innerHTML = `
-      <p><strong>${t('listings.conversation')}:</strong> ${result.hostawayConversationId}</p>
-      ${msgs || `<p>${t('conversations.noMessages')}</p>`}`;
-  } catch (ex) {
-    body.innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+    const facets = await api('/reservations/facets');
+    const channels = facets.channels || [];
+    sel.innerHTML = [
+      `<option value="all">${esc(t('reservations.filterAllChannels'))}</option>`,
+      ...channels.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`),
+    ].join('');
+    sel.dataset.loaded = '1';
+    sel.value = tableState.conversations.channel || 'all';
+  } catch {
+    sel.innerHTML = `<option value="all">${esc(t('reservations.filterAllChannels'))}</option>`;
   }
 }
 
-$('#conversation-modal-close').addEventListener('click', () => {
-  $('#conversation-modal').classList.add('hidden');
+function manageConversationsPoll() {
+  if (conversationsPoll) clearInterval(conversationsPoll);
+  conversationsPoll = null;
+  const auto = $('#conversations-auto-refresh');
+  if (activeTab === 'conversations' && token && auto?.checked) {
+    conversationsPoll = setInterval(() => {
+      if (activeTab === 'conversations') {
+        loadConversations({ silent: true }).catch(() => {});
+      }
+    }, 60000);
+  }
+}
+
+async function loadConversations(opts = {}) {
+  ensureConversationsUi();
+  await loadConversationsChannels();
+  manageConversationsPoll();
+
+  const data = await api(`/reservations?${tableQuery('conversations')}`);
+  conversationsCache = data.items || [];
+  const countEl = $('#conversations-count-label');
+  if (countEl) {
+    countEl.textContent = t('conversations.count', { n: formatCount(data.total || 0) });
+  }
+
+  const list = $('#conversations-list');
+  if (!list) return;
+
+  if (!conversationsCache.length) {
+    list.innerHTML = `<div class="conversations-empty-state is-compact"><p>${esc(t('table.infoEmpty'))}</p></div>`;
+  } else {
+    list.innerHTML = conversationsCache.map((r) => renderConversationListItem(r)).join('');
+  }
+
+  list.querySelectorAll('[data-conversation-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectConversation(btn.getAttribute('data-conversation-id')).catch((ex) =>
+        notify.error(ex.message),
+      );
+    });
+  });
+
+  renderTableInfo('#conversations-info', data);
+  renderPagination('#conversations-pagination', data, 'conversations', loadConversations);
+  syncConversationsControls();
+
+  const stillThere = conversationsCache.some(
+    (r) => String(r.hostawayId) === String(conversationsSelectedId),
+  );
+  if (conversationsSelectedId && stillThere) {
+    highlightSelectedConversation();
+    if (!opts.silent) {
+      // keep chat as-is on silent refresh
+    }
+  } else if (conversationsCache.length && !conversationsSelectedId) {
+    await selectConversation(conversationsCache[0].hostawayId);
+  } else if (!stillThere) {
+    conversationsSelectedId = null;
+    showConversationEmpty();
+  }
+}
+
+function renderConversationListItem(r) {
+  const name = conversationGuestName(r);
+  const sync = conversationSyncMeta(r);
+  const selected = String(r.hostawayId) === String(conversationsSelectedId);
+  return `
+    <button type="button" class="conversations-list-item${selected ? ' is-selected' : ''}" data-conversation-id="${esc(String(r.hostawayId))}">
+      <div class="conversations-avatar" aria-hidden="true">${esc(conversationInitials(name))}</div>
+      <div class="conversations-list-main">
+        <div class="conversations-list-top">
+          <span class="conversations-list-name">${esc(name)}</span>
+          <span class="conversations-list-time">${esc(conversationListTime(r))}</span>
+        </div>
+        <div class="conversations-list-property">${esc(r.listing?.name || '–')}</div>
+        <div class="conversations-list-preview">${esc(conversationPreviewText(r))}</div>
+        <div class="conversations-list-bottom">
+          <span class="conversations-sync-badge ${sync.cls}">${esc(sync.label)}</span>
+          <span class="conversations-list-id">#${esc(String(r.hostawayConversationId || r.hostawayId))}</span>
+        </div>
+      </div>
+    </button>
+  `;
+}
+
+function highlightSelectedConversation() {
+  $$('#conversations-list [data-conversation-id]').forEach((el) => {
+    el.classList.toggle(
+      'is-selected',
+      String(el.getAttribute('data-conversation-id')) === String(conversationsSelectedId),
+    );
+  });
+}
+
+function showConversationEmpty() {
+  $('#conversations-chat-empty')?.classList.remove('hidden');
+  $('#conversations-chat')?.classList.add('hidden');
+  $('#conversations-details-empty')?.classList.remove('hidden');
+  $('#conversations-details')?.classList.add('hidden');
+}
+
+async function selectConversation(hostawayId) {
+  conversationsSelectedId = hostawayId;
+  highlightSelectedConversation();
+  const listItem = conversationsCache.find((r) => String(r.hostawayId) === String(hostawayId));
+  $('#conversations-chat-empty')?.classList.add('hidden');
+  $('#conversations-chat')?.classList.remove('hidden');
+  $('#conversations-details-empty')?.classList.add('hidden');
+  $('#conversations-details')?.classList.remove('hidden');
+
+  renderConversationChatShell(listItem);
+  renderConversationDetailsLoading();
+
+  const messagesEl = $('#conversations-messages');
+  if (messagesEl) messagesEl.innerHTML = `<p class="conversations-loading">${esc(t('dashboard.syncRunning'))}</p>`;
+
+  const [detail, conversation] = await Promise.all([
+    api(`/reservations/${hostawayId}`).catch(() => listItem || null),
+    api(`/reservations/${hostawayId}/conversation`).catch((ex) => ({ error: ex.message })),
+  ]);
+
+  conversationsDetailCache = detail;
+  conversationsMessagesCache = conversation?.messages || [];
+  renderConversationChatShell(detail || listItem, conversation);
+  renderConversationMessages(conversation);
+  renderConversationDetails(detail || listItem, conversation);
+}
+
+function renderConversationChatShell(r, conversation) {
+  if (!r) return;
+  const name = conversationGuestName(r);
+  const sync = conversationSyncMeta({
+    ...r,
+    hostawayConversationId:
+      conversation?.hostawayConversationId ?? r.hostawayConversationId,
+  });
+  const avatar = $('#conversations-chat-avatar');
+  if (avatar) avatar.textContent = conversationInitials(name);
+  const guest = $('#conversations-chat-guest');
+  if (guest) guest.textContent = name;
+  const listing = $('#conversations-chat-listing');
+  if (listing) listing.textContent = r.listing?.name || '–';
+  const convId = conversation?.hostawayConversationId ?? r.hostawayConversationId;
+  const convEl = $('#conversations-chat-convid');
+  if (convEl) {
+    convEl.textContent = convId
+      ? `${t('listings.conversation')} ${convId}`
+      : t('conversations.noneShort');
+  }
+  const copyBtn = $('#conversations-copy-convid');
+  if (copyBtn) copyBtn.hidden = !convId;
+  const syncEl = $('#conversations-chat-sync');
+  if (syncEl) {
+    syncEl.className = `conversations-sync-badge ${sync.cls}`;
+    syncEl.textContent = sync.label;
+  }
+  const channelEl = $('#conversations-chat-channel');
+  if (channelEl) {
+    channelEl.textContent = r.channelName
+      ? t('conversations.channelVia', { channel: r.channelName })
+      : '';
+  }
+
+  const bar = $('#conversations-reservation-bar');
+  if (bar) {
+    const statusMeta = reservationStatusMeta(r);
+    const guests = reservationGuestsLabel(r) || '–';
+    bar.innerHTML = `
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('conversations.reservation'))}</span>
+        <button type="button" class="conversations-res-link" data-open-reservation="${esc(String(r.hostawayId))}">#${esc(String(r.hostawayId))}</button>
+      </div>
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('conversations.checkIn'))}</span>
+        <span>${esc(formatDate(r.arrivalDate))}</span>
+      </div>
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('conversations.checkOut'))}</span>
+        <span>${esc(formatDate(r.departureDate))}</span>
+      </div>
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('listings.guest'))}</span>
+        <span>${esc(guests)}</span>
+      </div>
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('conversations.total'))}</span>
+        <span>${esc(formatMoney(r.totalPrice))}</span>
+      </div>
+      <div class="conversations-res-cell">
+        <span class="conversations-res-label">${esc(t('listings.status'))}</span>
+        <span class="reservation-status-pill ${statusMeta.cls}">${esc(statusMeta.label)}</span>
+      </div>
+    `;
+    bar.querySelector('[data-open-reservation]')?.addEventListener('click', () => {
+      openReservationFromConversation(r.hostawayId);
+    });
+  }
+
+  const openBtn = $('#conversations-open-hostaway');
+  const url = hostawayReservationUrl(r.hostawayId);
+  if (openBtn) {
+    if (url) {
+      openBtn.hidden = false;
+      openBtn.href = url;
+      openBtn.textContent = t('payments.openInHostaway');
+    } else {
+      openBtn.hidden = true;
+    }
+  }
+  const refreshBtn = $('#conversations-refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.hidden = !hasPermission('CONVERSATIONS_MANAGE');
+    refreshBtn.textContent = t('conversations.refreshConversation');
+  }
+}
+
+function renderConversationMessages(conversation) {
+  const el = $('#conversations-messages');
+  if (!el) return;
+  if (conversation?.error) {
+    el.innerHTML = `<p class="error">${esc(conversation.error)}</p>`;
+    return;
+  }
+  if (!conversation?.hostawayConversationId) {
+    el.innerHTML = `<p class="conversations-empty-inline">${esc(t('conversations.none'))}</p>`;
+    return;
+  }
+  const messages = conversation.messages || [];
+  if (!messages.length) {
+    el.innerHTML = `<p class="conversations-empty-inline">${esc(t('conversations.noMessages'))}</p>`;
+    return;
+  }
+
+  const sorted = [...messages].sort((a, b) => {
+    const ta = new Date(a.insertedOn || 0).getTime();
+    const tb = new Date(b.insertedOn || 0).getTime();
+    return ta - tb;
+  });
+
+  let html = '';
+  let lastDay = '';
+  for (const m of sorted) {
+    const day = conversationMessageDayKey(m.insertedOn);
+    if (day && day !== lastDay) {
+      html += `<div class="conversations-day-divider"><span>${esc(conversationDayLabel(m.insertedOn))}</span></div>`;
+      lastDay = day;
+    }
+    html += renderConversationMessage(m);
+  }
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function conversationDetailsIcon(kind) {
+  const icons = {
+    guest: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    listing: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>',
+    channel: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
+    messages: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 8h8M8 12h5"/></svg>',
+    sync: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-15.5-6.4L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.4L21 16"/><path d="M16 16h5v5"/></svg>',
+    tags: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3H4v7l9.59 9.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
+    external: '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function renderConversationDetailsLoading() {
+  const el = $('#conversations-details');
+  if (el) el.innerHTML = `<p class="conversations-loading">${esc(t('dashboard.syncRunning'))}</p>`;
+}
+
+function renderConversationDetails(r, conversation) {
+  const el = $('#conversations-details');
+  if (!el || !r) return;
+  const canPii = hasPermission('RESERVATIONS_VIEW_PII') || adminRole === 'SUPER_ADMIN';
+  const name = conversationGuestName(r);
+  const emailRaw = r.guestEmail || '';
+  const phoneRaw = r.guestPhone || '';
+  const emailShown = emailRaw ? (canPii ? softMaskEmail(emailRaw) : emailRaw) : '–';
+  const phoneShown = phoneRaw ? (canPii ? softMaskPhone(phoneRaw) : phoneRaw) : '–';
+  const sync = conversationSyncMeta({
+    ...r,
+    hostawayConversationId:
+      conversation?.hostawayConversationId ?? r.hostawayConversationId,
+  });
+  const messages = conversation?.messages || [];
+  const times = messages
+    .map((m) => new Date(m.insertedOn || 0).getTime())
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const firstMsg = times.length ? new Date(Math.min(...times)) : null;
+  const lastMsg = times.length ? new Date(Math.max(...times)) : null;
+  const tagSet = new Set();
+  if (r.listing?.listingGroup?.name) tagSet.add(r.listing.listingGroup.name);
+  if (Array.isArray(r.listing?.tags)) {
+    r.listing.tags.filter(Boolean).forEach((tag) => tagSet.add(tag));
+  }
+  const tags = [...tagSet];
+
+  el.innerHTML = `
+    <div class="conversations-details-header">${esc(t('conversations.detailsTitle'))}</div>
+    <div class="conversations-details-body">
+      <section class="conversations-detail-row">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('guest')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-detail-name">${esc(name)}</div>
+          <div class="conversations-detail-sub">${esc(emailShown)}</div>
+          <div class="conversations-detail-sub">${esc(phoneShown)}</div>
+        </div>
+      </section>
+
+      <section class="conversations-detail-row">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('listing')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-detail-name">${esc(r.listing?.name || '–')}</div>
+          ${r.listingId
+            ? `<button type="button" class="conversations-view-listing-btn" data-view-listing>
+                <span>${esc(t('conversations.viewListing'))}</span>
+                ${conversationDetailsIcon('external')}
+              </button>`
+            : ''}
+        </div>
+      </section>
+
+      <section class="conversations-detail-row">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('channel')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-detail-name">${esc(r.channelName || '–')}</div>
+        </div>
+      </section>
+
+      <section class="conversations-detail-row">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('messages')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.firstMessage'))}</span>
+            <strong>${firstMsg ? esc(formatDateTime(firstMsg.toISOString())) : '–'}</strong>
+          </div>
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.lastMessage'))}</span>
+            <strong>${lastMsg ? esc(formatDateTime(lastMsg.toISOString())) : '–'}</strong>
+          </div>
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.totalMessages'))}</span>
+            <strong>${esc(String(messages.length))}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="conversations-detail-row">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('sync')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.statusLabel'))}</span>
+            <span class="conversations-sync-badge ${sync.cls}">${esc(sync.label)}</span>
+          </div>
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.lastSync'))}</span>
+            <strong>${r.lastSyncedAt ? esc(formatDateTime(r.lastSyncedAt)) : '–'}</strong>
+          </div>
+          <div class="conversations-kv">
+            <span>${esc(t('conversations.directionLabel'))}</span>
+            <strong>${esc(t('conversations.syncDirectionShort'))}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="conversations-detail-row is-last">
+        <div class="conversations-detail-icon" aria-hidden="true">${conversationDetailsIcon('tags')}</div>
+        <div class="conversations-detail-content">
+          <div class="conversations-tags">
+            ${tags.length
+              ? tags.map((tag) => `<span class="conversations-tag">${esc(tag)}</span>`).join('')
+              : `<span class="conversations-details-muted">${esc(t('conversations.noTags'))}</span>`}
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+
+  el.querySelector('[data-view-listing]')?.addEventListener('click', () => {
+    if (!r.listingId) return;
+    const btn = document.querySelector('.nav-btn[data-tab="listings"]');
+    btn?.click();
+    setTimeout(() => {
+      tableState.listings.search = r.listing?.name || '';
+      tableState.listings.page = 1;
+      loadListings?.().catch(() => {});
+    }, 50);
+  });
+}
+
+function openReservationFromConversation(hostawayId) {
+  const btn = document.querySelector('.nav-btn[data-tab="reservations"]');
+  btn?.click();
+  setTimeout(() => {
+    if (typeof openReservationDrawer === 'function') {
+      openReservationDrawer(hostawayId).catch(() => {});
+    } else {
+      tableState.reservations.search = String(hostawayId);
+      loadReservations().catch(() => {});
+    }
+  }, 50);
+}
+
+async function refreshSelectedConversation() {
+  if (!conversationsSelectedId) return;
+  const result = await api(
+    `/reservations/${conversationsSelectedId}/refresh-conversation`,
+    { method: 'POST' },
+  );
+  notify.success(t('conversations.refreshed', { id: result.hostawayConversationId || '–' }));
+  await loadConversations({ silent: true });
+  await selectConversation(conversationsSelectedId);
+}
+
+// Legacy modal close handlers (modal kept for compatibility)
+$('#conversation-modal-close')?.addEventListener('click', () => {
+  $('#conversation-modal')?.classList.add('hidden');
   document.body.classList.remove('modal-open');
 });
-$('#conversation-modal').addEventListener('click', (e) => {
+$('#conversation-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'conversation-modal') {
     $('#conversation-modal').classList.add('hidden');
     document.body.classList.remove('modal-open');

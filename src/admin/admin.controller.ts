@@ -1291,6 +1291,10 @@ export class AdminController {
         return { listing: { name: dir } };
       case 'totalPrice':
         return { totalPrice: dir };
+      case 'updatedAt':
+        return { updatedAt: dir };
+      case 'lastSyncedAt':
+        return { lastSyncedAt: dir };
       default:
         return { arrivalDate: dir };
     }

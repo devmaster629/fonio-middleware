@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260910m" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260910q" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -327,12 +327,112 @@
       </section>
 
       <section id="tab-conversations" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="nav.conversations">Conversations</h2></header>
-        <p class="field-hint" data-i18n="conversations.hint">Conversation IDs are used to forward guest requests to Hostaway inbox. Click View to preview messages.</p>
-        <div id="conversations-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="conversations-table"></div>
-        <div id="conversations-info" class="table-info"></div>
-        <div id="conversations-pagination" class="table-pagination"></div>
+        <header class="page-header conversations-page-header">
+          <div class="conversations-page-heading">
+            <h2 data-i18n="nav.conversations">Conversations</h2>
+            <p class="page-subtitle" data-i18n="conversations.hint">Guest requests are forwarded to your Hostaway inbox. All conversations are synchronized for admin visibility.</p>
+          </div>
+          <div class="conversations-page-actions">
+            <label class="conversations-auto-refresh">
+              <span data-i18n="conversations.autoRefresh">Auto-refresh: 60s</span>
+              <input type="checkbox" id="conversations-auto-refresh" />
+              <span class="conversations-switch" aria-hidden="true"></span>
+            </label>
+          </div>
+        </header>
+
+        <div class="conversations-inbox" id="conversations-inbox">
+          <aside class="conversations-list-pane" aria-label="Conversation list">
+            <div class="conversations-list-toolbar">
+              <label class="conversations-search">
+                <span class="sr-only" data-i18n="table.search">Search</span>
+                <input type="search" id="conversations-search" placeholder="Search guest, property, or conversation ID…" autocomplete="off" />
+                <svg class="conversations-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </label>
+              <div class="conversations-list-filters">
+                <select id="conversations-channel" aria-label="Channel">
+                  <option value="all">All channels</option>
+                </select>
+                <select id="conversations-status" aria-label="Status">
+                  <option value="all">All statuses</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="payment_due">Payment due</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="inquiry">Inquiry</option>
+                  <option value="new">New</option>
+                  <option value="modified">Modified</option>
+                </select>
+              </div>
+            </div>
+            <div class="conversations-list-meta">
+              <span id="conversations-count-label">0 conversations</span>
+              <select id="conversations-sort" aria-label="Sort">
+                <option value="updatedAt:desc">Sort: Last updated</option>
+                <option value="arrivalDate:desc">Sort: Arrival</option>
+                <option value="guestName:asc">Sort: Guest A–Z</option>
+              </select>
+            </div>
+            <div id="conversations-list" class="conversations-list"></div>
+            <div class="conversations-list-footer">
+              <div id="conversations-info" class="table-info conversations-list-info"></div>
+              <div class="conversations-list-footer-right">
+                <div id="conversations-pagination" class="table-pagination"></div>
+                <label class="table-page-size conversations-page-size" for="conversations-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="conversations-page-size" aria-label="Per page">
+                    <option value="10">10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </aside>
+
+          <section class="conversations-chat-pane" aria-label="Chat">
+            <div id="conversations-chat-empty" class="conversations-empty-state">
+              <p data-i18n="conversations.selectPrompt">Select a conversation to preview messages.</p>
+            </div>
+            <div id="conversations-chat" class="conversations-chat hidden">
+              <header class="conversations-chat-header">
+                <div class="conversations-chat-identity">
+                  <div id="conversations-chat-avatar" class="conversations-avatar is-lg" aria-hidden="true"></div>
+                  <div>
+                    <div id="conversations-chat-guest" class="conversations-chat-guest">–</div>
+                    <div class="conversations-chat-sub">
+                      <span id="conversations-chat-listing">–</span>
+                      <span class="conversations-dot" aria-hidden="true">·</span>
+                      <span id="conversations-chat-convid">–</span>
+                      <button type="button" class="conversations-icon-btn" id="conversations-copy-convid" title="Copy" hidden>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="conversations-chat-header-right">
+                  <span id="conversations-chat-sync" class="conversations-sync-badge"></span>
+                  <span id="conversations-chat-channel" class="conversations-channel-label"></span>
+                </div>
+              </header>
+              <div id="conversations-reservation-bar" class="conversations-reservation-bar"></div>
+              <div id="conversations-messages" class="conversations-messages-pane"></div>
+              <footer class="conversations-chat-footer">
+                <div class="conversations-chat-actions">
+                  <a id="conversations-open-hostaway" class="btn primary" href="#" target="_blank" rel="noopener noreferrer" hidden>Open in Hostaway</a>
+                  <button type="button" class="btn ghost" id="conversations-refresh-btn" hidden>Refresh conversation</button>
+                </div>
+                <p class="conversations-readonly-note" data-i18n="conversations.readOnly">Read-only admin view</p>
+              </footer>
+            </div>
+          </section>
+
+          <aside class="conversations-details-pane" aria-label="Details">
+            <div id="conversations-details-empty" class="conversations-empty-state is-compact">
+              <p data-i18n="conversations.detailsEmpty">Guest and sync details appear here.</p>
+            </div>
+            <div id="conversations-details" class="conversations-details hidden"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="tab-rules" class="tab hidden">
@@ -929,10 +1029,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260910m"></script>
+  <script src="/admin/i18n.js?v=20260910q"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260910m"></script>
+  <script src="/admin/app.js?v=20260910q"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
