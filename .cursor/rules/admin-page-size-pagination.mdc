@@ -1,0 +1,14 @@
+---
+description: Admin table page-size control belongs next to pagination
+globs: public/admin/**
+alwaysApply: false
+---
+
+# Admin UI — page size placement
+
+When building or editing admin list/table pages under `public/admin/`:
+
+- Place the **page size** control in the **table footer**, immediately **next to pagination** (right of the page buttons), not in the top filter toolbar.
+- Pattern: `table-info` (left) · `table-pagination` + `table-page-size` (right).
+- Style page size as a bordered select showing **`{n} / page`** (i18n `table.perPage`), matching pagination control height — not a separate “Show” label.
+- Reservations already follows this; apply the same when touching Listings, Groups, Payments, Conversations, Logs, Users, etc.

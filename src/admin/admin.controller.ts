@@ -300,10 +300,28 @@ export class AdminController {
     req: Request & {
       user: { role: AdminRole; permissions?: AdminPermission[] };
     },
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('channel') channel?: string,
+    @Query('listingId') listingId?: string,
+    @Query('groupId') groupId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('cancelledRecordedToday') cancelledRecordedToday?: string,
   ) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
-    const where = this.buildReservationSearch(query.search);
+    const where = this.buildReservationWhere({
+      search: query.search,
+      status,
+      paymentStatus,
+      channel,
+      listingId,
+      groupId,
+      dateFrom,
+      dateTo,
+      cancelledRecordedToday,
+    });
     const orderBy = this.buildReservationOrder(query.sortBy, query.sortDir);
     const [total, items] = await Promise.all([
       this.prisma.reservation.count({ where }),
@@ -319,16 +337,256 @@ export class AdminController {
         },
       }),
     ]);
-    const canSeePii =
-      req.user.role === AdminRole.SUPER_ADMIN ||
-      (req.user.permissions ?? []).includes(
-        AdminPermission.RESERVATIONS_VIEW_PII,
-      );
+    const canSeePii = this.canSeeReservationPii(req);
     const withAmounts = items.map((r) => this.withReservationAmounts(r));
     const sanitized = canSeePii
       ? withAmounts
       : withAmounts.map((r) => maskReservationForViewer(r));
     return paginated(sanitized, total, page, pageSize);
+  }
+
+  @Get('reservations/facets')
+  @Permissions(AdminPermission.RESERVATIONS_VIEW)
+  @ApiOperation({ summary: 'Filter facets for reservations list (groups, channels)' })
+  async reservationFacets() {
+    const [groups, channelsRaw] = await Promise.all([
+      this.prisma.listingGroup.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+        take: 500,
+      }),
+      this.prisma.reservation.findMany({
+        where: { channelName: { not: null } },
+        select: { channelName: true },
+        distinct: ['channelName'],
+        orderBy: { channelName: 'asc' },
+        take: 100,
+      }),
+    ]);
+    return {
+      groups,
+      channels: channelsRaw
+        .map((c) => c.channelName)
+        .filter((name): name is string => !!name?.trim()),
+    };
+  }
+
+  @Get('reservations/stats')
+  @Permissions(AdminPermission.RESERVATIONS_VIEW)
+  @ApiOperation({ summary: 'Reservation summary cards for admin list' })
+  async reservationStats() {
+    const now = new Date();
+    const startToday = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const endToday = new Date(startToday);
+    endToday.setUTCDate(endToday.getUTCDate() + 1);
+    const in7Days = new Date(startToday);
+    in7Days.setUTCDate(in7Days.getUTCDate() + 7);
+
+    const cancelledStatuses = ['cancelled', 'canceled', 'declined', 'expired'];
+    const arrivingSoonWhere: Prisma.ReservationWhereInput = {
+      arrivalDate: { gte: startToday, lt: in7Days },
+      status: { notIn: cancelledStatuses },
+    };
+    const paymentDueWhere: Prisma.ReservationWhereInput = {
+      arrivalDate: { gte: startToday, lt: in7Days },
+      status: { notIn: cancelledStatuses },
+      OR: [{ isPaid: false }, { isPaid: null }],
+    };
+    // Bookings whose cancellation was recorded today (any arrival date).
+    const cancelledTodayWhere = this.buildCancelledRecordedTodayWhere(
+      startToday,
+      endToday,
+    );
+
+    const [total, arrivingSoon, paymentDue, cancelledToday] = await Promise.all([
+      this.prisma.reservation.count(),
+      this.prisma.reservation.count({ where: arrivingSoonWhere }),
+      this.prisma.reservation.count({ where: paymentDueWhere }),
+      this.prisma.reservation.count({ where: cancelledTodayWhere }),
+    ]);
+
+    return {
+      total,
+      arrivingSoon,
+      paymentDue,
+      cancelledToday,
+      windows: {
+        arrivingSoonDays: 7,
+        paymentDueDays: 7,
+      },
+    };
+  }
+
+  @Get('reservations/export')
+  @Permissions(AdminPermission.RESERVATIONS_VIEW)
+  @ApiOperation({ summary: 'Export filtered reservations as CSV (max 5000)' })
+  async exportReservations(
+    @Query() query: SortablePaginationQueryDto,
+    @Req()
+    req: Request & {
+      user: { role: AdminRole; permissions?: AdminPermission[] };
+    },
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('channel') channel?: string,
+    @Query('listingId') listingId?: string,
+    @Query('groupId') groupId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const where = this.buildReservationWhere({
+      search: query.search,
+      status,
+      paymentStatus,
+      channel,
+      listingId,
+      groupId,
+      dateFrom,
+      dateTo,
+    });
+    const orderBy = this.buildReservationOrder(query.sortBy, query.sortDir);
+    const items = await this.prisma.reservation.findMany({
+      where,
+      take: 5000,
+      orderBy,
+      include: {
+        listing: { include: { listingGroup: true } },
+        notifiedCharges: { select: { amount: true } },
+        paymentPlan: true,
+      },
+    });
+    const canSeePii = this.canSeeReservationPii(req);
+    const rows = items.map((r) => {
+      const withAmt = this.withReservationAmounts(r);
+      return canSeePii ? withAmt : maskReservationForViewer(withAmt);
+    });
+
+    const header = [
+      'hostawayId',
+      'guestName',
+      'guestEmail',
+      'guestPhone',
+      'listing',
+      'group',
+      'channel',
+      'totalPrice',
+      'paidAmount',
+      'arrivalDate',
+      'departureDate',
+      'status',
+      'isPaid',
+    ];
+    const escapeCsv = (value: unknown) => {
+      if (value == null) return '';
+      const s = String(value);
+      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    // Excel treats long digit strings as numbers (scientific notation). Force text.
+    const escapeCsvPhone = (value: unknown) => {
+      if (value == null || value === '') return '';
+      const s = String(value).trim();
+      if (!s) return '';
+      return `"=""${s.replace(/"/g, '""')}"""`;
+    };
+    const lines = [
+      header.join(','),
+      ...rows.map((r) =>
+        [
+          escapeCsv(r.hostawayId),
+          escapeCsv(r.guestName ?? r.guestNameMasked ?? ''),
+          escapeCsv(r.guestEmail ?? ''),
+          escapeCsvPhone(r.guestPhone ?? ''),
+          escapeCsv(r.listing?.name ?? ''),
+          escapeCsv(r.listing?.listingGroup?.name ?? ''),
+          escapeCsv(r.channelName ?? ''),
+          escapeCsv(r.totalPrice ?? ''),
+          escapeCsv(r.paidAmount ?? ''),
+          escapeCsv(
+            r.arrivalDate instanceof Date
+              ? r.arrivalDate.toISOString().slice(0, 10)
+              : r.arrivalDate,
+          ),
+          escapeCsv(
+            r.departureDate instanceof Date
+              ? r.departureDate.toISOString().slice(0, 10)
+              : r.departureDate,
+          ),
+          escapeCsv(r.status),
+          escapeCsv(r.isPaid == null ? '' : r.isPaid ? 'true' : 'false'),
+        ].join(','),
+      ),
+    ];
+    return {
+      filename: `reservations-export-${new Date().toISOString().slice(0, 10)}.csv`,
+      contentType: 'text/csv; charset=utf-8',
+      // UTF-8 BOM helps Excel open the file with correct encoding
+      csv: `\uFEFF${lines.join('\n')}`,
+      count: rows.length,
+    };
+  }
+
+  @Get('reservations/:hostawayId')
+  @Permissions(AdminPermission.RESERVATIONS_VIEW)
+  @ApiOperation({ summary: 'Reservation detail for admin drawer' })
+  async getReservation(
+    @Param('hostawayId') hostawayId: string,
+    @Req()
+    req: Request & {
+      user: { role: AdminRole; permissions?: AdminPermission[] };
+    },
+  ) {
+    const id = Number(hostawayId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new NotFoundException('Reservation not found');
+    }
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: id },
+      include: {
+        listing: { include: { listingGroup: true } },
+        notifiedCharges: {
+          orderBy: { notifiedAt: 'desc' },
+          take: 50,
+        },
+        paymentPlan: true,
+        paymentAllocations: {
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+          include: {
+            externalPayment: {
+              select: {
+                id: true,
+                source: true,
+                amount: true,
+                currency: true,
+                occurredAt: true,
+                payerName: true,
+                reference: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!reservation) {
+      throw new NotFoundException(`Reservation #${id} not found`);
+    }
+
+    const withAmounts = this.withReservationAmounts(reservation);
+    const activity = this.buildReservationActivity(reservation);
+    const noteCount = [reservation.hostNote, reservation.guestNote, reservation.comment]
+      .filter((n) => !!n?.trim())
+      .length;
+    const canSeePii = this.canSeeReservationPii(req);
+    const payload = {
+      ...withAmounts,
+      noteCount,
+      activity,
+    };
+    return canSeePii ? payload : maskReservationForViewer(payload);
   }
 
   @Get('reservations/:hostawayId/conversation')
@@ -723,6 +981,249 @@ export class AdminController {
         ...(Number.isFinite(id) ? [{ hostawayParentId: id }] : []),
       ],
     };
+  }
+
+  private canSeeReservationPii(
+    req: Request & {
+      user: { role: AdminRole; permissions?: AdminPermission[] };
+    },
+  ): boolean {
+    return (
+      req.user.role === AdminRole.SUPER_ADMIN ||
+      (req.user.permissions ?? []).includes(
+        AdminPermission.RESERVATIONS_VIEW_PII,
+      )
+    );
+  }
+
+  private buildReservationWhere(input: {
+    search?: string;
+    status?: string;
+    paymentStatus?: string;
+    channel?: string;
+    listingId?: string;
+    groupId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    cancelledRecordedToday?: string;
+  }): Prisma.ReservationWhereInput {
+    const and: Prisma.ReservationWhereInput[] = [];
+    const search = this.buildReservationSearch(input.search);
+    if (Object.keys(search).length > 0) and.push(search);
+
+    const cancelledRecordedToday = ['1', 'true', 'yes'].includes(
+      String(input.cancelledRecordedToday || '')
+        .trim()
+        .toLowerCase(),
+    );
+    if (cancelledRecordedToday) {
+      const now = new Date();
+      const startToday = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      );
+      const endToday = new Date(startToday);
+      endToday.setUTCDate(endToday.getUTCDate() + 1);
+      and.push(this.buildCancelledRecordedTodayWhere(startToday, endToday));
+      if (and.length === 1) return and[0];
+      return { AND: and };
+    }
+
+    const status = input.status?.trim();
+    if (status && status !== 'all') {
+      if (status === 'payment_due') {
+        and.push({
+          OR: [{ isPaid: false }, { isPaid: null }],
+          status: { notIn: ['cancelled', 'canceled', 'declined', 'expired'] },
+        });
+      } else if (status === 'inquiry') {
+        and.push({
+          status: {
+            in: [
+              'inquiry',
+              'inquiryPreapproved',
+              'inquiryDenied',
+              'inquiryTimedout',
+              'inquiryNotPossible',
+            ],
+          },
+        });
+      } else if (status === 'cancelled' || status === 'canceled') {
+        and.push({
+          status: { in: ['cancelled', 'canceled', 'declined', 'expired'] },
+        });
+      } else {
+        and.push({ status: { equals: status, mode: 'insensitive' } });
+      }
+    }
+
+    const paymentStatus = input.paymentStatus?.trim();
+    if (paymentStatus && paymentStatus !== 'all') {
+      if (paymentStatus === 'paid') {
+        and.push({ isPaid: true });
+      } else if (paymentStatus === 'due') {
+        and.push({
+          OR: [{ isPaid: false }, { isPaid: null }],
+          notifiedCharges: { none: {} },
+        });
+      } else if (paymentStatus === 'partial') {
+        and.push({
+          OR: [{ isPaid: false }, { isPaid: null }],
+          notifiedCharges: { some: {} },
+        });
+      }
+    }
+
+    const channel = input.channel?.trim();
+    if (channel && channel !== 'all') {
+      and.push({ channelName: { contains: channel, mode: 'insensitive' } });
+    }
+
+    const listingId = input.listingId?.trim();
+    if (listingId && listingId !== 'all') {
+      and.push({ listingId });
+    }
+
+    const groupId = input.groupId?.trim();
+    if (groupId && groupId !== 'all') {
+      and.push({ listing: { listingGroupId: groupId } });
+    }
+
+    const dateFrom = this.parseFilterDate(input.dateFrom);
+    const dateTo = this.parseFilterDate(input.dateTo);
+    if (dateFrom || dateTo) {
+      and.push({
+        arrivalDate: {
+          ...(dateFrom ? { gte: dateFrom } : {}),
+          ...(dateTo ? { lte: dateTo } : {}),
+        },
+      });
+    }
+
+    if (and.length === 0) return {};
+    if (and.length === 1) return and[0];
+    return { AND: and };
+  }
+
+  /** Bookings marked cancelled today (any arrival date). */
+  private buildCancelledRecordedTodayWhere(
+    startToday: Date,
+    endToday: Date,
+  ): Prisma.ReservationWhereInput {
+    const cancelledStatuses = ['cancelled', 'canceled', 'declined', 'expired'];
+    const upcomingWindowStart = new Date(startToday);
+    upcomingWindowStart.setUTCDate(upcomingWindowStart.getUTCDate() - 14);
+    return {
+      OR: [
+        { autoCanceledAt: { gte: startToday, lt: endToday } },
+        {
+          status: { in: cancelledStatuses },
+          autoCanceledAt: null,
+          updatedAt: { gte: startToday, lt: endToday },
+          // Limit sync-refresh noise to recent/upcoming arrivals.
+          arrivalDate: { gte: upcomingWindowStart },
+        },
+      ],
+    };
+  }
+
+  private parseFilterDate(value?: string): Date | null {
+    if (!value?.trim()) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private buildReservationActivity(reservation: {
+    bookedAt: Date | null;
+    createdAt: Date;
+    paymentRequestSentAt: Date | null;
+    guestPaymentRequestSentAt: Date | null;
+    guestPaymentReminderSentAt: Date | null;
+    checkinInfoSentAt: Date | null;
+    autoCanceledAt: Date | null;
+    unpaidReminderSentAt: Date | null;
+    paymentBaselinedAt: Date | null;
+    notifiedCharges?: Array<{
+      amount: number;
+      currency: string;
+      hostawayChargeId: number;
+      notifiedAt: Date;
+    }>;
+    paymentAllocations?: Array<{
+      amount: number;
+      createdAt: Date;
+      externalPayment?: {
+        source: string;
+        currency: string;
+        occurredAt: Date;
+        reference: string | null;
+      } | null;
+    }>;
+  }): Array<{
+    at: string;
+    type: string;
+    title: string;
+    detail?: string | null;
+  }> {
+    const events: Array<{
+      at: Date;
+      type: string;
+      title: string;
+      detail?: string | null;
+    }> = [];
+
+    events.push({
+      at: reservation.bookedAt || reservation.createdAt,
+      type: 'created',
+      title: 'Reservation created',
+      detail: null,
+    });
+
+    for (const charge of reservation.notifiedCharges ?? []) {
+      events.push({
+        at: charge.notifiedAt,
+        type: 'payment',
+        title: `Payment of ${Number(charge.amount).toFixed(2)} ${charge.currency || 'EUR'} received`,
+        detail: `Hostaway charge #${charge.hostawayChargeId}`,
+      });
+    }
+
+    for (const alloc of reservation.paymentAllocations ?? []) {
+      const src = alloc.externalPayment?.source || 'bank';
+      events.push({
+        at: alloc.createdAt,
+        type: 'allocation',
+        title: `Bank payment allocated (${Number(alloc.amount).toFixed(2)} ${alloc.externalPayment?.currency || 'EUR'})`,
+        detail: alloc.externalPayment?.reference || src,
+      });
+    }
+
+    const stamp = (
+      at: Date | null | undefined,
+      type: string,
+      title: string,
+    ) => {
+      if (!at) return;
+      events.push({ at, type, title, detail: null });
+    };
+    stamp(reservation.paymentRequestSentAt, 'automation', 'Payment request sent (Hostaway inbox)');
+    stamp(reservation.guestPaymentRequestSentAt, 'automation', 'Guest payment request sent');
+    stamp(reservation.guestPaymentReminderSentAt, 'automation', 'Guest payment reminder sent');
+    stamp(reservation.unpaidReminderSentAt, 'automation', 'Unpaid reminder sent');
+    stamp(reservation.checkinInfoSentAt, 'automation', 'Check-in info sent');
+    stamp(reservation.autoCanceledAt, 'cancelled', 'Reservation auto-cancelled');
+    stamp(reservation.paymentBaselinedAt, 'system', 'Existing Hostaway charges baselined');
+
+    return events
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, 40)
+      .map((e) => ({
+        at: e.at.toISOString(),
+        type: e.type,
+        title: e.title,
+        detail: e.detail,
+      }));
   }
 
   private buildReservationSearch(search?: string): Prisma.ReservationWhereInput {

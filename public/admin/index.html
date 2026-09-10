@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung – Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260910a" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260910m" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -280,12 +280,50 @@
       </section>
 
       <section id="tab-reservations" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="nav.reservations">Reservations</h2></header>
-        <p class="field-hint" data-i18n="listings.reservationsHint">Full guest contact data for verification. fonio/API guests only see masked data.</p>
-        <div id="reservations-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="reservations-table"></div>
-        <div id="reservations-info" class="table-info"></div>
-        <div id="reservations-pagination" class="table-pagination"></div>
+        <header class="page-header reservations-page-header">
+          <div class="reservations-page-heading">
+            <h2 data-i18n="nav.reservations">Reservations</h2>
+            <p class="page-subtitle" data-i18n="reservations.subtitle">Guest stays synced from Hostaway. Contact data is full for admins with PII permission; otherwise masked.</p>
+          </div>
+        </header>
+        <div id="reservations-stats" class="reservations-stats" aria-live="polite"></div>
+        <div class="reservations-board">
+          <div id="reservations-toolbar" class="reservations-toolbar"></div>
+          <div class="reservations-board-divider" aria-hidden="true"></div>
+          <div class="table-wrap reservations-table-wrap" id="reservations-table"></div>
+          <div class="reservations-table-footer">
+            <div id="reservations-info" class="table-info"></div>
+            <div class="reservations-footer-right">
+              <div id="reservations-pagination" class="table-pagination"></div>
+              <label class="table-page-size" for="reservations-page-size">
+                <span class="sr-only" data-i18n="table.show">Show</span>
+                <select id="reservations-page-size" data-table-length="reservations" aria-label="Per page">
+                  <option value="10">10 / page</option>
+                  <option value="25">25 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div id="reservation-drawer" class="reservation-drawer hidden" aria-hidden="true">
+          <div class="reservation-drawer-backdrop" data-reservation-drawer-close></div>
+          <aside class="reservation-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="reservation-drawer-title">
+            <header class="reservation-drawer-header">
+              <div>
+                <h3 id="reservation-drawer-title" class="reservation-drawer-id">–</h3>
+                <div id="reservation-drawer-status" class="reservation-status-pill"></div>
+              </div>
+              <button type="button" class="reservation-drawer-close" data-reservation-drawer-close aria-label="Close">×</button>
+            </header>
+            <div class="reservation-drawer-tabs" role="tablist">
+              <button type="button" class="reservation-drawer-tab is-active" data-reservation-drawer-tab="details" role="tab" aria-selected="true" data-i18n="reservations.tabDetails">Details</button>
+              <button type="button" class="reservation-drawer-tab" data-reservation-drawer-tab="notes" role="tab" aria-selected="false"><span data-i18n="reservations.tabNotes">Notes</span> <span id="reservation-drawer-notes-count" class="reservation-drawer-tab-count">0</span></button>
+            </div>
+            <div id="reservation-drawer-body" class="reservation-drawer-body"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="tab-conversations" class="tab hidden">
@@ -891,10 +929,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260910a"></script>
+  <script src="/admin/i18n.js?v=20260910m"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260910a"></script>
+  <script src="/admin/app.js?v=20260910m"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

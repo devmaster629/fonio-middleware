@@ -27,7 +27,20 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
   listings: { page: 1, pageSize: 25, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
   groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '' },
-  reservations: { page: 1, pageSize: 10, search: '', sortBy: 'arrivalDate', sortDir: 'desc' },
+  reservations: {
+    page: 1,
+    pageSize: 10,
+    search: '',
+    sortBy: 'arrivalDate',
+    sortDir: 'desc',
+    status: 'all',
+    paymentStatus: 'all',
+    channel: 'all',
+    groupId: 'all',
+    dateFrom: '',
+    dateTo: '',
+    cancelledRecordedToday: false,
+  },
   conversations: { page: 1, pageSize: 10, search: '' },
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
@@ -541,6 +554,17 @@ function tableQuery(tabKey) {
     if (s.city) params.set('city', s.city);
     if (s.mode) params.set('mode', s.mode);
     params.set('includeFacets', '1');
+  }
+  if (tabKey === 'reservations') {
+    if (s.status && s.status !== 'all') params.set('status', s.status);
+    if (s.paymentStatus && s.paymentStatus !== 'all') {
+      params.set('paymentStatus', s.paymentStatus);
+    }
+    if (s.channel && s.channel !== 'all') params.set('channel', s.channel);
+    if (s.groupId && s.groupId !== 'all') params.set('groupId', s.groupId);
+    if (s.dateFrom) params.set('dateFrom', s.dateFrom);
+    if (s.dateTo) params.set('dateTo', s.dateTo);
+    if (s.cancelledRecordedToday) params.set('cancelledRecordedToday', '1');
   }
   return params.toString();
 }
@@ -2363,43 +2387,865 @@ function refreshGroupsFilterOptions() {
 }
 
 async function loadReservations() {
-  ensureTableToolbar('#reservations-toolbar', 'reservations', loadReservations);
+  await Promise.all([
+    loadReservationsStats().catch(() => null),
+    ensureReservationsToolbar(),
+  ]);
   const data = await api(`/reservations?${tableQuery('reservations')}`);
-  const rows = data.items.map((r) => `
-    <tr>
-      <td>${r.hostawayId}</td>
-      <td>${esc(r.guestName || r.guestNameMasked || '–')}</td>
-      <td>${esc(r.guestPhone || '–')}</td>
-      <td>${esc(r.guestEmail || '–')}</td>
+  const rows = data.items.map((r) => {
+    const paid = reservationPaidAmount(r);
+    const total = r.totalPrice;
+    const guests = reservationGuestsLabel(r);
+    const statusMeta = reservationStatusMeta(r);
+    return `
+    <tr class="reservation-row" data-hostaway-id="${r.hostawayId}" tabindex="0">
+      <td>
+        <button type="button" class="reservation-id-btn" data-hostaway-id="${r.hostawayId}">#${r.hostawayId}</button>
+      </td>
+      <td>
+        <div class="reservation-guest-cell">
+          <strong>${esc(r.guestName || r.guestNameMasked || '–')}</strong>
+          ${guests ? `<span class="muted">${esc(guests)}</span>` : ''}
+        </div>
+      </td>
+      <td>
+        <div class="reservation-contact-cell">
+          <span>${esc(r.guestEmail ? softMaskEmail(r.guestEmail) : '–')}</span>
+          <span class="muted">${esc(r.guestPhone ? softMaskPhone(r.guestPhone) : '–')}</span>
+        </div>
+      </td>
       <td>${esc(r.listing?.name || '–')}</td>
-      <td class="cell-money">${esc(formatMoney(r.totalPrice))}</td>
-      <td class="cell-money">${esc(formatMoney(reservationPaidAmount(r)))}</td>
-      <td>${r.paymentPlan?.enabled ? esc(formatMoney(r.paymentPlan.nextDueAmount, r.paymentPlan.currency)) : '–'}</td>
+      <td class="cell-money">
+        <div class="reservation-money-stack">
+          <span>${esc(formatMoney(total))}</span>
+          <span class="reservation-paid-amt">${esc(formatMoney(paid))}</span>
+        </div>
+      </td>
       <td>${esc(r.listing?.listingGroup?.name || '–')}</td>
-      <td>${formatDate(r.arrivalDate)}</td>
-      <td>${formatDate(r.departureDate)}</td>
-      <td>${r.status}</td>
-    </tr>
-  `).join('');
+      <td>
+        <div class="reservation-dates-cell">
+          <span>${formatDate(r.arrivalDate)}</span>
+          <span class="muted">${formatDate(r.departureDate)}</span>
+        </div>
+      </td>
+      <td><span class="reservation-status-pill ${statusMeta.cls}">${esc(statusMeta.label)}</span></td>
+      <td class="reservation-actions-cell">
+        <div class="reservation-actions-menu">
+          <button type="button" class="btn ghost btn-sm reservation-actions-toggle" aria-expanded="false" data-hostaway-id="${r.hostawayId}" title="${esc(t('listings.actions'))}">⋮</button>
+          <div class="reservation-actions-dropdown hidden" role="menu">
+            <button type="button" class="reservation-action-item" data-action="open" data-hostaway-id="${r.hostawayId}">${esc(t('reservations.openDetails'))}</button>
+            <a class="reservation-action-item" href="${esc(hostawayReservationUrl(r.hostawayId))}" target="_blank" rel="noopener noreferrer">${esc(t('payments.openInHostaway'))}</a>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
   $('#reservations-table').innerHTML = `
-    <table><thead><tr>
-      ${sortTh('reservations', 'hostawayId', 'ID')}
+    <table class="reservations-table"><thead><tr>
+      ${sortTh('reservations', 'hostawayId', t('reservations.colId'))}
       ${sortTh('reservations', 'guestName', t('listings.guest'))}
-      <th>${t('listings.phone')}</th><th>${t('listings.email')}</th>
-      ${sortTh('reservations', 'listingName', t('listings.name'))}
-      ${sortTh('reservations', 'totalPrice', t('listings.totalAmount'))}
-      <th>${t('listings.paidAmount')}</th>
-      <th>${t('payments.suggestionNextDue')}</th>
-      <th>${t('listings.group')}</th>
-      ${sortTh('reservations', 'arrivalDate', t('listings.arrival'))}
-      ${sortTh('reservations', 'departureDate', t('listings.departure'))}
+      <th data-label="${esc(t('reservations.colContact'))}">${t('reservations.colContact')}</th>
+      ${sortTh('reservations', 'listingName', t('reservations.colProperty'))}
+      ${sortTh('reservations', 'totalPrice', t('reservations.colTotalPaid'))}
+      <th data-label="${esc(t('listings.group'))}">${t('listings.group')}</th>
+      ${sortTh('reservations', 'arrivalDate', t('reservations.colStay'))}
       ${sortTh('reservations', 'status', t('listings.status'))}
-    </tr></thead><tbody>${rows || `<tr><td colspan="12">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+      <th data-label="${esc(t('listings.actions'))}">${t('listings.actions')}</th>
+    </tr></thead><tbody>${rows || `<tr><td colspan="9">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#reservations-table', 'reservations', loadReservations);
+  bindReservationsTable();
   renderTableInfo('#reservations-info', data);
   renderPagination('#reservations-pagination', data, 'reservations', loadReservations);
   scheduleEnhanceResponsiveTables();
 }
+
+let reservationsFacets = { groups: [], channels: [] };
+
+async function loadReservationsStats() {
+  const el = $('#reservations-stats');
+  if (!el) return;
+  const stats = await api('/reservations/stats');
+  el.innerHTML = `
+    <div class="reservations-stat-card">
+      <div class="reservations-stat-icon is-total">${reservationStatIcon('total')}</div>
+      <div>
+        <div class="reservations-stat-label">${t('reservations.statTotal')}</div>
+        <div class="reservations-stat-value">${formatCount(stats.total)}</div>
+        <div class="reservations-stat-hint">${t('reservations.statTotalHint')}</div>
+      </div>
+    </div>
+    <div class="reservations-stat-card">
+      <div class="reservations-stat-icon is-arrive">${reservationStatIcon('arrive')}</div>
+      <div>
+        <div class="reservations-stat-label">${t('reservations.statArriving')}</div>
+        <div class="reservations-stat-value">${formatCount(stats.arrivingSoon)}</div>
+        <div class="reservations-stat-hint">${t('reservations.statArrivingHint')}</div>
+      </div>
+    </div>
+    <div class="reservations-stat-card">
+      <div class="reservations-stat-icon is-due">${reservationStatIcon('due')}</div>
+      <div>
+        <div class="reservations-stat-label">${t('reservations.statPaymentDue')}</div>
+        <div class="reservations-stat-value">${formatCount(stats.paymentDue)}</div>
+        <div class="reservations-stat-hint">${t('reservations.statPaymentDueHint')}</div>
+      </div>
+    </div>
+    <div class="reservations-stat-card is-clickable" data-reservations-stat="cancelled-today" role="button" tabindex="0" title="${esc(t('reservations.statCancelledHint'))}">
+      <div class="reservations-stat-icon is-cancel">${reservationStatIcon('cancel')}</div>
+      <div>
+        <div class="reservations-stat-label">${t('reservations.statCancelled')}</div>
+        <div class="reservations-stat-value">${formatCount(stats.cancelledToday)}</div>
+        <div class="reservations-stat-hint">${t('reservations.statCancelledHint')}</div>
+      </div>
+    </div>`;
+  el.querySelectorAll('[data-reservations-stat="cancelled-today"]').forEach((card) => {
+    const apply = () => applyReservationsCancelledRecordedTodayFilter();
+    card.addEventListener('click', apply);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        apply();
+      }
+    });
+  });
+}
+
+function applyReservationsCancelledRecordedTodayFilter() {
+  Object.assign(tableState.reservations, {
+    page: 1,
+    search: '',
+    status: 'all',
+    paymentStatus: 'all',
+    channel: 'all',
+    groupId: 'all',
+    dateFrom: '',
+    dateTo: '',
+    cancelledRecordedToday: true,
+  });
+  const toolbar = $('#reservations-toolbar');
+  if (toolbar) {
+    // Force rebuild so the active-filter note appears
+    delete toolbar.dataset.toolbarInit;
+  }
+  ensureReservationsToolbar()
+    .then(() => loadReservations())
+    .catch((ex) => notify.error(ex.message));
+}
+
+function reservationStatIcon(kind) {
+  const icons = {
+    total: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    arrive: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
+    due: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+    cancel: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
+  };
+  return icons[kind] || icons.total;
+}
+
+async function ensureReservationsToolbar() {
+  const el = $('#reservations-toolbar');
+  if (!el) return;
+  const s = tableState.reservations;
+  if (!reservationsFacets.groups.length || !reservationsFacets.channels?.length) {
+    try {
+      const facets = await api('/reservations/facets');
+      reservationsFacets.groups = (facets.groups || []).map((g) => ({
+        id: g.id,
+        name: g.name,
+      }));
+      reservationsFacets.channels = facets.channels || [];
+    } catch {
+      // Fallback if facets unavailable — keep whatever we already have.
+      if (!reservationsFacets.groups.length) {
+        try {
+          const groups = await api('/listing-groups?page=1&pageSize=200&sortBy=name&sortDir=asc');
+          reservationsFacets.groups = (groups.items || []).map((g) => ({
+            id: g.id,
+            name: g.name,
+          }));
+        } catch {
+          reservationsFacets.groups = [];
+        }
+      }
+    }
+  }
+
+  if (el.dataset.toolbarInit === 'reservations-v5') {
+    const search = el.querySelector('[data-table-search="reservations"]');
+    if (search && document.activeElement !== search) search.value = s.search;
+    syncReservationsToolbarControls(el);
+    const note = el.querySelector('[data-cancelled-today-note]');
+    if (note) note.hidden = !s.cancelledRecordedToday;
+    return;
+  }
+  el.dataset.toolbarInit = 'reservations-v5';
+  const groupOpts = [
+    `<option value="all">${esc(t('reservations.filterAllGroups'))}</option>`,
+    ...reservationsFacets.groups.map(
+      (g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`,
+    ),
+  ].join('');
+  const channelOpts = [
+    `<option value="all">${esc(t('reservations.filterAllChannels'))}</option>`,
+    ...(reservationsFacets.channels || []).map(
+      (c) => `<option value="${esc(c)}">${esc(c)}</option>`,
+    ),
+  ].join('');
+  el.innerHTML = `
+    <div class="reservations-toolbar-row">
+      <label class="reservations-search">
+        <span class="sr-only">${t('table.search')}</span>
+        <input type="search" data-table-search="reservations" value="${esc(s.search)}" placeholder="${esc(t('reservations.searchPlaceholder'))}" autocomplete="off" />
+        <svg class="reservations-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </label>
+      <div class="reservations-filters">
+        <label>
+          <span>${t('reservations.filterDateFrom')}</span>
+          <span class="reservations-date-field">
+            <input type="date" data-reservation-filter="dateFrom" value="${esc(s.dateFrom || '')}" />
+            <button type="button" class="reservations-date-picker-btn" data-date-picker-for="dateFrom" aria-label="${esc(t('reservations.openDatePicker'))}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+          </span>
+        </label>
+        <label>
+          <span>${t('reservations.filterDateTo')}</span>
+          <span class="reservations-date-field">
+            <input type="date" data-reservation-filter="dateTo" value="${esc(s.dateTo || '')}" />
+            <button type="button" class="reservations-date-picker-btn" data-date-picker-for="dateTo" aria-label="${esc(t('reservations.openDatePicker'))}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+          </span>
+        </label>
+        <label>
+          <span>${t('listings.group')}</span>
+          <select data-reservation-filter="groupId">${groupOpts}</select>
+        </label>
+        <label>
+          <span>${t('listings.status')}</span>
+          <select data-reservation-filter="status">
+            <option value="all">${esc(t('reservations.filterAllStatuses'))}</option>
+            <option value="new">${esc(t('reservations.statusNew'))}</option>
+            <option value="modified">${esc(t('reservations.statusModified'))}</option>
+            <option value="confirmed">${esc(t('reservations.statusConfirmed'))}</option>
+            <option value="payment_due">${esc(t('reservations.statusPaymentDue'))}</option>
+            <option value="cancelled">${esc(t('reservations.statusCancelled'))}</option>
+            <option value="inquiry">${esc(t('reservations.statusInquiry'))}</option>
+          </select>
+        </label>
+        <label>
+          <span>${t('reservations.filterPayment')}</span>
+          <select data-reservation-filter="paymentStatus">
+            <option value="all">${esc(t('reservations.filterAllPayment'))}</option>
+            <option value="paid">${esc(t('reservations.paymentPaid'))}</option>
+            <option value="partial">${esc(t('reservations.paymentPartial'))}</option>
+            <option value="due">${esc(t('reservations.paymentDue'))}</option>
+          </select>
+        </label>
+        <label>
+          <span>${t('reservations.filterChannel')}</span>
+          <select data-reservation-filter="channel">${channelOpts}</select>
+        </label>
+      </div>
+      <button type="button" class="btn primary" id="reservations-export-btn">${esc(t('reservations.export'))}</button>
+    </div>
+    <div class="reservations-filter-note" data-cancelled-today-note ${s.cancelledRecordedToday ? '' : 'hidden'}>
+      ${esc(t('reservations.filterCancelledTodayNote'))}
+      <button type="button" class="btn link" data-clear-cancelled-today>${esc(t('reservations.clearSpecialFilter'))}</button>
+    </div>`;
+  syncReservationsToolbarControls(el);
+
+  const searchInput = el.querySelector('[data-table-search="reservations"]');
+  searchInput?.addEventListener('input', () => {
+    clearTimeout(searchTimers.reservations);
+    searchTimers.reservations = setTimeout(() => {
+      tableState.reservations.search = searchInput.value;
+      tableState.reservations.page = 1;
+      tableState.reservations.cancelledRecordedToday = false;
+      const note = el.querySelector('[data-cancelled-today-note]');
+      if (note) note.hidden = true;
+      loadReservations().catch((ex) => notify.error(ex.message));
+    }, 300);
+  });
+  el.querySelectorAll('[data-reservation-filter]').forEach((control) => {
+    const apply = () => {
+      const key = control.getAttribute('data-reservation-filter');
+      tableState.reservations[key] = control.value;
+      tableState.reservations.page = 1;
+      tableState.reservations.cancelledRecordedToday = false;
+      const note = el.querySelector('[data-cancelled-today-note]');
+      if (note) note.hidden = true;
+      loadReservations().catch((ex) => notify.error(ex.message));
+    };
+    control.addEventListener('change', apply);
+    if (control.matches('input[type="date"]')) {
+      control.addEventListener('input', apply);
+    }
+  });
+  el.querySelector('[data-clear-cancelled-today]')?.addEventListener('click', () => {
+    tableState.reservations.cancelledRecordedToday = false;
+    tableState.reservations.page = 1;
+    const note = el.querySelector('[data-cancelled-today-note]');
+    if (note) note.hidden = true;
+    loadReservations().catch((ex) => notify.error(ex.message));
+  });
+  el.querySelectorAll('[data-date-picker-for]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = btn.getAttribute('data-date-picker-for');
+      const input = el.querySelector(`[data-reservation-filter="${key}"]`);
+      if (!input) return;
+      try {
+        if (typeof input.showPicker === 'function') {
+          input.showPicker();
+        } else {
+          input.focus();
+          input.click();
+        }
+      } catch {
+        input.focus();
+      }
+    });
+  });
+  $('#reservations-export-btn')?.addEventListener('click', () => {
+    exportReservationsCsv().catch((ex) => notify.error(ex.message));
+  });
+  ensureReservationsPageSizeControl();
+}
+
+function ensureReservationsPageSizeControl() {
+  const lengthSel = $('#reservations-page-size');
+  if (!lengthSel) return;
+  const s = tableState.reservations;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.reservations.pageSize = Number(lengthSel.value) || 10;
+    tableState.reservations.page = 1;
+    loadReservations().catch((ex) => notify.error(ex.message));
+  });
+}
+
+function syncReservationsToolbarControls(el) {
+  const s = tableState.reservations;
+  el.querySelectorAll('[data-reservation-filter]').forEach((control) => {
+    const key = control.getAttribute('data-reservation-filter');
+    if (document.activeElement === control) return;
+    control.value = s[key] ?? (control.tagName === 'SELECT' ? 'all' : '');
+  });
+  ensureReservationsPageSizeControl();
+}
+
+async function exportReservationsCsv() {
+  const result = await api(`/reservations/export?${tableQuery('reservations')}`);
+  const blob = new Blob([result.csv || ''], { type: result.contentType || 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = result.filename || 'reservations.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  notify.success(t('reservations.exportOk', { n: result.count ?? 0 }));
+}
+
+function reservationGuestsLabel(r) {
+  const adults = r.adults != null ? Number(r.adults) : null;
+  const children = r.children != null ? Number(r.children) : null;
+  const total = r.numberOfGuests != null ? Number(r.numberOfGuests) : null;
+  if (adults != null || children != null) {
+    const parts = [];
+    if (adults != null) {
+      parts.push(
+        adults === 1
+          ? t('reservations.adultOne')
+          : t('reservations.adults', { n: adults }),
+      );
+    }
+    if (children != null && children > 0) {
+      parts.push(
+        children === 1
+          ? t('reservations.childOne')
+          : t('reservations.children', { n: children }),
+      );
+    }
+    return parts.join(' · ');
+  }
+  if (total != null && Number.isFinite(total)) {
+    return total === 1
+      ? t('reservations.guestOne')
+      : t('reservations.guests', { n: total });
+  }
+  return '';
+}
+
+function reservationStatusMeta(r) {
+  const raw = String(r.status || '').toLowerCase();
+  const paid = reservationPaidAmount(r);
+  const total = Number(r.totalPrice);
+  const outstanding =
+    r.isPaid === true
+      ? false
+      : Number.isFinite(total) && total > 0
+        ? (paid ?? 0) + 0.5 < total
+        : r.isPaid === false;
+
+  if (raw.includes('cancel') || raw === 'declined' || raw === 'expired') {
+    return { key: 'cancelled', cls: 'is-cancel', label: t('reservations.statusCancelled') };
+  }
+  if (raw.startsWith('inquiry')) {
+    return { key: 'inquiry', cls: 'is-inquiry', label: t('reservations.statusInquiry') };
+  }
+  if (outstanding && !raw.includes('owner')) {
+    return { key: 'payment_due', cls: 'is-due', label: t('reservations.statusPaymentDue') };
+  }
+  if (raw === 'modified') {
+    return { key: 'modified', cls: 'is-modified', label: t('reservations.statusModified') };
+  }
+  if (raw.includes('owner')) {
+    return { key: 'owner', cls: 'is-owner', label: t('reservations.statusOwner') };
+  }
+  if (raw === 'new') {
+    return { key: 'new', cls: 'is-ok', label: t('reservations.statusNew') };
+  }
+  if (raw === 'confirmed') {
+    return { key: 'confirmed', cls: 'is-ok', label: t('reservations.statusConfirmed') };
+  }
+  return {
+    key: raw || 'unknown',
+    cls: 'is-muted',
+    label: r.status || '–',
+  };
+}
+
+function reservationPaymentProgress(r) {
+  const total = Number(r.totalPrice);
+  const paid = reservationPaidAmount(r) ?? 0;
+  if (!Number.isFinite(total) || total <= 0) {
+    return {
+      pct: r.isPaid ? 100 : 0,
+      label: r.isPaid ? t('reservations.paidInFull') : t('reservations.paymentUnknown'),
+      paid,
+      total: null,
+    };
+  }
+  const pct = Math.max(0, Math.min(100, Math.round((paid / total) * 100)));
+  const label =
+    r.isPaid || paid + 0.5 >= total
+      ? t('reservations.paidInFull')
+      : paid > 0
+        ? t('reservations.partiallyPaid')
+        : t('reservations.paymentDue');
+  return { pct, label, paid, total };
+}
+
+function bindReservationsTable() {
+  $$('#reservations-table .reservation-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.reservation-actions-menu a, .reservation-actions-menu button, .reservation-action-item')) {
+        return;
+      }
+      const id = Number(row.dataset.hostawayId);
+      if (id) openReservationDrawer(id);
+    });
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const id = Number(row.dataset.hostawayId);
+        if (id) openReservationDrawer(id);
+      }
+    });
+  });
+  $$('#reservations-table .reservation-id-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openReservationDrawer(Number(btn.dataset.hostawayId));
+    });
+  });
+  $$('#reservations-table .reservation-actions-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = btn.closest('.reservation-actions-menu');
+      const drop = menu?.querySelector('.reservation-actions-dropdown');
+      const open = drop && !drop.classList.contains('hidden');
+      $$('#reservations-table .reservation-actions-dropdown').forEach((d) => d.classList.add('hidden'));
+      $$('#reservations-table .reservation-actions-toggle').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+      if (!open && drop) {
+        drop.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+  $$('#reservations-table .reservation-action-item[data-action="open"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openReservationDrawer(Number(btn.dataset.hostawayId));
+    });
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.reservation-actions-menu')) {
+    $$('.reservation-actions-dropdown').forEach((d) => d.classList.add('hidden'));
+    $$('.reservation-actions-toggle').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  }
+});
+
+let reservationDrawerTab = 'details';
+let reservationDrawerData = null;
+
+async function openReservationDrawer(hostawayId) {
+  const drawer = $('#reservation-drawer');
+  if (!drawer || !Number.isFinite(hostawayId)) return;
+  drawer.classList.remove('hidden');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('reservation-drawer-open');
+  $('#reservation-drawer-title').textContent = `R-${hostawayId}`;
+  $('#reservation-drawer-body').innerHTML = `<p class="muted">${esc(t('common.loading') !== 'common.loading' ? t('common.loading') : 'Loading…')}</p>`;
+  try {
+    reservationDrawerData = await api(`/reservations/${hostawayId}`);
+    reservationDrawerTab = 'details';
+    renderReservationDrawer();
+  } catch (ex) {
+    $('#reservation-drawer-body').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+  }
+}
+
+function closeReservationDrawer() {
+  const drawer = $('#reservation-drawer');
+  if (!drawer) return;
+  drawer.classList.add('hidden');
+  drawer.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('reservation-drawer-open');
+  reservationDrawerData = null;
+}
+
+function renderReservationDrawer() {
+  const r = reservationDrawerData;
+  if (!r) return;
+  const statusMeta = reservationStatusMeta(r);
+  const statusEl = $('#reservation-drawer-status');
+  if (statusEl) {
+    statusEl.className = `reservation-status-pill ${statusMeta.cls}`;
+    statusEl.textContent = statusMeta.label;
+  }
+  const noteCount = Number(r.noteCount) || [r.hostNote, r.guestNote, r.comment].filter((n) => n?.trim()).length;
+  const countEl = $('#reservation-drawer-notes-count');
+  if (countEl) countEl.textContent = String(noteCount);
+
+  $$('[data-reservation-drawer-tab]').forEach((btn) => {
+    const active = btn.dataset.reservationDrawerTab === reservationDrawerTab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  const body = $('#reservation-drawer-body');
+  if (!body) return;
+  if (reservationDrawerTab === 'notes') {
+    body.innerHTML = renderReservationNotes(r);
+    return;
+  }
+  body.innerHTML = renderReservationDetails(r);
+  body.querySelector('[data-view-payments]')?.addEventListener('click', () => {
+    const id = r.hostawayId;
+    closeReservationDrawer();
+    activateTab('payments');
+    activatePaymentsView('history');
+    tableState.paymentsHistory.search = String(id);
+    tableState.paymentsHistory.page = 1;
+    loadPayments().catch((ex) => notify.error(ex.message));
+  });
+  body.querySelector('[data-reveal-contact]')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    if (btn.disabled) {
+      notify.error(t('perms.featureLocked'));
+      return;
+    }
+    const box = btn.closest('.reservation-drawer-section');
+    box?.querySelectorAll('[data-contact-field]').forEach((el) => {
+      el.textContent = el.getAttribute('data-full') || el.textContent;
+    });
+    btn.remove();
+  });
+  body.querySelector('[data-view-listing]')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const name = btn.getAttribute('data-listing-name') || '';
+    const id = btn.getAttribute('data-view-listing') || '';
+    closeReservationDrawer();
+    activateTab('listings');
+    tableState.listings.search = name || id;
+    tableState.listings.page = 1;
+    loadListings().catch((ex) => notify.error(ex.message));
+  });
+}
+
+function renderReservationDetails(r) {
+  const guests = reservationGuestsLabel(r);
+  const progress = reservationPaymentProgress(r);
+  const nights = reservationNights(r.arrivalDate, r.departureDate);
+  const canPii = hasPermission('RESERVATIONS_VIEW_PII') || adminRole === 'SUPER_ADMIN';
+  const emailRaw = r.guestEmail || '';
+  const phoneRaw = r.guestPhone || '';
+  const emailShown = emailRaw ? (canPii ? softMaskEmail(emailRaw) : emailRaw) : '–';
+  const phoneShown = phoneRaw ? (canPii ? softMaskPhone(phoneRaw) : phoneRaw) : '–';
+  const activity = Array.isArray(r.activity) ? r.activity : [];
+  const activityPreview = activity.slice(0, 5);
+  const paidOn = reservationLastPaidAt(r);
+  const listingId = r.listing?.hostawayId || r.listing?.id;
+
+  return `
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('guest')}</span>
+        <h4>${esc(t('reservations.sectionGuest'))}</h4>
+      </div>
+      <div class="reservation-drawer-row">
+        <div class="reservation-drawer-kv">
+          <strong>${esc(r.guestName || r.guestNameMasked || '–')}</strong>
+          ${guests ? `<span class="muted">${esc(guests)}</span>` : ''}
+        </div>
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('stay')}</span>
+        <h4>${esc(t('reservations.sectionStay'))}</h4>
+      </div>
+      <div class="reservation-drawer-row">
+        <div class="reservation-stay-range">
+          <div>
+            <div class="reservation-stay-date">${esc(formatReservationLongDate(r.arrivalDate))}</div>
+          </div>
+          <span class="reservation-stay-arrow" aria-hidden="true">→</span>
+          <div>
+            <div class="reservation-stay-date">${esc(formatReservationLongDate(r.departureDate))}</div>
+          </div>
+        </div>
+        ${nights != null ? `<span class="reservation-nights-badge">${esc(t('reservations.nights', { n: nights }))}</span>` : ''}
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('payment')}</span>
+        <h4>${esc(t('reservations.sectionPayment'))}</h4>
+      </div>
+      <div class="reservation-payment-block">
+        <div class="reservation-payment-total">${esc(formatMoney(progress.total ?? r.totalPrice))} <span class="muted">${esc(t('reservations.totalSuffix'))}</span></div>
+        <div class="reservation-payment-status ${progress.pct >= 100 ? 'is-ok' : 'is-due'}">${esc(progress.label)}</div>
+        <div class="reservation-progress" aria-hidden="true"><span style="width:${progress.pct}%"></span></div>
+        <div class="reservation-payment-footer">
+          <span class="reservation-paid-meta">
+            ${progress.pct >= 100 ? reservationDrawerIcon('check') : ''}
+            ${paidOn
+              ? esc(t('reservations.paidOn', { date: formatReservationLongDate(paidOn) }))
+              : esc(t('reservations.paidOfTotal', { paid: formatMoney(progress.paid), total: formatMoney(progress.total ?? r.totalPrice) }))}
+          </span>
+          <button type="button" class="btn reservation-drawer-btn" data-view-payments>${esc(t('reservations.viewPayments'))}</button>
+        </div>
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('contact')}</span>
+        <h4>${esc(t('reservations.sectionContact'))}</h4>
+        ${emailRaw || phoneRaw
+          ? `<button type="button" class="btn reservation-drawer-btn" data-reveal-contact ${canPii ? '' : 'disabled'}>${esc(t('reservations.reveal'))}</button>`
+          : ''}
+      </div>
+      <div class="reservation-drawer-kv">
+        <span data-contact-field="email" data-full="${esc(emailRaw || '–')}">${esc(emailShown)}</span>
+        <span data-contact-field="phone" data-full="${esc(phoneRaw || '–')}">${esc(phoneShown)}</span>
+      </div>
+      <div class="reservation-contact-secure">
+        ${reservationDrawerIcon('lock')}
+        <span>${esc(t('reservations.contactSecureHint'))}</span>
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('property')}</span>
+        <h4>${esc(t('reservations.sectionProperty'))}</h4>
+        ${listingId
+          ? `<button type="button" class="btn reservation-drawer-btn" data-view-listing="${esc(String(listingId))}" data-listing-name="${esc(r.listing?.name || '')}">${esc(t('reservations.viewListing'))}</button>`
+          : ''}
+      </div>
+      <div class="reservation-drawer-kv">
+        <span>${esc(r.listing?.name || '–')}</span>
+        <span class="muted">${esc(r.channelName || '–')}</span>
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon is-hostaway" aria-hidden="true">${reservationDrawerIcon('hostaway')}</span>
+        <h4>Hostaway</h4>
+      </div>
+      <div class="reservation-drawer-kv">
+        <span>${esc(t('reservations.hostawayId', { id: r.hostawayId }))}</span>
+        <a class="reservation-hostaway-open" href="${esc(hostawayReservationUrl(r.hostawayId))}" target="_blank" rel="noopener noreferrer">
+          ${esc(t('payments.openInHostaway'))}
+          ${reservationDrawerIcon('external')}
+        </a>
+      </div>
+    </section>
+    <section class="reservation-drawer-section">
+      <div class="reservation-section-head">
+        <span class="reservation-section-icon" aria-hidden="true">${reservationDrawerIcon('activity')}</span>
+        <h4>${esc(t('reservations.sectionActivity'))}</h4>
+      </div>
+      <ol class="reservation-activity">
+        ${activityPreview.length
+          ? activityPreview
+              .map(
+                (ev) => `<li>
+            <div class="reservation-activity-rail"><span class="reservation-activity-dot" data-type="${esc(ev.type || '')}"></span></div>
+            <div>
+              <div class="muted reservation-activity-when">${esc(formatDateTime(ev.at))}</div>
+              <div class="reservation-activity-title">${esc(ev.title || '')}</div>
+              <div class="muted">${esc(ev.detail || activitySourceLabel(ev.type))}</div>
+            </div>
+          </li>`,
+              )
+              .join('')
+          : `<li class="muted">${esc(t('reservations.activityEmpty'))}</li>`}
+      </ol>
+    </section>`;
+}
+
+function reservationDrawerIcon(kind) {
+  const icons = {
+    guest: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    stay: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    payment: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+    contact: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3.11-11-8 1.02-2.87 2.98-5.2 5.47-6.59"/><path d="M1 1l22 22"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 8a11.5 11.5 0 0 1-2.16 3.19"/></svg>',
+    property: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    hostaway: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>',
+    activity: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    lock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    external: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function softMaskEmail(email) {
+  const s = String(email);
+  const at = s.indexOf('@');
+  if (at <= 0) return s;
+  const user = s.slice(0, at);
+  const domain = s.slice(at);
+  const keep = Math.min(6, Math.max(1, Math.floor(user.length / 2)));
+  return `${user.slice(0, keep)}${'*'.repeat(Math.max(3, user.length - keep))}${domain}`;
+}
+
+function softMaskPhone(phone) {
+  const s = String(phone);
+  if (s.length < 6) return '***';
+  return `${s.slice(0, 4)}${'*'.repeat(Math.max(3, s.length - 6))}${s.slice(-2)}`;
+}
+
+function formatReservationLongDate(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  try {
+    return new Intl.DateTimeFormat(locale(), {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return formatDate(value);
+  }
+}
+
+function reservationLastPaidAt(r) {
+  const charges = Array.isArray(r.notifiedCharges) ? r.notifiedCharges : [];
+  let latest = null;
+  for (const c of charges) {
+    const at = c.notifiedAt ? new Date(c.notifiedAt) : null;
+    if (at && !Number.isNaN(at.getTime()) && (!latest || at > latest)) latest = at;
+  }
+  const allocs = Array.isArray(r.paymentAllocations) ? r.paymentAllocations : [];
+  for (const a of allocs) {
+    const at = a.createdAt
+      ? new Date(a.createdAt)
+      : a.externalPayment?.occurredAt
+        ? new Date(a.externalPayment.occurredAt)
+        : null;
+    if (at && !Number.isNaN(at.getTime()) && (!latest || at > latest)) latest = at;
+  }
+  return latest;
+}
+
+function activitySourceLabel(type) {
+  if (type === 'payment' || type === 'allocation' || type === 'automation' || type === 'system') {
+    return t('reservations.activitySystem');
+  }
+  return t('reservations.activitySystem');
+}
+
+function renderReservationNotes(r) {
+  const blocks = [
+    { label: t('reservations.noteHost'), value: r.hostNote },
+    { label: t('reservations.noteGuest'), value: r.guestNote },
+    { label: t('reservations.noteComment'), value: r.comment },
+  ].filter((b) => b.value && String(b.value).trim());
+  if (!blocks.length) {
+    return `<p class="muted">${esc(t('reservations.notesEmpty'))}</p>`;
+  }
+  return blocks
+    .map(
+      (b) => `<section class="reservation-drawer-section">
+      <h4>${esc(b.label)}</h4>
+      <pre class="reservation-note">${esc(b.value)}</pre>
+    </section>`,
+    )
+    .join('');
+}
+
+function reservationNights(arrival, departure) {
+  const a = new Date(arrival);
+  const d = new Date(departure);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(d.getTime())) return null;
+  const ms = d.setHours(0, 0, 0, 0) - a.setHours(0, 0, 0, 0);
+  const n = Math.round(ms / 86400000);
+  return n > 0 ? n : null;
+}
+
+function initReservationDrawer() {
+  $$('[data-reservation-drawer-close]').forEach((el) => {
+    el.addEventListener('click', () => closeReservationDrawer());
+  });
+  $$('[data-reservation-drawer-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      reservationDrawerTab = btn.dataset.reservationDrawerTab || 'details';
+      renderReservationDrawer();
+    });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#reservation-drawer')?.classList.contains('hidden')) {
+      closeReservationDrawer();
+    }
+  });
+}
+
+initReservationDrawer();
 
 async function loadConversations() {
   ensureTableToolbar('#conversations-toolbar', 'conversations', loadConversations);
