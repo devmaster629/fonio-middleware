@@ -11,7 +11,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { ApprovalMode, RequestType } from '@prisma/client';
+import { ApprovalMode } from '@prisma/client';
 import { VERIFICATION_FIELD_OPTIONS } from '../../fonio/verification-fields';
 
 export class CreateApprovalRuleDto {
@@ -19,8 +19,8 @@ export class CreateApprovalRuleDto {
   @IsString()
   listingId?: string;
 
-  @IsEnum(RequestType)
-  requestType!: RequestType;
+  @IsString()
+  requestType!: string;
 
   @IsEnum(ApprovalMode)
   mode!: ApprovalMode;
@@ -44,8 +44,8 @@ export class UpdateApprovalRuleDto {
   listingId?: string | null;
 
   @IsOptional()
-  @IsEnum(RequestType)
-  requestType?: RequestType;
+  @IsString()
+  requestType?: string;
 
   @IsOptional()
   @IsEnum(ApprovalMode)

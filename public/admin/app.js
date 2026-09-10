@@ -50,7 +50,7 @@ const tableState = {
     status: 'all',
     channel: 'all',
   },
-  rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
+  rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'desc', mode: 'all', status: 'all' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
   paymentsHistory: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
@@ -332,9 +332,8 @@ function applyRoleUi() {
   setControlsDisabled($('#rule-form'), !canRulesEdit, {
     exceptIds: canRulesDelete && editingRuleId ? ['rule-delete-btn'] : [],
   });
-  $('#rule-new-btn')?.toggleAttribute('disabled', !canRulesEdit);
-  $('#rule-new-btn')?.classList.toggle('hidden', !canRulesEdit);
   $('#rule-delete-btn')?.classList.toggle('hidden', !canRulesDelete || !editingRuleId);
+  $('#rule-new-btn')?.classList.toggle('hidden', !editingRuleId || !canRulesEdit);
 
   const verificationForm = $('#verification-form');
   if (verificationForm) {
@@ -347,6 +346,9 @@ function applyRoleUi() {
     });
     verificationForm.classList.toggle('is-readonly', !canRulesEdit);
   }
+  $('#verification-save-btn')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#verification-min-minus')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#verification-min-plus')?.toggleAttribute('disabled', !canRulesEdit);
   $('#verification-readonly-hint')?.classList.toggle('hidden', canRulesEdit);
 
   $('#inbox-backfill-btn')?.toggleAttribute('disabled', !canConversationsManage);
@@ -1049,31 +1051,56 @@ function conversationDayLabel(value) {
   return d.toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+const RULE_TYPE_CODES = [
+  'ADD_GUEST', 'ADD_PET', 'CANCELLATION', 'MODIFICATION',
+  'EARLY_CHECKIN', 'LATE_CHECKOUT', 'RESERVATION_QUESTION', 'OTHER',
+];
+
+function ruleTypeLabel(code) {
+  const key = `requestType.${code}`;
+  const label = t(key);
+  return label === key ? code : label;
+}
+
+function resolveRuleTypeInput(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const upper = value.toUpperCase().replace(/\s+/g, '_');
+  if (RULE_TYPE_CODES.includes(upper)) return upper;
+  const byLabel = RULE_TYPE_CODES.find(
+    (code) => ruleTypeLabel(code).toLowerCase() === value.toLowerCase(),
+  );
+  return byLabel || value;
+}
+
+function formatRuleTypeDisplay(value) {
+  if (!value) return '–';
+  if (RULE_TYPE_CODES.includes(value)) return ruleTypeLabel(value);
+  return value;
+}
+
 function updateRuleSelects() {
-  const types = [
-    'ADD_GUEST', 'ADD_PET', 'CANCELLATION', 'MODIFICATION',
-    'EARLY_CHECKIN', 'LATE_CHECKOUT', 'RESERVATION_QUESTION', 'OTHER',
-  ];
   const modes = ['AUTO', 'MANUAL', 'DENY'];
-  const typeSel = $('#rule-type');
+  const typeInput = $('#rule-type');
   const modeSel = $('#rule-mode');
-  if (!typeSel || !modeSel) return;
-  const curType = typeSel.value;
+  const suggestions = $('#rule-type-suggestions');
+  if (!typeInput || !modeSel) return;
   const curMode = modeSel.value;
-  typeSel.innerHTML = types.map((v) =>
-    `<option value="${v}">${t(`requestType.${v}`)}</option>`,
-  ).join('');
+  if (suggestions) {
+    suggestions.innerHTML = RULE_TYPE_CODES.map((v) =>
+      `<option value="${esc(ruleTypeLabel(v))}"></option>`,
+    ).join('');
+  }
   modeSel.innerHTML = modes.map((v) =>
     `<option value="${v}">${t(`mode.${v}`)}</option>`,
   ).join('');
-  typeSel.value = types.includes(curType) ? curType : types[0];
   modeSel.value = modes.includes(curMode) ? curMode : modes[0];
   syncRuleModeForType();
   renderRuleConditionsPanel();
 }
 
 function syncRuleModeForType() {
-  const type = $('#rule-type')?.value;
+  const type = resolveRuleTypeInput($('#rule-type')?.value || '');
   const modeSel = $('#rule-mode');
   if (!modeSel) return;
   const autoOpt = modeSel.querySelector('option[value="AUTO"]');
@@ -1099,7 +1126,25 @@ $('#rule-type')?.addEventListener('change', () => {
   syncRuleModeForType();
   renderRuleConditionsPanel();
 });
+$('#rule-type')?.addEventListener('input', () => {
+  syncRuleModeForType();
+});
 $('#rule-mode')?.addEventListener('change', renderRuleConditionsPanel);
+$('#rules-create-toggle')?.addEventListener('click', () => {
+  const card = $('#rules-create-card');
+  const btn = $('#rules-create-toggle');
+  if (!card || !btn) return;
+  const open = !card.classList.contains('is-collapsed');
+  card.classList.toggle('is-collapsed', open);
+  btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+});
+
+function expandRulesCreatePanel() {
+  const card = $('#rules-create-card');
+  const btn = $('#rules-create-toggle');
+  card?.classList.remove('is-collapsed');
+  btn?.setAttribute('aria-expanded', 'true');
+}
 
 $$('.lang-select').forEach((sel) => {
   sel.addEventListener('change', () => setLang(sel.value));
@@ -1680,12 +1725,16 @@ $('#rule-form').addEventListener('submit', async (e) => {
     return;
   }
   const payload = {
-    requestType: $('#rule-type').value,
+    requestType: resolveRuleTypeInput($('#rule-type').value),
     mode: $('#rule-mode').value,
     listingId: $('#rule-listing').value || null,
     priority: Number($('#rule-priority').value),
     isActive: $('#rule-active').checked,
   };
+  if (!payload.requestType) {
+    notify.error(t('rules.typeRequired'));
+    return;
+  }
   const conditions = buildConditionsFromForm();
   if (conditions !== undefined) payload.conditions = conditions;
   try {
@@ -1695,6 +1744,7 @@ $('#rule-form').addEventListener('submit', async (e) => {
     } else {
       await api('/rules', { method: 'POST', body: JSON.stringify(payload) });
       notify.success(t('rules.created'));
+      resetRuleForm();
     }
     await loadRules();
   } catch (ex) {
@@ -1725,18 +1775,25 @@ $('#rule-delete-btn').addEventListener('click', async () => {
 function updateRuleFormUI() {
   const title = $('#rule-form-title');
   const submit = $('#rule-submit-btn');
-  if (title) title.textContent = editingRuleId ? t('rules.editRule') : t('rules.newRule');
+  if (title) {
+    title.textContent = editingRuleId
+      ? t('rules.editApprovalRule')
+      : t('rules.createApprovalRule');
+  }
   if (submit) submit.textContent = editingRuleId ? t('rules.updateRule') : t('rules.addRule');
   $('#rule-delete-btn')?.classList.toggle('hidden', !editingRuleId || !hasPermission('RULES_DELETE'));
+  $('#rule-new-btn')?.classList.toggle('hidden', !editingRuleId || !hasPermission('RULES_EDIT'));
   applyRoleUi();
 }
 
 function resetRuleForm() {
-  if (!hasPermission('RULES_EDIT')) return;
+  if (!hasPermission('RULES_EDIT') && editingRuleId) {
+    editingRuleId = null;
+  }
   editingRuleId = null;
   $('#rule-id').value = '';
-  $('#rule-type').value = 'ADD_GUEST';
-  $('#rule-mode').value = 'MANUAL';
+  $('#rule-type').value = '';
+  $('#rule-mode').value = 'AUTO';
   $('#rule-listing').value = '';
   $('#rule-priority').value = 0;
   $('#rule-active').checked = true;
@@ -1746,10 +1803,11 @@ function resetRuleForm() {
   highlightSelectedRule(null);
 }
 
-function loadRuleIntoForm(rule) {
+function loadRuleIntoForm(rule, opts = {}) {
+  const { activate = true } = opts;
   editingRuleId = rule.id;
   $('#rule-id').value = rule.id;
-  $('#rule-type').value = rule.requestType;
+  $('#rule-type').value = formatRuleTypeDisplay(rule.requestType);
   $('#rule-mode').value = rule.mode;
   $('#rule-listing').value = rule.listingId || '';
   $('#rule-priority').value = rule.priority;
@@ -1758,13 +1816,17 @@ function loadRuleIntoForm(rule) {
   loadConditionsIntoForm(rule.conditions);
   updateRuleFormUI();
   highlightSelectedRule(rule.id);
+  if (activate) {
+    expandRulesCreatePanel();
+    activateRulesView('approval');
+  }
 }
 
 function populateListingSelect() {
   const sel = $('#rule-listing');
   if (!sel) return;
   const current = sel.value;
-  sel.innerHTML = `<option value="">${t('rules.global')}</option>` +
+  sel.innerHTML = `<option value="">${t('rules.allListingsGlobal')}</option>` +
     cachedListings.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
   sel.value = current;
 }
@@ -1775,9 +1837,83 @@ function highlightSelectedRule(ruleId) {
   });
 }
 
+function modeBadgeClass(mode) {
+  if (mode === 'AUTO') return 'is-auto';
+  if (mode === 'DENY') return 'is-deny';
+  return 'is-manual';
+}
+
+function ensureRulesToolbar() {
+  const search = $('#rules-search');
+  const modeSel = $('#rules-filter-mode');
+  const statusSel = $('#rules-filter-status');
+  const s = tableState.rules;
+  if (search && document.activeElement !== search) search.value = s.search || '';
+  if (modeSel) modeSel.value = s.mode || 'all';
+  if (statusSel) statusSel.value = s.status || 'all';
+  if (search?.dataset.bound === '1') return;
+  if (search) search.dataset.bound = '1';
+  search?.addEventListener('input', (e) => {
+    clearTimeout(searchTimers.rules);
+    searchTimers.rules = setTimeout(() => {
+      tableState.rules.search = e.target.value;
+      tableState.rules.page = 1;
+      loadRules();
+    }, 300);
+  });
+  modeSel?.addEventListener('change', (e) => {
+    tableState.rules.mode = e.target.value;
+    tableState.rules.page = 1;
+    loadRules();
+  });
+  statusSel?.addEventListener('change', (e) => {
+    tableState.rules.status = e.target.value;
+    tableState.rules.page = 1;
+    loadRules();
+  });
+}
+
+function ensureRulesPageSizeControl() {
+  const lengthSel = $('#rules-page-size');
+  if (!lengthSel) return;
+  const s = tableState.rules;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.rules.pageSize = Number(lengthSel.value) || 10;
+    tableState.rules.page = 1;
+    loadRules();
+  });
+}
+
+function bindRuleRowActions() {
+  $$('#rules-table [data-rule-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!hasPermission('RULES_EDIT')) return;
+      const rule = cachedRules.find((r) => r.id === btn.dataset.ruleEdit);
+      if (rule) loadRuleIntoForm(rule);
+    });
+  });
+}
+
 function bindRuleRowClicks() {
   $$('#rules-table tbody tr[data-rule-id]').forEach((row) => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
       if (!hasPermission('RULES_EDIT')) return;
       const rule = cachedRules.find((r) => r.id === row.dataset.ruleId);
       if (rule) loadRuleIntoForm(rule);
@@ -3910,6 +4046,10 @@ const VERIFICATION_FIELDS = [
   'reservationId',
 ];
 
+let rulesActiveView = 'verification';
+let rulesUiBound = false;
+let cachedVerificationPrompt = null;
+
 function normalizeVerificationFields(fields) {
   const set = new Set();
   for (const field of fields ?? []) {
@@ -3923,16 +4063,85 @@ function normalizeVerificationFields(fields) {
   return VERIFICATION_FIELDS.filter((f) => set.has(f));
 }
 
+function verificationFieldIcon(field) {
+  const icons = {
+    stayDates: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    listingName: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>',
+    phone: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>',
+    email: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 7L2 7"/></svg>',
+    reservationId: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3v18M14 3v18"/></svg>',
+  };
+  return icons[field] || icons.reservationId;
+}
+
+function ensureRulesUi() {
+  if (rulesUiBound) return;
+  rulesUiBound = true;
+  $$('[data-rules-view]').forEach((btn) => {
+    btn.addEventListener('click', () => activateRulesView(btn.dataset.rulesView));
+  });
+  $('#verification-min-minus')?.addEventListener('click', () => stepVerificationMin(-1));
+  $('#verification-min-plus')?.addEventListener('click', () => stepVerificationMin(1));
+  document.addEventListener('langchange', () => {
+    if (activeTab === 'rules' && cachedVerificationPrompt) {
+      renderVerificationPromptPreview(cachedVerificationPrompt);
+    }
+  });
+}
+
+function activateRulesView(view) {
+  const next = view === 'approval' ? 'approval' : 'verification';
+  rulesActiveView = next;
+  $$('[data-rules-view]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.rulesView === next);
+  });
+  $('#rules-view-verification')?.classList.toggle('hidden', next !== 'verification');
+  $('#rules-view-approval')?.classList.toggle('hidden', next !== 'approval');
+  $('#rules-verification-actions')?.classList.toggle('hidden', next !== 'verification');
+}
+
+function stepVerificationMin(delta) {
+  const input = $('#verification-min-match');
+  if (!input || input.disabled) return;
+  const max = Number(input.max) || VERIFICATION_FIELDS.length;
+  const min = Number(input.min) || 1;
+  const next = Math.min(max, Math.max(min, (Number(input.value) || min) + delta));
+  input.value = String(next);
+}
+
+function renderVerificationLastSaved(updatedAt) {
+  const el = $('#verification-last-saved');
+  if (!el) return;
+  if (!updatedAt) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<span class="rules-last-saved-ok" aria-hidden="true">✓</span> ${esc(t('verification.lastSaved', { when: formatDateTime(updatedAt) }))}`;
+}
+
 function renderVerificationForm(config, fieldMeta) {
   const container = $('#verification-field-checkboxes');
   if (!container) return;
+  ensureRulesUi();
   const selected = new Set(normalizeVerificationFields(config?.requiredFields));
   const canRulesEdit = hasPermission('RULES_EDIT');
   $('#verification-config-id').value = config?.id ?? '';
-  $('#verification-min-match').value = config?.minMatchCount ?? 3;
-  $('#verification-min-match').max = VERIFICATION_FIELDS.length;
+  const minInput = $('#verification-min-match');
+  if (minInput) {
+    minInput.value = config?.minMatchCount ?? 3;
+    minInput.max = VERIFICATION_FIELDS.length;
+    minInput.disabled = !canRulesEdit;
+  }
+  $('#verification-min-minus')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#verification-min-plus')?.toggleAttribute('disabled', !canRulesEdit);
   const offerCb = $('#verification-booking-offer');
-  if (offerCb) offerCb.checked = config?.bookingOfferEnabled !== false;
+  if (offerCb) {
+    offerCb.checked = config?.bookingOfferEnabled !== false;
+    offerCb.disabled = !canRulesEdit;
+  }
+  renderVerificationLastSaved(config?.updatedAt);
   renderVerificationPromptPreview(config?.fonioPrompt);
 
   container.innerHTML = VERIFICATION_FIELDS.map((field) => {
@@ -3941,40 +4150,68 @@ function renderVerificationForm(config, fieldMeta) {
     const disabled = locked || !canRulesEdit;
     const label = t(`verification.field.${field}`);
     const hint = fieldMeta?.descriptions?.[field] ?? '';
+    const statusIcon = checked
+      ? '<span class="verification-field-status is-on" aria-hidden="true">✓</span>'
+      : '<span class="verification-field-status is-off" aria-hidden="true">−</span>';
     return `
-      <label class="checkbox-row verification-field-row${locked ? ' locked' : ''}">
-        <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-        <span>
-          <strong>${label}</strong>
-          ${locked ? `<em class="field-hint">(${t('verification.field.stayDatesLocked')})</em>` : ''}
-          ${hint ? `<br><span class="field-hint">${esc(hint)}</span>` : ''}
-        </span>
-      </label>`;
+      <div class="verification-field-item${locked ? ' is-locked' : ''}${checked ? ' is-checked' : ''}">
+        <div class="verification-field-icon" aria-hidden="true">${verificationFieldIcon(field)}</div>
+        <div class="verification-field-copy">
+          <strong>${esc(label)}</strong>
+          ${locked
+            ? `<span class="verification-always-required">${esc(t('verification.alwaysRequired'))}</span>`
+            : hint
+              ? `<span class="field-hint">${esc(hint)}</span>`
+              : ''}
+        </div>
+        ${locked
+          ? `<span class="verification-lock" title="${esc(t('verification.alwaysRequired'))}" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>${statusIcon}`
+          : `<label class="toggle-switch">
+              <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+              <span class="toggle-slider" aria-hidden="true"></span>
+            </label>
+            ${statusIcon}`}
+        ${locked ? `<input type="checkbox" name="verification-field" value="${field}" checked disabled class="sr-only" />` : ''}
+      </div>`;
   }).join('');
+
+  container.querySelectorAll('input[name="verification-field"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const row = input.closest('.verification-field-item');
+      if (!row) return;
+      row.classList.toggle('is-checked', input.checked);
+      const status = row.querySelector('.verification-field-status');
+      if (status) {
+        status.classList.toggle('is-on', input.checked);
+        status.classList.toggle('is-off', !input.checked);
+        status.textContent = input.checked ? '✓' : '−';
+      }
+    });
+  });
 }
 
 function renderVerificationPromptPreview(prompt) {
-  const box = $('#verification-prompt-preview');
+  cachedVerificationPrompt = prompt || null;
+  const quote = $('#verification-guest-script-quote');
   const script = $('#verification-guest-script');
-  const block = $('#verification-instructions-block');
-  if (!box || !script || !block) return;
-  if (!prompt?.guestScriptDe) {
-    box.classList.add('hidden');
-    return;
+  const lang = typeof getLang === 'function' ? getLang() : 'en';
+  const text =
+    lang === 'de'
+      ? prompt?.guestScriptDe || prompt?.guestScriptEn || ''
+      : prompt?.guestScriptEn || prompt?.guestScriptDe || '';
+  if (quote) quote.textContent = text ? `“${text}”` : '–';
+  if (script) script.value = text;
+
+  const btn = $('#verification-copy-script');
+  if (btn) {
+    btn.replaceWith(btn.cloneNode(true));
+    $('#verification-copy-script')?.addEventListener('click', () => {
+      const value = $('#verification-guest-script')?.value || '';
+      if (!value) return;
+      navigator.clipboard.writeText(value);
+      notify.success(t('common.copied'));
+    });
   }
-  box.classList.remove('hidden');
-  script.value = prompt.guestScriptDe;
-  block.value = prompt.verificationInstructionsDe ?? '';
-  $('#verification-copy-script')?.replaceWith($('#verification-copy-script').cloneNode(true));
-  $('#verification-copy-block')?.replaceWith($('#verification-copy-block').cloneNode(true));
-  $('#verification-copy-script')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(script.value);
-    notify.success(t('common.copied'));
-  });
-  $('#verification-copy-block')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(block.value);
-    notify.success(t('common.copied'));
-  });
 }
 
 function getVerificationFormData() {
@@ -4002,11 +4239,12 @@ $('#verification-form')?.addEventListener('submit', async (e) => {
     return;
   }
   try {
-    await api(`/verification-config/${id}`, {
+    const saved = await api(`/verification-config/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(getVerificationFormData()),
     });
     notify.success(t('verification.saved'));
+    renderVerificationLastSaved(saved?.updatedAt || new Date().toISOString());
     loadRules();
   } catch (ex) {
     notify.error(ex.message);
@@ -4014,6 +4252,8 @@ $('#verification-form')?.addEventListener('submit', async (e) => {
 });
 
 async function loadRules() {
+  ensureRulesUi();
+  ensureRulesToolbar();
   const [rules, config, fieldMeta, listingsData, conditionSchema] = await Promise.all([
     api('/rules'),
     api('/verification-config'),
@@ -4026,41 +4266,89 @@ async function loadRules() {
   cachedListings = listingsData.items || listingsData;
   populateListingSelect();
   renderVerificationForm(config, fieldMeta);
+  updateRuleSelects();
 
-  ensureTableToolbar('#rules-toolbar', 'rules', loadRules);
-  const data = paginateClient(rules, 'rules', (r) => [
+  const modeFilter = tableState.rules.mode || 'all';
+  const statusFilter = tableState.rules.status || 'all';
+  let filtered = rules;
+  if (modeFilter !== 'all') {
+    filtered = filtered.filter((r) => r.mode === modeFilter);
+  }
+  if (statusFilter === 'active') {
+    filtered = filtered.filter((r) => r.isActive !== false);
+  } else if (statusFilter === 'inactive') {
+    filtered = filtered.filter((r) => r.isActive === false);
+  }
+
+  const data = paginateClient(filtered, 'rules', (r) => [
     r.requestType,
+    t(`requestType.${r.requestType}`) || r.requestType,
+    formatRuleTypeDisplay(r.requestType),
     r.mode,
-    r.listing?.name,
+    t(`mode.${r.mode}`) || r.mode,
+    r.listing?.name || t('rules.global'),
     r.priority,
-    r.isActive,
+    r.isActive !== false ? 'active' : 'inactive',
   ].join(' '));
-  const rows = data.items.map((r) => `
-    <tr data-rule-id="${r.id}">
-      <td>${t(`requestType.${r.requestType}`) || r.requestType}</td>
-      <td><span class="badge ${r.mode === 'AUTO' ? 'auto' : r.mode === 'DENY' ? 'manual' : 'manual'}">${t(`mode.${r.mode}`) || r.mode}</span></td>
-      <td>${r.listing?.name || t('rules.global')}</td>
-      <td>${r.priority}</td>
-      <td>${r.isActive ? t('rules.active') : t('rules.inactive')}</td>
-    </tr>
-  `).join('');
+
+  const title = $('#rules-existing-title');
+  if (title) title.textContent = t('rules.existingCount', { count: filtered.length });
+
+  const canEdit = hasPermission('RULES_EDIT');
+  const canDelete = hasPermission('RULES_DELETE');
+  const startIndex = (data.page - 1) * data.pageSize;
+  const rows = data.items.map((r, idx) => {
+    const active = r.isActive !== false;
+    const listingLabel = r.listing?.name || t('rules.global');
+    return `
+    <tr data-rule-id="${r.id}" class="${editingRuleId === r.id ? 'selected' : ''}">
+      <td class="rules-index-cell">${startIndex + idx + 1}</td>
+      <td><strong>${esc(formatRuleTypeDisplay(r.requestType))}</strong></td>
+      <td><span class="rules-mode-badge ${modeBadgeClass(r.mode)}">${esc(t(`mode.${r.mode}`) || r.mode)}</span></td>
+      <td>${esc(listingLabel)}</td>
+      <td class="rules-priority-cell">${esc(String(r.priority))}</td>
+      <td>
+        <span class="rules-status-dot ${active ? 'is-active' : 'is-inactive'}">
+          <span class="rules-status-dot-mark" aria-hidden="true"></span>
+          ${esc(active ? t('rules.active') : t('rules.inactive'))}
+        </span>
+      </td>
+      <td class="rules-row-actions">
+        ${canEdit ? `<button type="button" class="rules-icon-btn" data-rule-edit="${r.id}" title="${esc(t('rules.editRule'))}" aria-label="${esc(t('rules.editRule'))}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>` : '–'}
+      </td>
+    </tr>`;
+  }).join('');
+
   $('#rules-table').innerHTML = `
-    <table><thead><tr>
-      <th>${t('rules.col.type')}</th><th>${t('rules.col.mode')}</th><th>${t('rules.col.listing')}</th>
-      <th>${t('rules.col.priority')}</th><th>${t('rules.col.status')}</th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="5">${t('rules.none')}</td></tr>`}</tbody></table>`;
+    <table class="rules-existing-table">
+      <thead><tr>
+        <th class="rules-index-cell">#</th>
+        <th>${t('rules.col.type')}</th>
+        <th>${t('rules.col.mode')}</th>
+        <th>${t('rules.col.appliesTo')}</th>
+        <th class="rules-priority-cell">${t('rules.col.priority')}</th>
+        <th>${t('rules.col.status')}</th>
+        <th class="rules-row-actions">${t('rules.col.actions')}</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="7">${t('rules.none')}</td></tr>`}</tbody>
+    </table>`;
   renderTableInfo('#rules-info', data, data.maxTotal);
   renderPagination('#rules-pagination', data, 'rules', loadRules);
+  ensureRulesPageSizeControl();
   if (editingRuleId) {
     const current = rules.find((r) => r.id === editingRuleId);
-    if (current) loadRuleIntoForm(current);
+    if (current) loadRuleIntoForm(current, { activate: false });
     else resetRuleForm();
   } else {
     updateRuleFormUI();
     renderRuleConditionsPanel();
   }
   bindRuleRowClicks();
+  bindRuleRowActions();
   applyRoleUi();
+  activateRulesView(rulesActiveView);
 }
 
 async function loadRequests() {
@@ -7359,7 +7647,7 @@ function formatLogMetadata(metadata) {
 
 function renderReadableFields(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
-  const skip = new Set(['hintDe', 'guestScriptDe', 'verificationInstructionsDe']);
+  const skip = new Set(['hintDe', 'hintEn', 'guestScriptDe', 'guestScriptEn', 'verificationInstructionsDe']);
   const rows = Object.entries(obj)
     .filter(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== '')
     .slice(0, 12)
@@ -7399,12 +7687,20 @@ function renderModalMetadataSections(meta) {
     parts.push(renderRawJsonDetails(t('logs.rawRequest'), req));
   }
 
-  if (res?.hintDe) {
+  if (res?.hintDe || res?.hintEn) {
+    const hint =
+      (typeof getLang === 'function' && getLang() === 'de'
+        ? res.hintDe || res.hintEn
+        : res.hintEn || res.hintDe) || '';
     parts.push(`<h5>${t('logs.verificationRule')}</h5>`);
-    parts.push(`<p class="modal-highlight">${esc(res.hintDe)}</p>`);
-  } else if (res?.guestScriptDe) {
+    parts.push(`<p class="modal-highlight">${esc(hint)}</p>`);
+  } else if (res?.guestScriptDe || res?.guestScriptEn) {
+    const script =
+      (typeof getLang === 'function' && getLang() === 'de'
+        ? res.guestScriptDe || res.guestScriptEn
+        : res.guestScriptEn || res.guestScriptDe) || '';
     parts.push(`<h5>${t('verification.guestScript')}</h5>`);
-    parts.push(`<p class="modal-highlight">${esc(res.guestScriptDe)}</p>`);
+    parts.push(`<p class="modal-highlight">${esc(script)}</p>`);
   }
 
   parts.push(`<h5>${t('fonioActivity.responseSection')}</h5>`);

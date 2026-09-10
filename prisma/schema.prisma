@@ -400,7 +400,7 @@ model ApprovalRule {
   id          String       @id @default(uuid())
   listingId   String?
   listing     Listing?     @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  requestType RequestType
+  requestType String
   mode        ApprovalMode @default(MANUAL)
   conditions  Json?
   priority    Int          @default(0)

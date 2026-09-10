@@ -689,18 +689,19 @@ export class AdminController {
   @Permissions(AdminPermission.RULES_EDIT)
   @ApiOperation({ summary: 'Create approval rule' })
   createRule(@Body() dto: CreateApprovalRuleDto) {
+    const requestType = dto.requestType.trim();
     const mode =
-      dto.requestType === RequestType.CANCELLATION &&
+      requestType === RequestType.CANCELLATION &&
       dto.mode === ApprovalMode.AUTO
         ? ApprovalMode.MANUAL
         : dto.mode;
     return this.prisma.approvalRule.create({
       data: {
         listingId: dto.listingId || null,
-        requestType: dto.requestType,
+        requestType,
         mode,
         conditions: this.rules.sanitizeRuleConditions(
-          dto.requestType,
+          requestType,
           mode,
           dto.conditions,
         ),
@@ -717,7 +718,7 @@ export class AdminController {
     const existing = await this.prisma.approvalRule.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Rule not found');
 
-    const requestType = dto.requestType ?? existing.requestType;
+    const requestType = (dto.requestType ?? existing.requestType).trim();
     let mode = dto.mode ?? existing.mode;
     if (
       requestType === RequestType.CANCELLATION &&
@@ -741,6 +742,7 @@ export class AdminController {
       where: { id },
       data: {
         ...rest,
+        ...(dto.requestType !== undefined ? { requestType } : {}),
         mode,
         listingId:
           dto.listingId === undefined
@@ -780,9 +782,12 @@ export class AdminController {
       ...config,
       fonioPrompt: {
         hintDe: prompt.hintDe,
+        hintEn: prompt.hintEn,
         guestScriptDe: prompt.guestScriptDe,
+        guestScriptEn: prompt.guestScriptEn,
         verificationInstructionsDe: prompt.verificationInstructionsDe,
         optionalFieldsListDe: prompt.optionalFieldsListDe,
+        optionalFieldsListEn: prompt.optionalFieldsListEn,
         minMatchCount: prompt.minMatchCount,
         bookingOfferEnabled: prompt.bookingOfferEnabled,
       },

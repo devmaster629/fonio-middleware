@@ -36,6 +36,14 @@ const FIELD_LABELS_DE: Record<VerificationField, string> = {
   reservationId: 'Reservierungsnummer',
 };
 
+const FIELD_LABELS_EN: Record<VerificationField, string> = {
+  stayDates: 'arrival and departure dates',
+  listingName: 'property name',
+  phone: 'phone number',
+  email: 'email address',
+  reservationId: 'reservation number',
+};
+
 function joinLabelsDe(labels: string[]): string {
   if (labels.length === 0) return '';
   if (labels.length === 1) return labels[0];
@@ -43,9 +51,21 @@ function joinLabelsDe(labels: string[]): string {
   return `${labels.slice(0, -1).join(', ')} oder ${labels[labels.length - 1]}`;
 }
 
+function joinLabelsEn(labels: string[]): string {
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} or ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')}, or ${labels[labels.length - 1]}`;
+}
+
 function minMatchLabelDe(count: number): string {
   if (count === 1) return 'mindestens eine weitere Angabe';
   return `mindestens ${count} weitere Angaben`;
+}
+
+function minMatchLabelEn(count: number): string {
+  if (count === 1) return 'at least one more detail';
+  return `at least ${count} more details`;
 }
 
 function additionalMinMatch(totalMinMatch: number): number {
@@ -72,12 +92,18 @@ export class FonioVerificationService {
     );
     const optionalFields = scoringFields.filter((f) => f !== 'stayDates');
     const optionalFieldLabelsDe = optionalFields.map((f) => FIELD_LABELS_DE[f]);
+    const optionalFieldLabelsEn = optionalFields.map((f) => FIELD_LABELS_EN[f]);
     const optionalFieldsListDe = joinLabelsDe(optionalFieldLabelsDe);
+    const optionalFieldsListEn = joinLabelsEn(optionalFieldLabelsEn);
     const additionalMinMatchCount = additionalMinMatch(minMatch);
     const hintDe = this.buildHintDe(minMatch, optionalFields);
     const guestScriptDe = this.buildGuestScriptDe(
       additionalMinMatchCount,
       optionalFieldLabelsDe,
+    );
+    const guestScriptEn = this.buildGuestScriptEn(
+      additionalMinMatchCount,
+      optionalFieldLabelsEn,
     );
     const verificationInstructionsDe = this.buildVerificationInstructionsDe({
       minMatch,
@@ -92,16 +118,19 @@ export class FonioVerificationService {
       alwaysRequired: ['stayDates'],
       optionalFields,
       optionalFieldLabelsDe,
+      optionalFieldLabelsEn,
       optionalFieldsListDe,
+      optionalFieldsListEn,
       minMatchCount: minMatch,
       additionalMinMatchCount,
       bookingOfferEnabled: config?.bookingOfferEnabled ?? true,
       hintDe,
       guestScriptDe,
+      guestScriptEn,
       verificationInstructionsDe,
       hintEn:
-        'Arrival and departure dates always count as one match. Provide at least ' +
-        `${additionalMinMatchCount} more matching detail(s) from: ${optionalFieldsListDe || 'configured fields'} ` +
+        'Arrival and departure dates always count as one match. Provide ' +
+        `${minMatchLabelEn(additionalMinMatchCount)} from: ${optionalFieldsListEn || 'configured fields'} ` +
         `(${minMatch} total matches required). The guest does not need to provide all fields.`,
       postVerifyHintDe:
         'Nach erfolgreicher Verifizierung: verificationToken für Buchung abrufen und Gästeanfrage verwenden. ' +
@@ -298,6 +327,25 @@ export class FonioVerificationService {
       'Zur Bestätigung brauche ich Ihr An- und Abreisedatum sowie ' +
       `${minMatchLabelDe(additionalMinMatchCount)} — zum Beispiel ${joinLabelsDe(optionalLabels)}. ` +
       'Sie müssen nicht alles nennen.'
+    );
+  }
+
+  private buildGuestScriptEn(
+    additionalMinMatchCount: number,
+    optionalLabels: string[],
+  ): string {
+    if (optionalLabels.length === 0 || additionalMinMatchCount === 0) {
+      return (
+        "Hello! You've reached brainions. To check availability and offer you a booking, " +
+        "I'll need to verify a few details with you — starting with your arrival and departure dates. " +
+        'This will only take a moment. Is that okay with you?'
+      );
+    }
+    return (
+      "Hello! You've reached brainions. To check availability and offer you a booking, " +
+      `I'll need your arrival and departure dates plus ${minMatchLabelEn(additionalMinMatchCount)} — ` +
+      `for example ${joinLabelsEn(optionalLabels)}. ` +
+      'This will only take a moment. Is that okay with you?'
     );
   }
 

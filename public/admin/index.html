@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>brainions Vermietung – Admin</title>
+  <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260910q" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260911c" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -312,10 +312,10 @@
           <aside class="reservation-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="reservation-drawer-title">
             <header class="reservation-drawer-header">
               <div>
-                <h3 id="reservation-drawer-title" class="reservation-drawer-id">–</h3>
+                <h3 id="reservation-drawer-title" class="reservation-drawer-id">-</h3>
                 <div id="reservation-drawer-status" class="reservation-status-pill"></div>
               </div>
-              <button type="button" class="reservation-drawer-close" data-reservation-drawer-close aria-label="Close">×</button>
+              <button type="button" class="reservation-drawer-close" data-reservation-drawer-close aria-label="Close">x</button>
             </header>
             <div class="reservation-drawer-tabs" role="tablist">
               <button type="button" class="reservation-drawer-tab is-active" data-reservation-drawer-tab="details" role="tab" aria-selected="true" data-i18n="reservations.tabDetails">Details</button>
@@ -346,7 +346,7 @@
             <div class="conversations-list-toolbar">
               <label class="conversations-search">
                 <span class="sr-only" data-i18n="table.search">Search</span>
-                <input type="search" id="conversations-search" placeholder="Search guest, property, or conversation ID…" autocomplete="off" />
+                <input type="search" id="conversations-search" placeholder="Search guest, property, or conversation ID..." autocomplete="off" />
                 <svg class="conversations-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               </label>
               <div class="conversations-list-filters">
@@ -369,7 +369,7 @@
               <select id="conversations-sort" aria-label="Sort">
                 <option value="updatedAt:desc">Sort: Last updated</option>
                 <option value="arrivalDate:desc">Sort: Arrival</option>
-                <option value="guestName:asc">Sort: Guest A–Z</option>
+                <option value="guestName:asc">Sort: Guest A-Z</option>
               </select>
             </div>
             <div id="conversations-list" class="conversations-list"></div>
@@ -398,11 +398,11 @@
                 <div class="conversations-chat-identity">
                   <div id="conversations-chat-avatar" class="conversations-avatar is-lg" aria-hidden="true"></div>
                   <div>
-                    <div id="conversations-chat-guest" class="conversations-chat-guest">–</div>
+                    <div id="conversations-chat-guest" class="conversations-chat-guest">-</div>
                     <div class="conversations-chat-sub">
-                      <span id="conversations-chat-listing">–</span>
-                      <span class="conversations-dot" aria-hidden="true">·</span>
-                      <span id="conversations-chat-convid">–</span>
+                      <span id="conversations-chat-listing">-</span>
+                      <span class="conversations-dot" aria-hidden="true">Â·</span>
+                      <span id="conversations-chat-convid">-</span>
                       <button type="button" class="conversations-icon-btn" id="conversations-copy-convid" title="Copy" hidden>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                       </button>
@@ -436,106 +436,192 @@
       </section>
 
       <section id="tab-rules" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="rules.pageTitle">Rules &amp; verification</h2></header>
+        <header class="page-header rules-page-header">
+          <div>
+            <h2 data-i18n="rules.pageTitle">Rules &amp; verification</h2>
+          </div>
+          <div class="rules-page-actions" id="rules-verification-actions">
+            <button type="submit" form="verification-form" class="btn primary" id="verification-save-btn" data-i18n="verification.save">Save verification settings</button>
+            <div id="verification-last-saved" class="rules-last-saved hidden"></div>
+          </div>
+        </header>
 
-        <div class="card verification-card">
-          <h3 data-i18n="verification.title">Guest verification</h3>
-          <p class="field-hint" data-i18n="verification.hint">Required before fonio shares booking details or processes changes. This is separate from approval rules below.</p>
-          <p id="verification-readonly-hint" class="field-hint hidden" data-i18n="perms.featureLocked">This feature is read-only for your role.</p>
-          <form id="verification-form" class="verification-form">
-            <input type="hidden" id="verification-config-id" value="" />
-            <fieldset class="verification-fields">
-              <legend data-i18n="verification.requiredFieldsLegend">Required verification fields</legend>
-              <div id="verification-field-checkboxes" class="checkbox-grid"></div>
-            </fieldset>
-            <label class="verification-min-match">
-              <span data-i18n="verification.minMatches">Minimum matching fields</span>
-              <input type="number" id="verification-min-match" min="1" max="6" value="3" />
-              <span class="field-hint" data-i18n="verification.minMatchesHint">Stay dates count as 1 match. With minimum 3, guests need dates plus 2 more details — not all fields.</span>
-            </label>
-            <label class="checkbox-row verification-booking-offer">
-              <input type="checkbox" id="verification-booking-offer" checked />
-              <span>
-                <strong data-i18n="verification.bookingOffer">Automatic booking offer (fonio)</strong>
-                <br><span class="field-hint" data-i18n="verification.bookingOfferHint">When dates are available, fonio can create a Hostaway inquiry via booking-offer API. No prices on the phone.</span>
+        <nav class="payments-subnav rules-subnav" aria-label="Rules sections">
+          <button type="button" class="payments-subnav-btn active" data-rules-view="verification" data-i18n="rules.tabVerification">Verification</button>
+          <button type="button" class="payments-subnav-btn" data-rules-view="approval" data-i18n="rules.tabApproval">Approval rules</button>
+        </nav>
+        <p id="verification-readonly-hint" class="field-hint hidden" data-i18n="perms.featureLocked">This feature is read-only for your role.</p>
+
+        <div id="rules-view-verification" class="rules-view">
+          <div class="rules-verification-grid">
+            <div class="card rules-verification-card">
+              <h3 data-i18n="verification.title">Guest verification</h3>
+              <p class="field-hint" data-i18n="verification.hint">Required before fonio shares booking details or processes changes.</p>
+              <form id="verification-form" class="verification-form">
+                <input type="hidden" id="verification-config-id" value="" />
+                <div class="verification-fields-panel">
+                  <div class="verification-fields-title" data-i18n="verification.requiredFieldsLegend">Fields the caller must provide</div>
+                  <div id="verification-field-checkboxes" class="verification-field-list"></div>
+                </div>
+
+                <div class="verification-min-match-card">
+                  <div class="verification-min-match-head">
+                    <span data-i18n="verification.minMatches">Minimum matching fields</span>
+                    <div class="verification-stepper">
+                      <button type="button" class="verification-stepper-btn" id="verification-min-minus" aria-label="Decrease">-</button>
+                      <input type="number" id="verification-min-match" min="1" max="6" value="3" />
+                      <button type="button" class="verification-stepper-btn" id="verification-min-plus" aria-label="Increase">+</button>
+                    </div>
+                  </div>
+                  <p class="verification-min-match-hint" data-i18n="verification.minMatchesHint">Stay dates count as 1 match. With minimum 3, guests need dates plus 2 more details - not all fields.</p>
+                </div>
+
+                <label class="verification-offer-row">
+                  <span>
+                    <strong data-i18n="verification.bookingOffer">Automatic booking offer (fonio)</strong>
+                    <span class="field-hint" data-i18n="verification.bookingOfferHint">When dates are available, fonio can create a Hostaway inquiry via booking-offer API. No prices on the phone.</span>
+                  </span>
+                  <span class="toggle-switch">
+                    <input type="checkbox" id="verification-booking-offer" checked />
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </form>
+            </div>
+
+            <aside class="card rules-hear-card" id="verification-prompt-preview">
+              <div class="rules-hear-header">
+                <h3 data-i18n="verification.whatGuestsHear">What guests hear</h3>
+                <span class="rules-live-badge"><span class="rules-live-dot" aria-hidden="true"></span><span data-i18n="verification.livePreview">Live preview</span></span>
+              </div>
+              <div class="rules-hear-phone">
+                <div class="rules-hear-phone-icon" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>
+                </div>
+                <div class="rules-hear-kicker" data-i18n="verification.fonioCalling">fonio calling</div>
+                <div class="rules-hear-label" data-i18n="verification.spokenIntro">Spoken introduction</div>
+                <blockquote id="verification-guest-script-quote" class="rules-hear-quote">-</blockquote>
+                <input type="hidden" id="verification-guest-script" value="" />
+                <div class="rules-hear-wave" aria-hidden="true">
+                  <span style="--h:12%"></span><span style="--h:18%"></span><span style="--h:28%"></span>
+                  <span style="--h:22%"></span><span style="--h:45%"></span><span style="--h:62%"></span>
+                  <span style="--h:38%"></span><span style="--h:78%"></span><span style="--h:55%"></span>
+                  <span style="--h:92%"></span><span style="--h:70%"></span><span style="--h:48%"></span>
+                  <span style="--h:85%"></span><span style="--h:100%"></span><span style="--h:72%"></span>
+                  <span style="--h:58%"></span><span style="--h:88%"></span><span style="--h:64%"></span>
+                  <span style="--h:42%"></span><span style="--h:76%"></span><span style="--h:50%"></span>
+                  <span style="--h:34%"></span><span style="--h:56%"></span><span style="--h:40%"></span>
+                  <span style="--h:26%"></span><span style="--h:18%"></span><span style="--h:12%"></span>
+                </div>
+                <button type="button" class="btn ghost btn-sm rules-copy-script" id="verification-copy-script">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span data-i18n="verification.copyScript">Copy script</span>
+                </button>
+              </div>
+              <p class="field-hint rules-hear-footer" data-i18n="verification.hearFooter">This is what guests will hear at the start of the verification call.</p>
+            </aside>
+          </div>
+        </div>
+
+        <div id="rules-view-approval" class="rules-view hidden">
+          <p class="field-hint rules-approval-hint" data-i18n="rules.approvalHint">How guest requests (pet, extra guest, cancellation, etc.) are handled after the guest is verified. This is not the same as guest verification above.</p>
+
+          <div class="card rules-create-card" id="rules-create-card">
+            <button type="button" class="rules-create-toggle" id="rules-create-toggle" aria-expanded="true">
+              <span class="rules-create-toggle-left">
+                <span class="rules-create-plus" aria-hidden="true">+</span>
+                <span id="rule-form-title" data-i18n="rules.createApprovalRule">Create approval rule</span>
               </span>
-            </label>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" data-i18n="verification.save">Save verification settings</button>
+              <svg class="rules-create-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="rules-create-body" id="rules-create-body">
+              <form id="rule-form" class="rules-create-form">
+                <input type="hidden" id="rule-id" value="" />
+                <label class="rules-create-field rules-create-type">
+                  <span data-i18n="rules.type">Type</span>
+                  <input
+                    type="text"
+                    id="rule-type"
+                    list="rule-type-suggestions"
+                    required
+                    autocomplete="off"
+                    maxlength="80"
+                    data-i18n-placeholder="rules.typePlaceholder"
+                    placeholder="Type a rule name…"
+                  />
+                  <datalist id="rule-type-suggestions"></datalist>
+                </label>
+                <label class="rules-create-field rules-create-mode">
+                  <span data-i18n="rules.mode">Mode</span>
+                  <select id="rule-mode" required>
+                    <option value="AUTO">AUTO</option>
+                    <option value="MANUAL">MANUAL</option>
+                    <option value="DENY">DENY</option>
+                  </select>
+                </label>
+                <label class="rules-create-field rules-create-listing">
+                  <span data-i18n="rules.appliesToListing">Applies to listing</span>
+                  <select id="rule-listing">
+                    <option value="" data-i18n="rules.allListingsGlobal">All listings (Global)</option>
+                  </select>
+                </label>
+                <label class="rules-create-field rules-create-priority" title="Higher number wins.">
+                  <span data-i18n="rules.priority">Priority</span>
+                  <input type="number" id="rule-priority" value="0" min="0" />
+                  <span class="field-hint rules-create-priority-hint" data-i18n="rules.priorityHint">Higher number wins.</span>
+                </label>
+                <div class="rules-create-field rules-create-active">
+                  <span data-i18n="rules.activeLabel">Active</span>
+                  <label class="toggle-switch" for="rule-active">
+                    <input type="checkbox" id="rule-active" checked />
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                  </label>
+                </div>
+                <div class="rules-create-actions">
+                  <button type="submit" id="rule-submit-btn" class="btn primary btn-sm" data-i18n="rules.addRule">Add rule</button>
+                  <button type="button" id="rule-new-btn" class="btn ghost btn-sm hidden" data-i18n="rules.cancelEdit">Cancel</button>
+                  <button type="button" id="rule-delete-btn" class="btn ghost danger btn-sm hidden" data-i18n="rules.delete">Delete</button>
+                </div>
+              </form>
             </div>
-          </form>
-          <div id="verification-prompt-preview" class="verification-prompt-preview hidden">
-            <h4 data-i18n="verification.promptPreview">Preview: what guests hear on the phone</h4>
-            <p class="field-hint" data-i18n="verification.promptPreviewHint">This text is spoken by your AI phone assistant when verifying a caller. It updates automatically when you save the settings above.</p>
-            <div class="prompt-preview-field">
-              <span class="field-label" data-i18n="verification.guestScript">Spoken introduction for guests</span>
-              <div class="prompt-oneline-row">
-                <input type="text" id="verification-guest-script" class="prompt-oneline" readonly />
-                <button type="button" class="btn copy btn-sm" id="verification-copy-script" data-i18n="common.copy">Copy</button>
-              </div>
-            </div>
-            <details class="prompt-preview-details">
-              <summary data-i18n="verification.fullInstructions">Full verification instructions (detailed)</summary>
-              <textarea id="verification-instructions-block" rows="10" readonly></textarea>
-              <button type="button" class="btn copy btn-sm" id="verification-copy-block" data-i18n="common.copy">Copy</button>
-            </details>
           </div>
-        </div>
 
-        <h3 class="section-subtitle" data-i18n="rules.approvalTitle">Approval rules (after verification)</h3>
-        <p class="field-hint section-hint" data-i18n="rules.approvalHint">How guest requests (pet, extra guest, cancellation, etc.) are auto-approved, forwarded, or denied — only after the guest is verified.</p>
-        <div class="card">
-          <div class="form-header">
-            <h3 id="rule-form-title" data-i18n="rules.newRule">New rule</h3>
-            <button type="button" id="rule-new-btn" class="btn ghost" data-i18n="rules.newRuleBtn">+ New rule</button>
-          </div>
-          <form id="rule-form" class="grid-form">
-            <input type="hidden" id="rule-id" value="" />
-            <label><span data-i18n="rules.type">Type</span>
-              <select id="rule-type" required>
-                <option value="ADD_GUEST">ADD_GUEST</option>
-                <option value="ADD_PET">ADD_PET</option>
-                <option value="CANCELLATION">CANCELLATION</option>
-                <option value="MODIFICATION">MODIFICATION</option>
-                <option value="EARLY_CHECKIN">EARLY_CHECKIN</option>
-                <option value="LATE_CHECKOUT">LATE_CHECKOUT</option>
-                <option value="RESERVATION_QUESTION">RESERVATION_QUESTION</option>
-                <option value="OTHER">OTHER</option>
-              </select>
-            </label>
-            <label><span data-i18n="rules.mode">Mode</span>
-              <select id="rule-mode" required>
-                <option value="AUTO">AUTO</option>
-                <option value="MANUAL">MANUAL</option>
-                <option value="DENY">DENY</option>
-              </select>
-            </label>
-            <label><span data-i18n="rules.listing">Listing</span>
-              <select id="rule-listing">
-                <option value="" data-i18n="rules.global">Global</option>
-              </select>
-            </label>
-            <label><span data-i18n="rules.priority">Priority</span>
-              <input type="number" id="rule-priority" value="0" min="0" />
-              <span class="field-hint" data-i18n="rules.priorityHint">Higher number wins.</span>
-            </label>
-            <label class="checkbox-row rule-active-row">
-              <input type="checkbox" id="rule-active" checked />
-              <span data-i18n="rules.isActive">Rule active</span>
-            </label>
-            <div class="form-actions">
-              <span class="field-label" aria-hidden="true">&nbsp;</span>
-              <div class="form-action-btns">
-                <button type="submit" id="rule-submit-btn" class="btn primary" data-i18n="rules.addRule">Add rule</button>
-                <button type="button" id="rule-delete-btn" class="btn ghost hidden" data-i18n="rules.delete">Delete</button>
+          <div class="card rules-existing-card">
+            <div class="rules-existing-head">
+              <h3 id="rules-existing-title">Existing rules (0)</h3>
+              <div class="rules-existing-filters" id="rules-toolbar">
+                <label class="rules-search-field">
+                  <span class="sr-only" data-i18n="table.search">Search</span>
+                  <span class="rules-search-wrap">
+                    <svg class="rules-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    <input type="search" id="rules-search" data-table-search="rules" autocomplete="off" data-i18n-placeholder="rules.searchPlaceholder" placeholder="Search rules..." />
+                  </span>
+                </label>
+                <select id="rules-filter-mode" aria-label="Mode filter">
+                  <option value="all" data-i18n="rules.filterAllModes">All modes</option>
+                  <option value="AUTO" data-i18n="mode.AUTO">Automatic</option>
+                  <option value="MANUAL" data-i18n="mode.MANUAL">Manual</option>
+                  <option value="DENY" data-i18n="mode.DENY">Deny</option>
+                </select>
+                <select id="rules-filter-status" aria-label="Status filter">
+                  <option value="all" data-i18n="rules.filterAllStatuses">All statuses</option>
+                  <option value="active" data-i18n="rules.active">Active</option>
+                  <option value="inactive" data-i18n="rules.inactive">Inactive</option>
+                </select>
               </div>
             </div>
-          </form>
+            <div class="table-wrap" id="rules-table"></div>
+            <div class="rules-existing-foot">
+              <div id="rules-info" class="table-info"></div>
+              <div class="rules-existing-pager">
+                <div id="rules-pagination" class="table-pagination"></div>
+                <label class="table-page-size">
+                  <select id="rules-page-size" aria-label="Page size"></select>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="rules-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="rules-table"></div>
-        <div id="rules-info" class="table-info"></div>
-        <div id="rules-pagination" class="table-pagination"></div>
       </section>
 
       <section id="tab-requests" class="tab hidden">
@@ -563,7 +649,7 @@
             <button type="button" class="payments-subnav-btn" data-payments-view="portal" data-i18n="payments.subnavPortalRules">Portal settings</button>
           </nav>
           <div class="payments-sync-bar">
-            <span class="payments-last-sync" id="payments-last-sync">–</span>
+            <span class="payments-last-sync" id="payments-last-sync">-</span>
             <button type="button" id="qonto-poll-btn" class="btn payments-sync-btn" data-i18n="payments.syncNow">Sync now</button>
           </div>
         </div>
@@ -590,11 +676,11 @@
                 <div class="payment-import-stats">
                   <div class="payment-import-stat is-inline">
                     <span class="payment-import-stat-label" data-i18n="payments.lastImported">Last imported</span>
-                    <span class="payment-import-time" id="qonto-status-when">–</span>
+                    <span class="payment-import-time" id="qonto-status-when">-</span>
                   </div>
                   <div class="payment-import-stat is-inline">
                     <span class="payment-import-stat-label" data-i18n="payments.processedCount">Processed</span>
-                    <span class="payment-import-pill" id="qonto-new-items">–</span>
+                    <span class="payment-import-pill" id="qonto-new-items">-</span>
                   </div>
                 </div>
                 <div class="payment-import-meta-row">
@@ -627,11 +713,11 @@
                 <div class="payment-import-stats">
                   <div class="payment-import-stat is-inline">
                     <span class="payment-import-stat-label" data-i18n="payments.lastImported">Last imported</span>
-                    <span class="payment-import-time" id="paypal-status-when">–</span>
+                    <span class="payment-import-time" id="paypal-status-when">-</span>
                   </div>
                   <div class="payment-import-stat is-inline">
                     <span class="payment-import-stat-label" data-i18n="payments.receivedCount">Received</span>
-                    <span class="payment-import-pill" id="paypal-new-items">–</span>
+                    <span class="payment-import-pill" id="paypal-new-items">-</span>
                   </div>
                 </div>
                 <div class="payment-import-meta-row">
@@ -742,7 +828,7 @@
               <label>
                 <span data-i18n="logs.debugDays">Keep for (days)</span>
                 <input type="number" id="log-debug-days" min="7" max="14" value="14" />
-                <span class="field-hint" data-i18n="logs.debugDaysHint">7–14 days</span>
+                <span class="field-hint" data-i18n="logs.debugDaysHint">7-14 days</span>
               </label>
             </div>
             <div class="log-retention-option">
@@ -773,7 +859,7 @@
               <label>
                 <span data-i18n="logs.maxDays">Maximum storage cap (days)</span>
                 <input type="number" id="log-max-days" min="30" max="90" value="90" />
-                <span class="field-hint" data-i18n="logs.maxDaysHint">30–90 days — nothing is kept longer than this</span>
+                <span class="field-hint" data-i18n="logs.maxDaysHint">30-90 days - nothing is kept longer than this</span>
               </label>
             </div>
             <div class="form-actions" style="grid-column: 1 / -1;">
@@ -796,7 +882,7 @@
 
       <section id="tab-fonioActivity" class="tab hidden">
         <header class="page-header"><h2 data-i18n="fonioActivity.title">fonio call activity</h2></header>
-        <p class="field-hint" data-i18n="fonioActivity.hint">Each row is one fonio API call to the middleware. Shows sanitized request data, what the middleware did, and the outcome. Phone numbers and emails are masked. Full call transcripts remain in fonio — only tool requests are logged here.</p>
+        <p class="field-hint" data-i18n="fonioActivity.hint">Each row is one fonio API call to the middleware. Shows sanitized request data, what the middleware did, and the outcome. Phone numbers and emails are masked. Full call transcripts remain in fonio - only tool requests are logged here.</p>
         <div id="fonio-activity-toolbar" class="table-toolbar"></div>
         <div class="table-wrap" id="fonio-activity-table"></div>
         <div id="fonio-activity-info" class="table-info"></div>
@@ -823,7 +909,7 @@
               <p data-i18n="check24.step1Text">Your apartments and calendars live here.</p>
             </div>
           </div>
-          <div class="check24-arrow" aria-hidden="true">→</div>
+          <div class="check24-arrow" aria-hidden="true">-></div>
           <div class="check24-step">
             <div class="check24-step-num">2</div>
             <div>
@@ -831,7 +917,7 @@
               <p data-i18n="check24.step2Text">Copies them to CHECK24 with one click.</p>
             </div>
           </div>
-          <div class="check24-arrow" aria-hidden="true">→</div>
+          <div class="check24-arrow" aria-hidden="true">-></div>
           <div class="check24-step">
             <div class="check24-step-num">3</div>
             <div>
@@ -1029,10 +1115,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260910q"></script>
+  <script src="/admin/i18n.js?v=20260911c"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260910q"></script>
+  <script src="/admin/app.js?v=20260911c"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

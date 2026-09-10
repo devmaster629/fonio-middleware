@@ -254,13 +254,18 @@ export class RulesService {
   }
 
   sanitizeRuleConditions(
-    requestType: RequestType,
+    requestType: string,
     mode: ApprovalMode,
     conditions?: Record<string, unknown>,
   ): Prisma.InputJsonValue | undefined {
     if (mode !== ApprovalMode.AUTO) return undefined;
-    if (requestType === RequestType.CANCELLATION) return undefined;
-    const sanitized = sanitizeConditions(requestType, conditions);
+    if (requestType === RequestType.CANCELLATION || requestType === 'CANCELLATION') {
+      return undefined;
+    }
+    if (!(Object.values(RequestType) as string[]).includes(requestType)) {
+      return undefined;
+    }
+    const sanitized = sanitizeConditions(requestType as RequestType, conditions);
     return sanitized as Prisma.InputJsonValue | undefined;
   }
 
