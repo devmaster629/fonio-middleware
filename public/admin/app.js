@@ -32,7 +32,7 @@ const tableState = {
   rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'asc' },
   requests: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
-  paymentsHistory: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  paymentsHistory: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
   logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   webhooks: { page: 1, pageSize: 10, search: '' },
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
@@ -694,6 +694,93 @@ function ensurePaymentsToolbar(loader) {
   });
   dateSel?.addEventListener('change', (e) => {
     tableState[tabKey].date = e.target.value;
+    tableState[tabKey].page = 1;
+    loader();
+  });
+}
+
+function ensurePaymentsHistoryToolbar(loader) {
+  const el = $('#payments-history-toolbar');
+  if (!el) return;
+  const tabKey = 'paymentsHistory';
+  const s = tableState[tabKey];
+  if (el.dataset.toolbarInit === 'payments-history-v2') {
+    const sourceSel = el.querySelector('[data-history-filter="source"]');
+    const statusSel = el.querySelector('[data-history-filter="status"]');
+    const lengthSel = el.querySelector(`[data-table-length="${tabKey}"]`);
+    const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
+    if (sourceSel) sourceSel.value = s.source || 'all';
+    if (statusSel) statusSel.value = s.status || 'all';
+    if (lengthSel) lengthSel.value = String(s.pageSize);
+    if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
+    return;
+  }
+  el.dataset.toolbarInit = 'payments-history-v2';
+  el.innerHTML = `
+    <div class="payments-toolbar-filters payments-history-toolbar-filters">
+      <label class="payments-toolbar-length">
+        <span class="payments-filter-label sr-only">${t('table.show')}</span>
+        <select data-table-length="${tabKey}" aria-label="${esc(t('table.show'))}">
+          ${PAGE_SIZE_OPTIONS.map((n) =>
+            `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
+          ).join('')}
+        </select>
+      </label>
+      <label class="payments-search-field payments-history-search-field">
+        <span class="payments-filter-label sr-only">${t('table.search')}</span>
+        <span class="payments-search-wrap">
+          <svg class="payments-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+            <circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.historySearchPlaceholder'))}" />
+        </span>
+      </label>
+      <label>
+        <span class="payments-filter-label sr-only">${t('payments.status')}</span>
+        <select data-history-filter="status">
+          <option value="all">${t('payments.filterAllStatus')}</option>
+          <option value="matched">${t('payments.historyStatus.matched')}</option>
+          <option value="pending">${t('payments.historyStatus.pending')}</option>
+          <option value="needs_review">${t('payments.historyStatus.needsReview')}</option>
+          <option value="skipped">${t('payments.historyStatus.skipped')}</option>
+          <option value="failed">${t('payments.historyStatus.failed')}</option>
+        </select>
+      </label>
+      <label>
+        <span class="payments-filter-label sr-only">${t('payments.source')}</span>
+        <select data-history-filter="source">
+          <option value="all">${t('payments.filterAllSources')}</option>
+          <option value="QONTO">Qonto</option>
+          <option value="PAYPAL">PayPal</option>
+        </select>
+      </label>
+    </div>
+  `;
+  const sourceSel = el.querySelector('[data-history-filter="source"]');
+  const statusSel = el.querySelector('[data-history-filter="status"]');
+  if (sourceSel) sourceSel.value = s.source || 'all';
+  if (statusSel) statusSel.value = s.status || 'all';
+  el.querySelector(`[data-table-length="${tabKey}"]`)?.addEventListener('change', (e) => {
+    tableState[tabKey].pageSize = Number(e.target.value);
+    tableState[tabKey].page = 1;
+    loader();
+  });
+  el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
+    clearTimeout(searchTimers[tabKey]);
+    searchTimers[tabKey] = setTimeout(() => {
+      tableState[tabKey].search = e.target.value;
+      tableState[tabKey].page = 1;
+      loader();
+    }, 300);
+  });
+  sourceSel?.addEventListener('change', (e) => {
+    tableState[tabKey].source = e.target.value;
+    tableState[tabKey].page = 1;
+    loader();
+  });
+  statusSel?.addEventListener('change', (e) => {
+    tableState[tabKey].status = e.target.value;
     tableState[tabKey].page = 1;
     loader();
   });
@@ -2617,6 +2704,34 @@ function paymentStatusBadge(status) {
           : 'auto';
   const label = t(`payments.status.${status}`) || status;
   return `<span class="badge ${cls}">${label}</span>`;
+}
+
+/** History board status pills: Matched / Pending / Needs review / Unmatched */
+function paymentHistoryStatusMeta(status) {
+  if (status === 'AUTO_APPLIED' || status === 'MANUALLY_APPLIED') {
+    return { key: 'matched', cls: 'is-ok', label: t('payments.historyStatus.matched') };
+  }
+  if (status === 'PENDING_REVIEW') {
+    return { key: 'needs_review', cls: 'is-warn', label: t('payments.historyStatus.needsReview') };
+  }
+  if (status === 'SKIPPED') {
+    return { key: 'skipped', cls: 'is-skip', label: t('payments.historyStatus.skipped') };
+  }
+  if (status === 'FAILED') {
+    return { key: 'failed', cls: 'is-err', label: t('payments.historyStatus.failed') };
+  }
+  return { key: 'pending', cls: 'is-pending', label: t('payments.historyStatus.pending') };
+}
+
+function paymentHistoryStatusBadge(status) {
+  const meta = paymentHistoryStatusMeta(status);
+  return `<span class="payment-history-status ${meta.cls}"><span class="payment-history-status-dot" aria-hidden="true"></span>${esc(meta.label)}</span>`;
+}
+
+function paymentHistorySourceLabel(source) {
+  const key = `payments.sourceLabel.${String(source || '').toUpperCase()}`;
+  const label = t(key);
+  return label === key ? (source || '–') : label;
 }
 
 function reservationPaidAmount(reservation) {
@@ -5469,8 +5584,19 @@ async function loadPaymentsHistory() {
   try {
     const response = await api('/payments?pageSize=100');
     const paymentList = Array.isArray(response) ? response : (response.items || []);
-    ensureTableToolbar('#payments-history-toolbar', 'paymentsHistory', loadPaymentsHistory);
-    const data = paginateClient(paymentList, 'paymentsHistory', (p) => [
+    ensurePaymentsHistoryToolbar(loadPaymentsHistory);
+    const s = tableState.paymentsHistory;
+    const statusFilter = s.status || 'all';
+    const sourceFilter = s.source || 'all';
+    const filtered = paymentList.filter((p) => {
+      if (sourceFilter !== 'all' && String(p.source || '').toUpperCase() !== sourceFilter) return false;
+      if (statusFilter !== 'all') {
+        const key = paymentHistoryStatusMeta(p.status).key;
+        if (key !== statusFilter) return false;
+      }
+      return true;
+    });
+    const data = paginateClient(filtered, 'paymentsHistory', (p) => [
       p.createdAt,
       p.source,
       p.status,
@@ -5479,22 +5605,26 @@ async function loadPaymentsHistory() {
       p.reviewedBy,
       p.matchedReservation?.listing?.name,
       p.matchedReservation?.hostawayId,
+      ...(Array.isArray(p.allocations)
+        ? p.allocations.flatMap((a) => [a.reservation?.hostawayId, a.reservation?.listing?.name])
+        : []),
     ].join(' '));
     const rows = data.items.map((p) => {
       const reservation = p.matchedReservation;
       const allocations = Array.isArray(p.allocations) ? p.allocations : [];
-      let reservationLabel = '–';
+      let reservationLabel = '<span class="payment-history-empty">–</span>';
       if (allocations.length > 1) {
         reservationLabel = allocations.map((a) => {
           const hostawayId = a.reservation?.hostawayId;
           const listing = a.reservation?.listing?.name || '';
-          return `#${hostawayId || '?'} · ${formatMoney(a.amount)}${listing ? ` — ${esc(listing)}` : ''}`;
-        }).join('<br>');
+          return `<div class="payment-history-booking"><span class="payment-history-booking-id">#${esc(String(hostawayId || '?'))}</span>${listing ? `<span class="payment-history-booking-name">${esc(listing)}</span>` : ''}</div>`;
+        }).join('');
       } else if (reservation) {
-        reservationLabel = `#${reservation.hostawayId} — ${esc(reservation.listing?.name || '')}`;
+        reservationLabel = `<div class="payment-history-booking"><span class="payment-history-booking-id">#${esc(String(reservation.hostawayId))}</span>${reservation.listing?.name ? `<span class="payment-history-booking-name">${esc(reservation.listing.name)}</span>` : ''}</div>`;
       } else if (allocations.length === 1) {
         const a = allocations[0];
-        reservationLabel = `#${a.reservation?.hostawayId || '?'} — ${esc(a.reservation?.listing?.name || '')}`;
+        const listing = a.reservation?.listing?.name || '';
+        reservationLabel = `<div class="payment-history-booking"><span class="payment-history-booking-id">#${esc(String(a.reservation?.hostawayId || '?'))}</span>${listing ? `<span class="payment-history-booking-name">${esc(listing)}</span>` : ''}</div>`;
       }
       const retryBtn = (p.status === 'FAILED' || p.status === 'RECEIVED') && hasPermission('PAYMENTS_REVIEW')
         ? `<button type="button" class="btn ghost btn-sm payment-retry-btn" data-payment-id="${p.id}">${t('payments.retry')}</button>`
@@ -5502,23 +5632,49 @@ async function loadPaymentsHistory() {
       const undoBtn = (p.status === 'AUTO_APPLIED' || p.status === 'MANUALLY_APPLIED') && hasPermission('PAYMENTS_REVIEW')
         ? `<button type="button" class="btn ghost btn-sm payment-undo-btn" data-payment-id="${p.id}">${t('payments.undo')}</button>`
         : '';
+      const actions = (retryBtn || undoBtn)
+        ? `<div class="payment-history-actions">${retryBtn}${undoBtn}</div>`
+        : '';
       return `
       <tr>
-        <td>${formatDateTime(p.createdAt)}</td>
-        <td>${p.source}</td>
-        <td>${p.amount.toFixed(2)} ${p.currency}</td>
-        <td>${esc(p.payerName || '–')}<br><span class="field-hint">${esc(p.reference || '')}</span></td>
-        <td>${paymentStatusBadge(p.status)}${p.error ? `<br><span class="field-hint">${esc(p.error)}</span>` : ''}${allocations.length > 1 ? `<br><span class="badge auto">${t('payments.splitBadge')}</span>` : ''}</td>
-        <td>${reservationLabel}</td>
-        <td>${esc(p.reviewedBy || '–')} ${retryBtn}${undoBtn}</td>
+        <td data-label="${esc(t('payments.time'))}"><span class="payment-history-received">${esc(formatDateTime(p.createdAt))}</span></td>
+        <td data-label="${esc(t('payments.source'))}">${esc(paymentHistorySourceLabel(p.source))}</td>
+        <td data-label="${esc(t('payments.amount'))}" class="cell-money payment-history-amount">${esc(formatMoney(p.amount, p.currency))}</td>
+        <td data-label="${esc(t('payments.payer'))}">
+          <div class="payment-history-payer">
+            <span class="payment-history-payer-name">${esc(p.payerName || '–')}</span>
+            ${p.reference ? `<span class="payment-history-payer-ref">${esc(p.reference)}</span>` : ''}
+          </div>
+        </td>
+        <td data-label="${esc(t('payments.status'))}">
+          <div class="payment-history-status-cell">
+            ${paymentHistoryStatusBadge(p.status)}
+            ${p.error ? `<span class="field-hint">${esc(p.error)}</span>` : ''}
+            ${allocations.length > 1 ? `<span class="badge auto">${t('payments.splitBadge')}</span>` : ''}
+          </div>
+        </td>
+        <td data-label="${esc(t('payments.reservation'))}">${reservationLabel}</td>
+        <td data-label="${esc(t('payments.reviewedBy'))}">
+          <div class="payment-history-reviewed">
+            <span>${esc(p.reviewedBy || '–')}</span>
+            ${actions}
+          </div>
+        </td>
       </tr>`;
     }).join('');
     $('#payments-history-table').innerHTML = `
-      <table><thead><tr>
-        <th>${t('payments.time')}</th><th>${t('payments.source')}</th><th>${t('payments.amount')}</th>
-        <th>${t('payments.payer')}</th><th>${t('payments.status')}</th><th>${t('payments.reservation')}</th><th>${t('payments.reviewedBy')}</th>
-      </tr></thead>
-      <tbody>${rows || `<tr><td colspan="7">${t('payments.historyNone')}</td></tr>`}</tbody></table>`;
+      <table class="payments-history-table">
+        <thead><tr>
+          <th class="is-sorted">${t('payments.time')}</th>
+          <th>${t('payments.source')}</th>
+          <th>${t('payments.amount')}</th>
+          <th>${t('payments.payer')}</th>
+          <th>${t('payments.status')}</th>
+          <th>${t('payments.reservation')}</th>
+          <th>${t('payments.reviewedBy')}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="7"><div class="payment-history-empty-state">${t('payments.historyNone')}</div></td></tr>`}</tbody>
+      </table>`;
     renderTableInfo('#payments-history-info', data, data.maxTotal);
     renderPagination('#payments-history-pagination', data, 'paymentsHistory', loadPaymentsHistory);
 
