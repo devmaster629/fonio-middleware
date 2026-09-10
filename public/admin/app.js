@@ -3662,6 +3662,7 @@ function renderMatchCell(payment, candidates, bestCandidate) {
   return `<div class="payment-match-block" data-payment-id="${esc(payment.id)}">
     <div class="payment-match-status ${matchDecisionBadgeClass(decision)}">${esc(decisionLabel)}</div>
     ${summaryLine ? `<div class="payment-match-summary">${esc(summaryLine)}</div>` : ''}
+    ${payment.error ? `<div class="payment-apply-error" role="alert"><strong>${esc(t('payments.applyFailedTitle'))}</strong> ${esc(payment.error)} <span class="muted">${esc(t('payments.applyFailedHint'))}</span></div>` : ''}
     ${bestHtml}
     ${renderAmountMatchNote(payment, best)}
     ${best ? renderMatchSignalChipsHtml(payment, best) : ''}

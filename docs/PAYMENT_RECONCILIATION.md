@@ -70,6 +70,10 @@ For long-term stays (e.g. monthly €550), Admin → **Payments → Payment plan
 
 Hostaway remains source of truth for guest, stay dates, and booking total. Matched payments update the local ledger (`paidTowardPlan`, advance `nextDueAt` / `nextDueAmount`). Undo reverses the ledger best-effort.
 
+**Auto-apply:** when an enabled plan’s **next amount due** equals the bank payment and the guest name/email matches, the payment is applied automatically (even if other same-guest bookings look similar). Saving a plan re-runs the review queue immediately. Deleting a plan restores any **auto-applied** payments for that reservation back to the review queue (manually confirmed payments are left alone).
+
+If Hostaway rejects the charge (e.g. **archived listing** → HTTP 403), the payment stays in the **review queue** with the error shown — it is not moved to History as Failed.
+
 API:
 
 - `GET /api/v1/admin/payments/payment-plans`

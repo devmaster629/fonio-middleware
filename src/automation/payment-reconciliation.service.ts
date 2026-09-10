@@ -69,9 +69,10 @@ export class PaymentReconciliationService {
 
   async reconcile(
     paymentId: string,
-    options?: { allowAutoApply?: boolean },
+    options?: { allowAutoApply?: boolean; forceAutoApply?: boolean },
   ): Promise<{ id: string; status: ExternalPaymentStatus }> {
     const allowAutoApply = options?.allowAutoApply !== false;
+    const forceAutoApply = options?.forceAutoApply === true;
     const payment = await this.prisma.externalPayment.findUnique({
       where: { id: paymentId },
     });
@@ -100,11 +101,20 @@ export class PaymentReconciliationService {
 
     const match = await this.matcher.match(normalized);
 
-    if (
+    // Previous Hostaway apply failures stay in review; do not keep retrying on
+    // every Qonto poll unless the operator (or plan save) forces another attempt.
+    const priorApplyFailed =
+      !!payment.error &&
+      /hostaway apply failed|status code 403|status code 4\d\d/i.test(
+        payment.error,
+      );
+    const tryAutoApply =
       allowAutoApply &&
       match.decision === PaymentMatchDecision.UNAMBIGUOUS &&
-      match.best
-    ) {
+      !!match.best &&
+      (forceAutoApply || !priorApplyFailed);
+
+    if (tryAutoApply && match.best) {
       try {
         const applied = await this.apply.applyToReservation({
           reservationHostawayId: match.best.hostawayId,
@@ -126,6 +136,7 @@ export class PaymentReconciliationService {
             matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
             matchedReservationId: match.best.reservationId,
             hostawayChargeId: applied.chargeId,
+            error: null,
             allocations: {
               create: [
                 {
@@ -140,21 +151,24 @@ export class PaymentReconciliationService {
         });
         return { id: updated.id, status: updated.status };
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Hostaway apply failed';
+        const message = this.formatApplyError(error);
+        // Keep the payment in the review queue so staff can confirm manually.
+        // FAILED hid it from Reconciliation and required a History → Retry.
         const updated = await this.prisma.externalPayment.update({
           where: { id: payment.id },
           data: {
-            status: ExternalPaymentStatus.FAILED,
+            status: ExternalPaymentStatus.PENDING_REVIEW,
             matchDecision: match.decision,
             matchScore: match.best.score,
             matchReason: match.reason,
             matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
             matchedReservationId: match.best.reservationId,
-            error: message,
+            error: `Hostaway apply failed: ${message}`,
           },
         });
-        this.logger.error(`Auto-apply failed for payment ${payment.id}: ${message}`);
+        this.logger.error(
+          `Auto-apply failed for payment ${payment.id} (kept in review): ${message}`,
+        );
         return { id: updated.id, status: updated.status };
       }
     }
@@ -178,6 +192,8 @@ export class PaymentReconciliationService {
         matchReason: match.reason,
         matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
         matchedReservationId: match.best?.reservationId,
+        // Keep prior apply error unless this rematch is no longer a booking case.
+        ...(status === ExternalPaymentStatus.SKIPPED ? { error: null } : {}),
       },
     });
 
@@ -206,12 +222,41 @@ export class PaymentReconciliationService {
     return { id: updated.id, status: updated.status };
   }
 
+  private formatApplyError(error: unknown): string {
+    if (!error || typeof error !== 'object') {
+      return error instanceof Error ? error.message : 'Hostaway apply failed';
+    }
+    const ax = error as {
+      message?: string;
+      response?: { status?: number; data?: unknown };
+    };
+    const status = ax.response?.status;
+    const data = ax.response?.data;
+    let detail = '';
+    if (data && typeof data === 'object') {
+      const body = data as Record<string, unknown>;
+      const msg =
+        (typeof body.message === 'string' && body.message) ||
+        (typeof body.error === 'string' && body.error) ||
+        (typeof body.statusMessage === 'string' && body.statusMessage) ||
+        '';
+      if (msg) detail = msg;
+      else detail = JSON.stringify(data).slice(0, 300);
+    }
+    if (status && detail) return `${status}: ${detail}`;
+    if (status) return `status code ${status}`;
+    return ax.message || 'Hostaway apply failed';
+  }
+
   /**
    * Re-run matching for payments still in the review queue.
    * Useful after reservation notes/channel sync improve match quality —
    * clear cases can then auto-apply; ambiguous ones stay in review.
    */
-  async rematchPendingReview(limit = 40): Promise<{
+  async rematchPendingReview(
+    limit = 40,
+    options?: { forceAutoApply?: boolean },
+  ): Promise<{
     checked: number;
     autoApplied: number;
     stillReview: number;
@@ -226,7 +271,9 @@ export class PaymentReconciliationService {
     let autoApplied = 0;
     let stillReview = 0;
     for (const row of pending) {
-      const result = await this.reconcile(row.id);
+      const result = await this.reconcile(row.id, {
+        forceAutoApply: options?.forceAutoApply === true,
+      });
       if (result.status === ExternalPaymentStatus.AUTO_APPLIED) autoApplied += 1;
       else if (result.status === ExternalPaymentStatus.PENDING_REVIEW) stillReview += 1;
     }
@@ -583,5 +630,63 @@ export class PaymentReconciliationService {
       previousReservationHostawayId:
         payment.matchedReservation?.hostawayId ?? null,
     };
+  }
+
+  /**
+   * After creating/updating an installment plan, re-score the review queue so
+   * guest + next-due matches can auto-apply immediately (no wait for next poll).
+   */
+  async rematchAfterPaymentPlanChange(limit = 80): Promise<{
+    checked: number;
+    autoApplied: number;
+    stillReview: number;
+  }> {
+    return this.rematchPendingReview(limit, { forceAutoApply: true });
+  }
+
+  /**
+   * When an installment plan is deleted, restore auto-applied payments for that
+   * reservation back to the review queue (manual applies are left alone).
+   */
+  async undoAutoAppliedForReservation(
+    hostawayId: number,
+    reviewerEmail: string,
+  ): Promise<{ undone: number; paymentIds: string[] }> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId },
+      select: { id: true },
+    });
+    if (!reservation) {
+      return { undone: 0, paymentIds: [] };
+    }
+
+    const payments = await this.prisma.externalPayment.findMany({
+      where: {
+        status: ExternalPaymentStatus.AUTO_APPLIED,
+        OR: [
+          { matchedReservationId: reservation.id },
+          { allocations: { some: { reservationId: reservation.id } } },
+        ],
+      },
+      select: { id: true },
+      orderBy: { occurredAt: 'desc' },
+      take: 50,
+    });
+
+    const paymentIds: string[] = [];
+    for (const row of payments) {
+      try {
+        await this.undoApplication(row.id, reviewerEmail);
+        paymentIds.push(row.id);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'undo failed';
+        this.logger.warn(
+          `Plan delete: could not undo auto-applied payment ${row.id}: ${message}`,
+        );
+      }
+    }
+
+    return { undone: paymentIds.length, paymentIds };
   }
 }

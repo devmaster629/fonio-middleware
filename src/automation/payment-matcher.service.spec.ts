@@ -630,4 +630,80 @@ describe('PaymentMatcherService', () => {
     expect(result.best?.paymentPlan?.nextDueAmount).toBe(550);
     expect(result.best?.reasons.join(' ')).toMatch(/next installment due/i);
   });
+
+  it('auto-applies plan next-due even when other same-guest Restzahlung candidates exist', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-plan',
+        hostawayId: 35902633,
+        guestName: 'Peter Walther',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2025-01-03'),
+        departureDate: new Date('2026-08-31'),
+        listing: { name: '43 Sand-Style', aliases: [] },
+        totalPrice: 5390,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [{ amount: 1100 }],
+        paymentPlan: {
+          enabled: true,
+          installmentAmount: 550,
+          frequency: 'MONTHLY',
+          nextDueAmount: 550,
+          nextDueAt: new Date('2026-09-01'),
+          paidTowardPlan: 0,
+        },
+      },
+      {
+        id: 'res-alt-1',
+        hostawayId: 111,
+        guestName: 'Peter Walther',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2026-06-01'),
+        departureDate: new Date('2026-12-01'),
+        listing: { name: 'Alt A', aliases: [] },
+        totalPrice: 4000,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [{ amount: 500 }],
+        paymentPlan: null,
+      },
+      {
+        id: 'res-alt-2',
+        hostawayId: 222,
+        guestName: 'Peter Walther',
+        guestEmail: 'peter@example.com',
+        arrivalDate: new Date('2026-03-01'),
+        departureDate: new Date('2026-09-01'),
+        listing: { name: 'Alt B', aliases: [] },
+        totalPrice: 3000,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        notifiedCharges: [{ amount: 200 }],
+        paymentPlan: null,
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-teil-1',
+      amount: 550,
+      currency: 'EUR',
+      occurredAt: new Date('2026-08-31T14:41:00.000Z'),
+      payerName: 'PETER WALTHER',
+      reference: 'September teil 1 | PETER WALTHER | income',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('UNAMBIGUOUS');
+    expect(result.best?.hostawayId).toBe(35902633);
+    expect(result.best?.reasons.join(' ')).toMatch(/next installment due/i);
+  });
 });

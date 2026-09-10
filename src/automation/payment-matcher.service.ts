@@ -88,11 +88,15 @@ export class PaymentMatcherService {
     const best = candidates[0];
     const second = candidates[1];
     const hasStrongIdMatch = reservationIdsInReference.includes(best.hostawayId);
+    const hasStrongPlanMatch = this.hasStrongInstallmentPlanMatch(best);
 
+    // Enabled installment plan whose next due equals the payment amount is
+    // enough to disambiguate among same-guest Restzahlung candidates.
     if (
       second &&
       best.score - second.score < PAYMENT_AMBIGUITY_SCORE_GAP &&
-      !hasStrongIdMatch
+      !hasStrongIdMatch &&
+      !hasStrongPlanMatch
     ) {
       return {
         decision: PaymentMatchDecision.AMBIGUOUS,
@@ -121,7 +125,7 @@ export class PaymentMatcherService {
       payment.amount,
       candidates.slice(0, 5),
     );
-    if (combinedHint && !hasStrongIdMatch) {
+    if (combinedHint && !hasStrongIdMatch && !hasStrongPlanMatch) {
       return {
         decision: PaymentMatchDecision.AMBIGUOUS,
         candidates: candidates.slice(0, 5),
@@ -130,7 +134,7 @@ export class PaymentMatcherService {
       };
     }
 
-    if (this.canAutoApply(best, second, hasStrongIdMatch)) {
+    if (this.canAutoApply(best, second, hasStrongIdMatch, hasStrongPlanMatch)) {
       return {
         decision: PaymentMatchDecision.UNAMBIGUOUS,
         candidates: [best],
@@ -147,6 +151,15 @@ export class PaymentMatcherService {
     };
   }
 
+  /** Guest identity + amount equals the plan's next installment due. */
+  private hasStrongInstallmentPlanMatch(best: PaymentMatchCandidate): boolean {
+    const reasons = best.reasons.join(' ').toLowerCase();
+    const strongGuest =
+      reasons.includes('guest name matches') ||
+      reasons.includes('guest email matches');
+    return strongGuest && reasons.includes('equals next installment due');
+  }
+
   /**
    * Auto-apply only when the match is clear.
    * Ambiguous / name-only / weak amount evidence still go to review.
@@ -155,8 +168,10 @@ export class PaymentMatcherService {
     best: PaymentMatchCandidate,
     second: PaymentMatchCandidate | undefined,
     hasStrongIdMatch: boolean,
+    hasStrongPlanMatch = false,
   ): boolean {
     if (hasStrongIdMatch) return true;
+    if (hasStrongPlanMatch) return true;
     if (best.score >= PAYMENT_AUTO_MATCH_MIN_SCORE) return true;
 
     const reasons = best.reasons.join(' ').toLowerCase();
@@ -523,8 +538,10 @@ export class PaymentMatcherService {
       plan.nextDueAmount > 0 &&
       this.amountsMatch(amount, plan.nextDueAmount)
     ) {
+      // Higher than Restzahlung open-balance fits (~32) so plan bookings win
+      // the ambiguity gap against other same-guest long stays.
       return {
-        score: 38,
+        score: 48,
         reason: `Amount equals next installment due (${plan.nextDueAmount.toFixed(2)})`,
       };
     }

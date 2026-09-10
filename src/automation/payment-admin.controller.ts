@@ -136,7 +136,7 @@ export class PaymentAdminController {
     if (!Number.isFinite(id) || id <= 0) {
       throw new NotFoundException('Reservation not found');
     }
-    return this.paymentPlans.upsertByHostawayId(id, {
+    const plan = await this.paymentPlans.upsertByHostawayId(id, {
       enabled: dto.enabled,
       installmentAmount: dto.installmentAmount,
       frequency: dto.frequency,
@@ -153,17 +153,32 @@ export class PaymentAdminController {
       currency: dto.currency,
       note: dto.note,
     });
+
+    // Guest + next-due matches should auto-apply without waiting for the next poll.
+    const rematch = await this.reconciliation.rematchAfterPaymentPlanChange();
+    return { ...plan, rematch };
   }
 
   @Delete('payment-plans/:hostawayId')
   @Permissions(AdminPermission.PAYMENTS_ADMIN)
   @ApiOperation({ summary: 'Delete installment payment plan for a reservation' })
-  async deletePaymentPlan(@Param('hostawayId') hostawayId: string) {
+  async deletePaymentPlan(
+    @Param('hostawayId') hostawayId: string,
+    @Req() req: Request & { user?: { email?: string } },
+  ) {
     const id = Number(hostawayId);
     if (!Number.isFinite(id) || id <= 0) {
       throw new NotFoundException('Reservation not found');
     }
-    return this.paymentPlans.deleteByHostawayId(id);
+    const reviewer = req.user?.email ?? 'admin';
+    // Restore auto-applied installment payments to the review queue first.
+    const restored = await this.reconciliation.undoAutoAppliedForReservation(
+      id,
+      reviewer,
+    );
+    const deleted = await this.paymentPlans.deleteByHostawayId(id);
+    const rematch = await this.reconciliation.rematchAfterPaymentPlanChange();
+    return { ...deleted, restored, rematch };
   }
 
   @Get('review-queue')
@@ -476,6 +491,6 @@ export class PaymentAdminController {
   @Permissions(AdminPermission.PAYMENTS_REVIEW)
   @ApiOperation({ summary: 'Re-run matching for a payment' })
   async retry(@Param('id') id: string) {
-    return this.reconciliation.reconcile(id);
+    return this.reconciliation.reconcile(id, { forceAutoApply: true });
   }
 }
