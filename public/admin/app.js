@@ -81,7 +81,7 @@ const tableState = {
     dateTo: '',
   },
   webhooks: { page: 1, pageSize: 10, search: '' },
-  users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc', role: 'all', status: 'all' },
   fonioActivity: {
     page: 1,
     pageSize: 25,
@@ -10428,6 +10428,119 @@ function formatFonioActionSummary(action, meta) {
   }
 }
 
+let usersUiBound = false;
+let usersActiveView = 'list';
+let usersSecurityCache = [];
+
+const USERS_PERM_GROUPS = [
+  {
+    id: 'pages',
+    labelKey: 'perms.pages',
+    unitKey: 'perms.unitPages',
+    tone: 'blue',
+    icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+    match: (item) => item.group === 'pages',
+  },
+  {
+    id: 'data',
+    labelKey: 'perms.data',
+    unitKey: 'perms.unitData',
+    tone: 'purple',
+    icon: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/>',
+    match: (item) => ['RESERVATIONS_VIEW_PII', 'LISTINGS_EDIT'].includes(item.key),
+  },
+  {
+    id: 'operations',
+    labelKey: 'perms.operations',
+    unitKey: 'perms.unitActions',
+    tone: 'orange',
+    icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    match: (item) =>
+      ['CONVERSATIONS_MANAGE', 'RULES_EDIT', 'RULES_DELETE', 'REQUESTS_MANAGE', 'PAYMENTS_REVIEW'].includes(item.key),
+  },
+  {
+    id: 'integrations',
+    labelKey: 'perms.integrations',
+    unitKey: 'perms.unitIntegrations',
+    tone: 'teal',
+    icon: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    match: (item) =>
+      ['SYNC_RUN', 'SYNC_SETTINGS_EDIT', 'WEBHOOKS_MANAGE', 'FONIO_SETUP_VIEW', 'FONIO_ACTIVITY_VIEW'].includes(item.key),
+  },
+  {
+    id: 'administration',
+    labelKey: 'perms.administration',
+    unitKey: 'perms.unitAdmin',
+    tone: 'rose',
+    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    match: (item) =>
+      ['USERS_MANAGE', 'ROLE_PERMISSIONS_MANAGE', 'LOG_SETTINGS_EDIT', 'PAYMENTS_ADMIN', 'LOGS_VIEW'].includes(item.key),
+  },
+];
+
+function userDisplayName(user) {
+  const email = String(user?.email || '');
+  const local = email.split('@')[0] || email;
+  return local
+    .replace(/[._-]+/g, ' ')
+    .replace(/w/g, (c) => c.toUpperCase())
+    .trim() || email || '–';
+}
+
+function userInitials(user) {
+  const name = userDisplayName(user);
+  const parts = name.split(/s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase() || '?';
+}
+
+function userRoleTone(role) {
+  if (role === 'SUPER_ADMIN') return 'super';
+  if (role === 'ADMIN') return 'admin';
+  if (role === 'BACK_OFFICE') return 'backoffice';
+  return 'default';
+}
+
+function formatUserShortDate(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '–';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatUserLastActive(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '–';
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if (sameDay) return t('users.todayAt', { time });
+  return `${formatUserShortDate(value)}, ${time}`;
+}
+
+function passwordStrength(value) {
+  const v = String(value || '');
+  if (!v) return { score: 0, label: '' };
+  let score = 0;
+  if (v.length >= 8) score += 1;
+  if (v.length >= 12) score += 1;
+  if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score += 1;
+  if (/d/.test(v) && /[^A-Za-z0-9]/.test(v)) score += 1;
+  const labels = ['', 'users.strengthWeak', 'users.strengthFair', 'users.strengthGood', 'users.strengthStrong'];
+  return { score, label: labels[score] ? t(labels[score]) : '' };
+}
+
+function generateTempPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
+  const bytes = new Uint8Array(14);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
+}
+
 function updateUserPasswordWarning() {
   const input = $('#user-password');
   const warning = $('#user-password-warning');
@@ -10436,23 +10549,66 @@ function updateUserPasswordWarning() {
   const show = value.length > 0 && value.length < 8;
   warning.classList.toggle('hidden', !show);
   warning.textContent = t('users.passwordTooShort');
+  const strength = passwordStrength(value);
+  const wrap = $('#user-password-strength');
+  const label = $('#user-password-strength-label');
+  if (wrap) {
+    wrap.dataset.score = String(strength.score);
+    wrap.classList.toggle('is-empty', !value);
+  }
+  if (label) label.textContent = value ? strength.label : '';
 }
 
-function resetUserForm() {
+function setUsersView(view) {
+  usersActiveView = ['list', 'perms', 'security'].includes(view) ? view : 'list';
+  $$('.users-tab').forEach((btn) => {
+    const on = btn.dataset.usersTab === usersActiveView;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  $('#users-view-list')?.classList.toggle('hidden', usersActiveView !== 'list');
+  $('#users-view-perms')?.classList.toggle('hidden', usersActiveView !== 'perms');
+  $('#users-view-security')?.classList.toggle('hidden', usersActiveView !== 'security');
+  if (usersActiveView === 'security') loadUsersSecurityActivity();
+  if (usersActiveView === 'perms') loadRolePermissionsMatrix();
+}
+
+function openUsersDrawer() {
+  const drawer = $('#users-drawer');
+  if (!drawer) return;
+  drawer.classList.remove('hidden');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('users-drawer-open');
+  renderUsersDrawerPermPreview();
+}
+
+function closeUsersDrawer() {
+  const drawer = $('#users-drawer');
+  if (!drawer) return;
+  drawer.classList.add('hidden');
+  drawer.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('users-drawer-open');
+  resetUserForm({ keepDrawerClosed: true });
+}
+
+function resetUserForm({ keepDrawerClosed = false } = {}) {
   editingUserId = null;
   $('#user-id').value = '';
   $('#user-email').value = '';
   $('#user-email').removeAttribute('readonly');
   $('#user-password').value = '';
   $('#user-password').required = true;
+  $('#user-password').type = 'password';
   $('#user-role').value = 'BACK_OFFICE';
   $('#user-active').checked = true;
-  $('#user-form-title').textContent = t('users.addUser');
+  $('#user-form-title').textContent = t('users.addAdminUser');
+  $('#users-drawer-subtitle').textContent = t('users.drawerHint');
   $('#user-submit-btn').textContent = t('users.addUser');
-  $('#user-cancel-btn')?.classList.add('hidden');
   $('#user-delete-btn')?.classList.add('hidden');
   updateUserPasswordWarning();
   updateUserRowSelection(null);
+  renderUsersDrawerPermPreview();
+  if (!keepDrawerClosed) closeUsersDrawer();
 }
 
 function loadUserIntoForm(user) {
@@ -10462,16 +10618,19 @@ function loadUserIntoForm(user) {
   $('#user-email').setAttribute('readonly', 'readonly');
   $('#user-password').value = '';
   $('#user-password').required = false;
-  $('#user-role').value = ['BACK_OFFICE', 'ADMIN'].includes(user.role)
+  $('#user-password').type = 'password';
+  $('#user-role').value = ['BACK_OFFICE', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)
     ? user.role
     : 'BACK_OFFICE';
   $('#user-active').checked = user.isActive;
   $('#user-form-title').textContent = t('users.editUser');
+  $('#users-drawer-subtitle').textContent = t('users.editDrawerHint');
   $('#user-submit-btn').textContent = t('users.save');
-  $('#user-cancel-btn')?.classList.remove('hidden');
   $('#user-delete-btn')?.classList.toggle('hidden', !user.isActive);
   updateUserPasswordWarning();
   updateUserRowSelection(user.id);
+  openUsersDrawer();
+  renderUsersDrawerPermPreview();
 }
 
 function updateUserRowSelection(userId) {
@@ -10481,50 +10640,338 @@ function updateUserRowSelection(userId) {
 }
 
 function bindUserRowClicks() {
-  $$('#users-table tr[data-user-id]').forEach((row) => {
-    row.addEventListener('click', () => {
-      const id = row.dataset.userId;
+  $$('#users-table [data-user-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.userEdit;
       const user = cachedUsers.find((u) => u.id === id);
-      if (user && user.role !== 'SUPER_ADMIN') loadUserIntoForm(user);
+      if (user) loadUserIntoForm(user);
+    });
+  });
+  $$('#users-table [data-user-menu]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.userMenu;
+      const menu = $(`#users-menu-${id}`);
+      $$('.users-row-menu').forEach((el) => {
+        if (el !== menu) el.classList.add('hidden');
+      });
+      menu?.classList.toggle('hidden');
     });
   });
 }
 
+function permCountsForRole(role) {
+  const catalog = cachedPermMatrix?.catalog || [];
+  const selected = new Set(
+    role === 'SUPER_ADMIN'
+      ? catalog.map((item) => item.key)
+      : cachedPermMatrix?.matrix?.[role] || [],
+  );
+  return USERS_PERM_GROUPS.map((group) => {
+    const items = catalog.filter(group.match);
+    const enabled = items.filter((item) => selected.has(item.key)).length;
+    return {
+      ...group,
+      enabled,
+      total: items.length || 1,
+    };
+  });
+}
+
+function renderPermPreviewCards(targetSel, role) {
+  const el = $(targetSel);
+  if (!el) return;
+  const cards = permCountsForRole(role);
+  el.innerHTML = cards.map((c) => `
+    <article class="users-perm-card">
+      <span class="users-perm-card-icon is-${esc(c.tone)}" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
+      </span>
+      <div>
+        <div class="users-perm-card-label">${esc(t(c.labelKey))}</div>
+        <div class="users-perm-card-value">${c.enabled} / ${c.total} ${esc(t(c.unitKey))}</div>
+      </div>
+    </article>
+  `).join('');
+}
+
+function renderUsersDrawerPermPreview() {
+  const role = $('#user-role')?.value || 'BACK_OFFICE';
+  const el = $('#users-drawer-perm-preview');
+  if (!el) return;
+  const cards = permCountsForRole(role);
+  el.innerHTML = `
+    <div class="users-drawer-perm-title">${esc(t('users.permPreviewTitle'))}</div>
+    <div class="users-drawer-perm-list">
+      ${cards.map((c) => `
+        <div class="users-drawer-perm-row">
+          <span class="users-perm-card-icon is-${esc(c.tone)}" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
+          </span>
+          <span>${esc(t(c.labelKey))}</span>
+          <strong>${c.enabled}/${c.total}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderUsersKpis(users) {
+  const el = $('#users-kpis');
+  if (!el) return;
+  const total = users.length;
+  const supers = users.filter((u) => u.role === 'SUPER_ADMIN').length;
+  const admins = users.filter((u) => u.role === 'ADMIN').length;
+  const backOffice = users.filter((u) => u.role === 'BACK_OFFICE').length;
+  const cards = [
+    {
+      tone: 'blue',
+      value: total,
+      label: t('users.kpiTotal', { count: total }),
+      sub: t('users.kpiTotalSub'),
+      icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    },
+    {
+      tone: 'purple',
+      value: supers,
+      label: t('users.kpiSuper', { count: supers }),
+      sub: t('users.kpiSuperSub'),
+      icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    },
+    {
+      tone: 'orange',
+      value: admins,
+      label: t('users.kpiAdmin', { count: admins }),
+      sub: t('users.kpiAdminSub'),
+      icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    },
+    {
+      tone: 'teal',
+      value: backOffice,
+      label: t('users.kpiBackOffice', { count: backOffice }),
+      sub: t('users.kpiBackOfficeSub'),
+      icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    },
+  ];
+  el.innerHTML = cards.map((c) => `
+    <article class="users-kpi">
+      <span class="users-kpi-icon is-${esc(c.tone)}" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
+      </span>
+      <div class="users-kpi-body">
+        <div class="users-kpi-value">${esc(String(c.value))} <span class="users-kpi-value-label">${esc(c.label)}</span></div>
+        <div class="users-kpi-sub">${esc(c.sub)}</div>
+      </div>
+    </article>
+  `).join('');
+}
+
+function filterUsersList(users) {
+  const s = tableState.users;
+  const q = String(s.search || '').trim().toLowerCase();
+  return users.filter((u) => {
+    if (s.role && s.role !== 'all' && u.role !== s.role) return false;
+    if (s.status === 'active' && !u.isActive) return false;
+    if (s.status === 'inactive' && u.isActive) return false;
+    if (!q) return true;
+    const hay = [u.email, u.role, userDisplayName(u), formatRoleLabel(u.role)].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderUsersTable() {
+  const filtered = filterUsersList(cachedUsers);
+  const s = tableState.users;
+  const sorted = [...filtered];
+  if (s.sortBy) {
+    const dir = s.sortDir === 'asc' ? 1 : -1;
+    sorted.sort((a, b) => {
+      const av = a?.[s.sortBy];
+      const bv = b?.[s.sortBy];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+      if (typeof av === 'boolean' && typeof bv === 'boolean') return ((av === bv) ? 0 : av ? 1 : -1) * dir;
+      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * dir;
+    });
+  }
+  const pageSize = s.pageSize || 10;
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  if (s.page > totalPages) s.page = totalPages;
+  if (s.page < 1) s.page = 1;
+  const start = (s.page - 1) * pageSize;
+  const items = sorted.slice(start, start + pageSize);
+  const pageData = { items, total, page: s.page, pageSize, totalPages, maxTotal: total };
+
+  const rows = items.map((u) => {
+    const tone = userRoleTone(u.role);
+    const canEdit = true;
+    return `
+      <tr data-user-id="${esc(u.id)}" class="${editingUserId === u.id ? 'selected' : ''}">
+        <td class="users-col-user">
+          <div class="users-person">
+            <span class="users-avatar is-${esc(tone)}" aria-hidden="true">${esc(userInitials(u))}</span>
+            <span class="users-person-meta">
+              <strong>${esc(userDisplayName(u))}</strong>
+              <span>${esc(formatRoleLabel(u.role))}</span>
+            </span>
+          </div>
+        </td>
+        <td class="users-col-email">${esc(u.email)}</td>
+        <td><span class="users-role-pill is-${esc(tone)}">${esc(formatRoleLabel(u.role))}</span></td>
+        <td>
+          <span class="users-status ${u.isActive ? 'is-active' : 'is-inactive'}">
+            <span class="users-status-dot" aria-hidden="true"></span>
+            ${esc(u.isActive ? t('users.active') : t('users.inactive'))}
+          </span>
+        </td>
+        <td class="users-col-date">${esc(formatUserShortDate(u.createdAt))}</td>
+        <td class="users-col-date">${esc(formatUserLastActive(u.updatedAt))}</td>
+        <td class="users-col-actions">
+          <div class="users-actions-wrap">
+            <button type="button" class="users-menu-btn" data-user-menu="${esc(u.id)}" aria-label="${esc(t('users.actions'))}">⋯</button>
+            <div id="users-menu-${esc(u.id)}" class="users-row-menu hidden">
+              ${canEdit
+                ? `<button type="button" data-user-edit="${esc(u.id)}">${esc(t('users.editUser'))}</button>`
+                : `<span class="users-menu-locked">${esc(t('users.superLocked'))}</span>`}
+            </div>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const tableEl = $('#users-table');
+  if (tableEl) {
+    tableEl.innerHTML = `
+      <table class="users-data-table">
+        <thead><tr>
+          <th>${t('users.col.user')}</th>
+          <th>${t('users.col.email')}</th>
+          <th>${t('users.col.role')}</th>
+          <th>${t('users.col.status')}</th>
+          <th>${t('users.col.created')}</th>
+          <th>${t('users.col.lastActive')}</th>
+          <th>${t('users.actions')}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="7" class="empty-row">${esc(t('users.none'))}</td></tr>`}</tbody>
+      </table>`;
+  }
+  renderTableInfo('#users-info', pageData, pageData.maxTotal);
+  renderPagination('#users-pagination', pageData, 'users', () => renderUsersTable());
+  bindUserRowClicks();
+  scheduleEnhanceResponsiveTables();
+}
+
 let cachedUsers = [];
+
+function bindUsersUi() {
+  if (usersUiBound) return;
+  usersUiBound = true;
+
+  $$('.users-tab').forEach((btn) => {
+    btn.addEventListener('click', () => setUsersView(btn.dataset.usersTab));
+  });
+  $('#users-open-perms-btn')?.addEventListener('click', () => setUsersView('perms'));
+
+  const syncFilters = () => {
+    tableState.users.search = $('#users-search')?.value || '';
+    tableState.users.role = $('#users-filter-role')?.value || 'all';
+    tableState.users.status = $('#users-filter-status')?.value || 'all';
+    tableState.users.page = 1;
+    renderUsersTable();
+  };
+  $('#users-search')?.addEventListener('input', () => {
+    clearTimeout(searchTimers.users);
+    searchTimers.users = setTimeout(syncFilters, 220);
+  });
+  $('#users-filter-role')?.addEventListener('change', syncFilters);
+  $('#users-filter-status')?.addEventListener('change', syncFilters);
+  $('#users-clear-filters-btn')?.addEventListener('click', () => {
+    if ($('#users-search')) $('#users-search').value = '';
+    if ($('#users-filter-role')) $('#users-filter-role').value = 'all';
+    if ($('#users-filter-status')) $('#users-filter-status').value = 'all';
+    syncFilters();
+  });
+
+  $('#users-preview-role')?.addEventListener('change', () => {
+    renderPermPreviewCards('#users-perm-preview-cards', $('#users-preview-role').value);
+  });
+  $('#user-role')?.addEventListener('change', renderUsersDrawerPermPreview);
+
+  $$('[data-users-drawer-close]').forEach((el) => {
+    el.addEventListener('click', () => closeUsersDrawer());
+  });
+
+  $('#user-password-generate')?.addEventListener('click', () => {
+    const input = $('#user-password');
+    if (!input) return;
+    input.type = 'text';
+    input.value = generateTempPassword();
+    updateUserPasswordWarning();
+  });
+  $('#user-password-toggle')?.addEventListener('click', () => {
+    const input = $('#user-password');
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.users-actions-wrap')) {
+      $$('.users-row-menu').forEach((el) => el.classList.add('hidden'));
+    }
+  });
+}
+
+async function loadUsersSecurityActivity() {
+  const tableEl = $('#users-security-table');
+  if (!tableEl) return;
+  try {
+    const data = await api('/logs?page=1&pageSize=25&source=admin&sortBy=createdAt&sortDir=desc');
+    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+    usersSecurityCache = items;
+    const rows = items.map((l) => `
+      <tr>
+        <td>${esc(formatAuditDateTime(l.createdAt))}</td>
+        <td><code>${esc(l.action || '–')}</code></td>
+        <td>${esc(formatLogSummary(l))}</td>
+        <td><span class="logs-http-pill is-${httpStatusTone(l.statusCode)}">${esc(httpStatusLabel(l.statusCode))}</span></td>
+      </tr>
+    `).join('');
+    tableEl.innerHTML = `
+      <table class="users-data-table">
+        <thead><tr>
+          <th>${t('logs.time')}</th>
+          <th>${t('logs.action')}</th>
+          <th>${t('logs.summary')}</th>
+          <th>${t('logs.httpStatus')}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="4" class="empty-row">${esc(t('users.securityEmpty'))}</td></tr>`}</tbody>
+      </table>`;
+    scheduleEnhanceResponsiveTables();
+  } catch (ex) {
+    tableEl.innerHTML = `<p class="field-hint">${esc(ex.message)}</p>`;
+  }
+}
 
 async function loadUsers() {
   if (!canSuperAdmin()) return;
+  bindUsersUi();
+  setUsersView(usersActiveView);
   const users = await api('/users');
-  cachedUsers = users;
-  ensureTableToolbar('#users-toolbar', 'users', loadUsers);
-  const data = paginateClient(users, 'users', (u) => [
-    u.email,
-    u.role,
-    u.isActive,
-    u.createdAt,
-  ].join(' '));
-  const rows = data.items.map((u) => `
-    <tr data-user-id="${u.id}">
-      <td>${esc(u.email)}</td>
-      <td>${formatRoleLabel(u.role)}</td>
-      <td>${u.isActive ? t('users.active') : t('users.inactive')}</td>
-      <td>${formatDateTime(u.createdAt)}</td>
-    </tr>
-  `).join('');
-  $('#users-table').innerHTML = `
-    <table><thead><tr>
-      <th>${t('users.col.email')}</th><th>${t('users.col.role')}</th><th>${t('users.col.status')}</th><th>${t('users.col.created')}</th>
-    </tr></thead><tbody>${rows || `<tr><td colspan="4">${t('users.none')}</td></tr>`}</tbody></table>`;
-  renderTableInfo('#users-info', data, data.maxTotal);
-  renderPagination('#users-pagination', data, 'users', loadUsers);
+  cachedUsers = Array.isArray(users) ? users : [];
+  renderUsersKpis(cachedUsers);
+  renderUsersTable();
   if (editingUserId) {
-    const current = users.find((u) => u.id === editingUserId);
+    const current = cachedUsers.find((u) => u.id === editingUserId);
     if (current) loadUserIntoForm(current);
-    else resetUserForm();
+    else resetUserForm({ keepDrawerClosed: true });
   }
-  bindUserRowClicks();
   await loadRolePermissionsMatrix();
-  scheduleEnhanceResponsiveTables();
+  renderPermPreviewCards('#users-perm-preview-cards', $('#users-preview-role')?.value || 'ADMIN');
+  renderUsersDrawerPermPreview();
 }
 
 let cachedPermMatrix = null;
@@ -10532,12 +10979,16 @@ let cachedPermMatrix = null;
 async function loadRolePermissionsMatrix() {
   if (!hasPermission('ROLE_PERMISSIONS_MANAGE') && adminRole !== 'SUPER_ADMIN') {
     $('#role-permissions-card')?.classList.add('hidden');
+    $$('[data-users-tab="perms"]').forEach((btn) => btn.classList.add('hidden'));
     return;
   }
   $('#role-permissions-card')?.classList.remove('hidden');
+  $$('[data-users-tab="perms"]').forEach((btn) => btn.classList.remove('hidden'));
   try {
     cachedPermMatrix = await api('/role-permissions');
     renderRolePermissionCheckboxes();
+    renderPermPreviewCards('#users-perm-preview-cards', $('#users-preview-role')?.value || 'ADMIN');
+    renderUsersDrawerPermPreview();
   } catch (ex) {
     notify.error(ex.message);
   }
@@ -10590,9 +11041,12 @@ $('#perm-save-btn')?.addEventListener('click', async () => {
   }
 });
 
-$('#user-new-btn')?.addEventListener('click', () => resetUserForm());
+$('#user-new-btn')?.addEventListener('click', () => {
+  resetUserForm({ keepDrawerClosed: true });
+  openUsersDrawer();
+});
 
-$('#user-cancel-btn')?.addEventListener('click', () => resetUserForm());
+$('#user-cancel-btn')?.addEventListener('click', () => closeUsersDrawer());
 
 $('#user-password')?.addEventListener('input', updateUserPasswordWarning);
 
@@ -10615,6 +11069,7 @@ $('#user-form')?.addEventListener('submit', async (e) => {
       if (password) body.password = password;
       await api(`/users/${editingUserId}`, { method: 'PATCH', body: JSON.stringify(body) });
       notify.success(t('users.saved'));
+      closeUsersDrawer();
     } else {
       if (!password) {
         notify.error(t('users.passwordRequired'));
@@ -10625,7 +11080,7 @@ $('#user-form')?.addEventListener('submit', async (e) => {
         body: JSON.stringify({ email, password, role }),
       });
       notify.success(t('users.created'));
-      resetUserForm();
+      closeUsersDrawer();
     }
     loadUsers();
   } catch (ex) {
@@ -10638,14 +11093,14 @@ $('#user-delete-btn')?.addEventListener('click', async () => {
   const user = cachedUsers.find((u) => u.id === editingUserId);
   if (!user) return;
   const ok = await notify.confirm(
-    t('users.deactivateTitle'),
     t('users.deactivateConfirm', { email: user.email }),
+    { title: t('users.deactivateTitle'), okLabel: t('users.deactivate') },
   );
   if (!ok) return;
   try {
     await api(`/users/${editingUserId}`, { method: 'DELETE' });
     notify.success(t('users.deactivated'));
-    resetUserForm();
+    closeUsersDrawer();
     loadUsers();
   } catch (ex) {
     notify.error(ex.message);

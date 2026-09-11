@@ -11,6 +11,7 @@ import {
 const MANAGED_ADMIN_ROLES = [
   AdminRole.BACK_OFFICE,
   AdminRole.ADMIN,
+  AdminRole.SUPER_ADMIN,
 ] as const;
 
 export class CreateAdminUserDto {

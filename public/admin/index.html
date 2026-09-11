@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260912q" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260912t" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1448,64 +1448,183 @@
       </section>
 
       <section id="tab-users" class="tab hidden">
-        <header class="page-header">
-          <h2 data-i18n="users.title">Admin users</h2>
-          <button type="button" id="user-new-btn" class="btn primary" data-i18n="users.addUser">Add user</button>
+        <header class="page-header users-page-header">
+          <div class="users-page-heading">
+            <h2 data-i18n="users.title">Admin users</h2>
+            <p class="page-subtitle" data-i18n="users.hint">Manage admin accounts, roles and access.</p>
+          </div>
+          <div class="users-page-actions">
+            <button type="button" id="user-new-btn" class="btn primary">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              <span data-i18n="users.addUser">Add user</span>
+            </button>
+          </div>
         </header>
-        <p class="field-hint" data-i18n="users.hint">Manage admin accounts and roles. Only super admins can access this page.</p>
-        <div class="card" id="user-form-card">
-          <h3 id="user-form-title" data-i18n="users.addUser">Add user</h3>
-          <form id="user-form" class="rule-form-grid">
-            <input type="hidden" id="user-id" />
-            <label>
-              <span data-i18n="users.email">Email</span>
-              <input type="email" id="user-email" required autocomplete="off" />
-            </label>
-            <label>
-              <span data-i18n="users.password">Password</span>
-              <input type="password" id="user-password" autocomplete="new-password" />
-              <span class="field-hint error hidden" id="user-password-warning" data-i18n="users.passwordTooShort">Password must be at least 8 characters.</span>
-            </label>
-            <label>
-              <span data-i18n="users.role">Role</span>
-              <select id="user-role" required>
-                <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
-                <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
-              </select>
-            </label>
-            <label class="checkbox-row rule-active-row">
-              <input type="checkbox" id="user-active" checked />
-              <span data-i18n="users.active">Account active</span>
-            </label>
-            <div class="form-actions">
-              <span class="field-label" aria-hidden="true">&nbsp;</span>
-              <div class="form-action-btns">
-                <button type="submit" id="user-submit-btn" class="btn primary" data-i18n="users.save">Save</button>
-                <button type="button" id="user-cancel-btn" class="btn ghost hidden" data-i18n="users.cancel">Cancel</button>
-                <button type="button" id="user-delete-btn" class="btn ghost hidden" data-i18n="users.deactivate">Deactivate</button>
+
+        <div id="users-kpis" class="users-kpis" aria-live="polite"></div>
+
+        <nav class="users-tabs" role="tablist" aria-label="Admin users views">
+          <button type="button" class="users-tab active" data-users-tab="list" role="tab" aria-selected="true" data-i18n="users.tabUsers">Users</button>
+          <button type="button" class="users-tab" data-users-tab="perms" role="tab" aria-selected="false" data-i18n="users.tabPerms">Role permissions</button>
+          <button type="button" class="users-tab" data-users-tab="security" role="tab" aria-selected="false" data-i18n="users.tabSecurity">Security activity</button>
+        </nav>
+
+        <div id="users-view-list" class="users-view">
+          <div class="users-board">
+            <div class="users-toolbar fonio-activity-toolbar">
+              <div class="fonio-activity-toolbar-row">
+                <div class="fonio-activity-search">
+                  <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input type="search" id="users-search" data-i18n-placeholder="users.searchPlaceholder" placeholder="Search users..." autocomplete="off" aria-label="Search users" />
+                </div>
+                <label>
+                  <span data-i18n="users.col.role">Role</span>
+                  <select id="users-filter-role">
+                    <option value="all" data-i18n="users.filterRoleAll">All roles</option>
+                    <option value="SUPER_ADMIN" data-i18n="role.SUPER_ADMIN">Super Admin</option>
+                    <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
+                    <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="users.col.status">Status</span>
+                  <select id="users-filter-status">
+                    <option value="all" data-i18n="users.filterStatusAll">All statuses</option>
+                    <option value="active" data-i18n="users.active">Active</option>
+                    <option value="inactive" data-i18n="users.inactive">Inactive</option>
+                  </select>
+                </label>
+                <button type="button" id="users-clear-filters-btn" class="btn ghost btn-sm" data-i18n="users.clearFilters">Reset</button>
               </div>
             </div>
-          </form>
-        </div>
-        <div id="users-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="users-table"></div>
-        <div id="users-info" class="table-info"></div>
-        <div id="users-pagination" class="table-pagination"></div>
-
-        <div class="card" id="role-permissions-card" style="margin-top:1.5rem">
-          <h3 data-i18n="perms.title">Role permissions</h3>
-          <p class="field-hint" data-i18n="perms.hint">Choose which pages and features each role can access. Super Admin always has full access.</p>
-          <label>
-            <span data-i18n="perms.selectRole">Role to configure</span>
-            <select id="perm-role-select">
-              <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
-              <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
-            </select>
-          </label>
-          <div id="perm-checkboxes" class="perm-grid"></div>
-          <div class="form-action-btns" style="margin-top:1rem">
-            <button type="button" id="perm-save-btn" class="btn primary" data-i18n="perms.save">Save permissions</button>
+            <div class="fonio-activity-board-divider" aria-hidden="true"></div>
+            <div class="table-wrap users-table-wrap" id="users-table"></div>
+            <div class="users-table-footer fonio-activity-table-footer">
+              <div id="users-info" class="table-info"></div>
+              <div id="users-pagination" class="table-pagination"></div>
+            </div>
           </div>
+
+          <section class="users-perm-preview-section">
+            <header class="users-perm-preview-head">
+              <div>
+                <h3 data-i18n="users.permPreviewTitle">Role permissions preview</h3>
+                <p data-i18n="users.permPreviewHint">Quick overview of what the selected role can access.</p>
+              </div>
+              <label class="users-perm-preview-role">
+                <span data-i18n="users.selectRole">Select role</span>
+                <select id="users-preview-role">
+                  <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
+                  <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
+                  <option value="SUPER_ADMIN" data-i18n="role.SUPER_ADMIN">Super Admin</option>
+                </select>
+              </label>
+            </header>
+            <div id="users-perm-preview-cards" class="users-perm-preview-grid"></div>
+            <div class="users-perm-preview-actions">
+              <button type="button" id="users-open-perms-btn" class="btn ghost">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span data-i18n="users.managePerms">Manage permissions</span>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div id="users-view-perms" class="users-view hidden">
+          <div class="users-perms-panel card" id="role-permissions-card">
+            <header class="users-perms-panel-head">
+              <div>
+                <h3 data-i18n="perms.title">Role permissions</h3>
+                <p class="field-hint" data-i18n="perms.hint">Choose which pages and features each role can access. Super Admin always has full access.</p>
+              </div>
+              <label>
+                <span data-i18n="perms.selectRole">Role to configure</span>
+                <select id="perm-role-select">
+                  <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
+                  <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
+                </select>
+              </label>
+            </header>
+            <div id="perm-checkboxes" class="perm-grid"></div>
+            <div class="form-action-btns users-perms-save-row">
+              <button type="button" id="perm-save-btn" class="btn primary" data-i18n="perms.save">Save permissions</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="users-view-security" class="users-view hidden">
+          <div class="users-board">
+            <div class="users-security-head">
+              <h3 data-i18n="users.securityTitle">Security activity</h3>
+              <p class="field-hint" data-i18n="users.securityHint">Recent admin authentication and account events from the audit log.</p>
+            </div>
+            <div class="table-wrap users-table-wrap" id="users-security-table"></div>
+          </div>
+        </div>
+
+        <div id="users-drawer" class="users-drawer hidden" aria-hidden="true">
+          <div class="users-drawer-backdrop" data-users-drawer-close></div>
+          <aside class="users-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="user-form-title">
+            <header class="users-drawer-header">
+              <div>
+                <h3 id="user-form-title" data-i18n="users.addAdminUser">Add admin user</h3>
+                <p class="field-hint" id="users-drawer-subtitle" data-i18n="users.drawerHint">Create a new admin account with role-based access.</p>
+              </div>
+              <button type="button" class="users-drawer-close" data-users-drawer-close aria-label="Close">&times;</button>
+            </header>
+            <form id="user-form" class="users-drawer-body">
+              <input type="hidden" id="user-id" />
+              <label class="users-field">
+                <span data-i18n="users.email">Email</span>
+                <input type="email" id="user-email" required autocomplete="off" placeholder="name@company.com" />
+              </label>
+              <div class="users-field">
+                <span data-i18n="users.tempPassword">Temporary password</span>
+                <div class="users-password-row">
+                  <div class="users-password-input-wrap">
+                    <input type="password" id="user-password" autocomplete="new-password" />
+                    <button type="button" id="user-password-toggle" class="users-password-toggle" aria-label="Show password">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                  <button type="button" id="user-password-generate" class="btn ghost" data-i18n="users.generate">Generate</button>
+                </div>
+                <div id="user-password-strength" class="users-password-strength" aria-live="polite">
+                  <div class="users-password-strength-bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                  <span id="user-password-strength-label" class="users-password-strength-label"></span>
+                </div>
+                <span class="field-hint error hidden" id="user-password-warning" data-i18n="users.passwordTooShort">Password must be at least 8 characters.</span>
+                <span class="field-hint" id="user-password-hint" data-i18n="users.passwordHint">Min. 8 characters. Leave blank when editing to keep current password.</span>
+              </div>
+              <label class="users-field">
+                <span data-i18n="users.role">Role</span>
+                <select id="user-role" required>
+                  <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
+                  <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
+                  <option value="SUPER_ADMIN" data-i18n="role.SUPER_ADMIN">Super Admin</option>
+                </select>
+                <span class="field-hint" data-i18n="users.roleHelpSuper">Super Admin can assign any role, including Super Admin.</span>
+              </label>
+              <label class="users-switch-row">
+                <span>
+                  <strong data-i18n="users.active">Account active</strong>
+                  <span class="field-hint" data-i18n="users.activeHelp">Inactive accounts cannot sign in.</span>
+                </span>
+                <span class="users-switch">
+                  <input type="checkbox" id="user-active" checked />
+                  <span class="users-switch-ui" aria-hidden="true"></span>
+                </span>
+              </label>
+              <div id="users-drawer-perm-preview" class="users-drawer-perm-preview"></div>
+              <div class="users-drawer-actions">
+                <button type="button" id="user-cancel-btn" class="btn ghost" data-i18n="users.cancel">Cancel</button>
+                <button type="button" id="user-delete-btn" class="btn ghost users-deactivate-btn hidden" data-i18n="users.deactivate">Deactivate</button>
+                <button type="submit" id="user-submit-btn" class="btn primary" data-i18n="users.addUser">Add user</button>
+              </div>
+            </form>
+          </aside>
         </div>
       </section>
     </main>
@@ -1579,10 +1698,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260912q"></script>
+  <script src="/admin/i18n.js?v=20260912t"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260912q"></script>
+  <script src="/admin/app.js?v=20260912t"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
