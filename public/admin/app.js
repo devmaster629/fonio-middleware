@@ -5204,6 +5204,38 @@ function paymentHistoryStatusBadge(status) {
   return `<span class="payment-history-status ${meta.cls}"><span class="payment-history-status-dot" aria-hidden="true"></span>${esc(meta.label)}</span>`;
 }
 
+/** Offline (archived listing, local ledger) vs real Hostaway charge. */
+function isPaymentOfflineApply(payment) {
+  if (!payment) return false;
+  const status = payment.status;
+  if (status !== 'AUTO_APPLIED' && status !== 'MANUALLY_APPLIED') return false;
+  const reason = `${payment.matchReason || ''} ${payment.reviewNote || ''}`.toLowerCase();
+  if (/archiv|offline|local apply|without hostaway|kein hostaway/i.test(reason)) {
+    return true;
+  }
+  const allocs = Array.isArray(payment.allocations) ? payment.allocations : [];
+  const hasHostawayCharge =
+    payment.hostawayChargeId != null ||
+    allocs.some((a) => a && a.hostawayChargeId != null);
+  return !hasHostawayCharge;
+}
+
+function paymentApplyModeHint(payment) {
+  if (!payment) return '';
+  if (payment.status !== 'AUTO_APPLIED' && payment.status !== 'MANUALLY_APPLIED') {
+    return '';
+  }
+  if (isPaymentOfflineApply(payment)) {
+    return `<span class="payment-history-apply-hint is-offline" title="${esc(t('payments.applyHint.offlineTitle'))}">${esc(t('payments.applyHint.offline'))}</span>`;
+  }
+  const chargeId = payment.hostawayChargeId;
+  const label =
+    chargeId != null
+      ? t('payments.applyHint.hostawayWithId', { id: String(chargeId) })
+      : t('payments.applyHint.hostaway');
+  return `<span class="payment-history-apply-hint is-hostaway" title="${esc(t('payments.applyHint.hostawayTitle'))}">${esc(label)}</span>`;
+}
+
 function paymentHistorySourceLabel(source) {
   const key = `payments.sourceLabel.${String(source || '').toUpperCase()}`;
   const label = t(key);
@@ -8126,6 +8158,7 @@ async function loadPaymentsHistory() {
         <td data-label="${esc(t('payments.status'))}">
           <div class="payment-history-status-cell">
             ${paymentHistoryStatusBadge(p.status)}
+            ${paymentApplyModeHint(p)}
             ${p.error ? `<span class="field-hint">${esc(p.error)}</span>` : ''}
             ${allocations.length > 1 ? `<span class="badge auto">${t('payments.splitBadge')}</span>` : ''}
           </div>
