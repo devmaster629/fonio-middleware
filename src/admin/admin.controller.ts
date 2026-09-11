@@ -911,12 +911,30 @@ export class AdminController {
 
   @Get('logs')
   @Permissions(AdminPermission.LOGS_VIEW)
-  @ApiOperation({ summary: 'Recent API audit logs (non-PII metadata)' })
-  listLogs(@Query('source') source?: string) {
-    return this.prisma.apiLog.findMany({
-      where: source ? { source } : undefined,
-      take: 200,
-      orderBy: { createdAt: 'desc' },
+  @ApiOperation({ summary: 'Paginated API audit logs (non-PII metadata)' })
+  listLogs(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+    @Query('source') source?: string,
+    @Query('action') action?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('retention') retention?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
+    return this.auditLog.listForAdmin({
+      page: page ? Number(page) : 1,
+      pageSize: pageSize ? Number(pageSize) : 25,
+      search,
+      source,
+      action,
+      dateFrom,
+      dateTo,
+      retention,
+      sortBy,
+      sortDir,
     });
   }
 

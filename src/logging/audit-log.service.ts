@@ -92,4 +92,163 @@ export class AuditLogService {
     });
     return result.count;
   }
+
+  retentionRuleFor(
+    log: {
+      level: LogLevel;
+      metadata?: Prisma.JsonValue | null;
+    },
+    settings: {
+      debugAutoDelete: boolean;
+      piiAutoDelete: boolean;
+      operationalAutoDelete: boolean;
+    },
+  ): 'debug' | 'pii' | 'operational' | 'max_cap' {
+    const meta =
+      log.metadata &&
+      typeof log.metadata === 'object' &&
+      !Array.isArray(log.metadata)
+        ? (log.metadata as Record<string, unknown>)
+        : {};
+    if (log.level === LogLevel.DEBUG && settings.debugAutoDelete) {
+      return 'debug';
+    }
+    if (this.containsPii(meta) && settings.piiAutoDelete) {
+      return 'pii';
+    }
+    if (!settings.operationalAutoDelete) {
+      return 'max_cap';
+    }
+    return 'operational';
+  }
+
+  async listForAdmin(opts: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    source?: string;
+    action?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    retention?: string;
+    sortBy?: string;
+    sortDir?: string;
+  }) {
+    const page = Math.max(1, Number(opts.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(opts.pageSize) || 25));
+    const search = opts.search?.trim() || '';
+    const source = opts.source?.trim();
+    const action = opts.action?.trim();
+    const retention = opts.retention?.trim();
+    const sortBy = ['createdAt', 'source', 'action', 'statusCode'].includes(
+      String(opts.sortBy || ''),
+    )
+      ? String(opts.sortBy)
+      : 'createdAt';
+    const sortDir = opts.sortDir === 'asc' ? 'asc' : 'desc';
+
+    const where: Prisma.ApiLogWhereInput = {};
+    if (source && source !== 'all') where.source = source;
+    if (action && action !== 'all') where.action = action;
+    if (opts.dateFrom || opts.dateTo) {
+      where.createdAt = {};
+      if (opts.dateFrom) {
+        const from = new Date(`${opts.dateFrom}T00:00:00`);
+        if (!Number.isNaN(from.getTime())) where.createdAt.gte = from;
+      }
+      if (opts.dateTo) {
+        const to = new Date(`${opts.dateTo}T23:59:59.999`);
+        if (!Number.isNaN(to.getTime())) where.createdAt.lte = to;
+      }
+    }
+    if (search) {
+      where.OR = [
+        { source: { contains: search, mode: 'insensitive' } },
+        { action: { contains: search, mode: 'insensitive' } },
+        { path: { contains: search, mode: 'insensitive' } },
+        { method: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const orderBy = { [sortBy]: sortDir } as Prisma.ApiLogOrderByWithRelationInput;
+    const settings = await this.logSettings.getResolved();
+
+    const [sourceRows, actionRows] = await Promise.all([
+      this.prisma.apiLog.groupBy({
+        by: ['source'],
+        _count: { _all: true },
+        orderBy: { source: 'asc' },
+      }),
+      this.prisma.apiLog.groupBy({
+        by: ['action'],
+        _count: { _all: true },
+        orderBy: { action: 'asc' },
+      }),
+    ]);
+    const facets = {
+      sources: sourceRows.map((r) => r.source).filter(Boolean),
+      actions: actionRows.map((r) => r.action).filter(Boolean),
+    };
+
+    const needsRetentionScan =
+      !!retention && retention !== 'all';
+
+    if (needsRetentionScan) {
+      if (retention === 'debug') {
+        where.level = LogLevel.DEBUG;
+      } else if (retention === 'operational' || retention === 'pii') {
+        where.level = { not: LogLevel.DEBUG };
+      }
+
+      const candidates = await this.prisma.apiLog.findMany({
+        where,
+        orderBy,
+        take: 20_000,
+      });
+      const filtered = candidates.filter(
+        (log) => this.retentionRuleFor(log, settings) === retention,
+      );
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const start = (safePage - 1) * pageSize;
+      return {
+        items: filtered.slice(start, start + pageSize),
+        total,
+        page: safePage,
+        pageSize,
+        totalPages,
+        facets,
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.apiLog.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.apiLog.count({ where }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    if (safePage !== page) {
+      const moved = await this.prisma.apiLog.findMany({
+        where,
+        orderBy,
+        skip: (safePage - 1) * pageSize,
+        take: pageSize,
+      });
+      return {
+        items: moved,
+        total,
+        page: safePage,
+        pageSize,
+        totalPages,
+        facets,
+      };
+    }
+    return { items, total, page: safePage, pageSize, totalPages, facets };
+  }
 }

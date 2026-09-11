@@ -12,7 +12,8 @@ export class LogPurgeScheduler {
     private readonly logSettings: LogSettingsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  /** 03:00 Europe/Berlin — matches admin “Daily at 03:00” copy. */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: 'Europe/Berlin' })
   async purgeExpiredLogs() {
     if (!(await this.logSettings.isAutoPurgeEnabled())) {
       this.logger.log('Auto purge disabled — skipped');

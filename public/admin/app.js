@@ -66,7 +66,20 @@ const tableState = {
   },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
   paymentsHistory: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
-  logs: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
+  logs: {
+    page: 1,
+    pageSize: 25,
+    search: '',
+    sortBy: 'createdAt',
+    sortDir: 'desc',
+    source: 'all',
+    action: 'all',
+    status: 'all',
+    retention: 'all',
+    method: 'all',
+    dateFrom: '',
+    dateTo: '',
+  },
   webhooks: { page: 1, pageSize: 10, search: '' },
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc' },
   fonioActivity: {
@@ -94,6 +107,18 @@ let fonioActivityLastFetchedAt = null;
 let fonioActivityPoll = null;
 let fonioActivityUiBound = false;
 let fonioActivityChartDays = 7;
+let logsCache = [];
+let logsRetentionStatus = null;
+let logsUiBound = false;
+let logsActiveView = 'entries';
+let logsFacets = { sources: [], actions: [] };
+let logsPageResult = {
+  items: [],
+  total: 0,
+  page: 1,
+  pageSize: 25,
+  totalPages: 1,
+};
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -8209,6 +8234,7 @@ async function loadLogSettings() {
     $('#log-pii-enabled').checked = settings.piiAutoDelete !== false;
     $('#log-auto-purge-enabled').checked = settings.autoPurgeEnabled !== false;
     syncLogRetentionInputs();
+    markLogSettingsClean();
     await loadLogRetentionStatus();
   } catch {
     /* keep defaults */
@@ -8234,51 +8260,88 @@ function syncLogRetentionInputs() {
   $(sel)?.addEventListener('change', syncLogRetentionInputs);
 });
 
-async function loadLogRetentionStatus() {
-  const box = $('#log-retention-status');
-  const list = $('#log-retention-status-list');
-  const samplesEl = $('#log-retention-samples');
-  if (!box || !list) return;
-  try {
-    const status = await api('/log-settings/status');
-    box.classList.remove('hidden');
-    const purgeOn = status.settings?.autoPurgeEnabled !== false;
-    list.innerHTML = `
-      <li>${t('logs.statusStored', { count: status.totalLogs ?? 0 })}</li>
-      <li>${t('logs.statusExpired', { count: status.expiredLogs ?? 0 })}</li>
-      <li>${purgeOn ? t('logs.statusPurgeOn', { when: formatDateTime(status.nextPurgeAt) }) : t('logs.statusPurgeOff')}</li>
-      <li>${t('logs.statusPermanent')}</li>
-    `;
-    if (samplesEl && status.samples?.length) {
-      const rows = status.samples.map((s) => `
-        <tr>
-          <td>${formatDateTime(s.createdAt)}</td>
-          <td>${esc(s.source)} / <code>${esc(s.action)}</code></td>
-          <td>${t(`logs.rule.${s.retentionRule}`)}</td>
-          <td>${formatDateTime(s.expiresAt)}</td>
-        </tr>
-      `).join('');
-      samplesEl.innerHTML = `
-        <p class="field-hint">${t('logs.statusSamplesHint')}</p>
-        <div class="table-wrap">
-          <table class="retention-samples-table">
-            <thead><tr>
-              <th>${t('logs.time')}</th>
-              <th>${t('logs.source')}</th>
-              <th>${t('logs.retentionRule')}</th>
-              <th>${t('logs.deletesOn')}</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`;
-      scheduleEnhanceResponsiveTables();
-    } else if (samplesEl) {
-      samplesEl.innerHTML = '';
-    }
-  } catch {
-    box.classList.add('hidden');
+const LOG_PURGE_TZ = 'Europe/Berlin';
+
+/** Next 03:00 Europe/Berlin (same schedule as the purge cron). */
+function computeNextBerlinPurgeIso() {
+  const now = new Date();
+  const dateFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: LOG_PURGE_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const timeFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LOG_PURGE_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  let day = dateFmt.format(now);
+  if (timeFmt.format(now) >= '03:00') {
+    const [y, m, d] = day.split('-').map(Number);
+    day = dateFmt.format(new Date(Date.UTC(y, m - 1, d, 12) + 86_400_000));
   }
+  const [y, m, d] = day.split('-').map(Number);
+  let utcMs = Date.UTC(y, m - 1, d, 3, 0, 0);
+  for (let i = 0; i < 3; i += 1) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: LOG_PURGE_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(utcMs));
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+    const hour = get('hour') === 24 ? 0 : get('hour');
+    const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), hour, get('minute'), get('second'));
+    const target = Date.UTC(y, m - 1, d, 3, 0, 0);
+    utcMs += target - asUtc;
+  }
+  return new Date(utcMs).toISOString();
 }
+
+function formatPurgeScheduleTime(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '–';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LOG_PURGE_TZ,
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('day')} ${get('month')} ${get('hour')}:${get('minute')}`;
+}
+
+function markLogSettingsDirty() {
+  const el = $('#log-settings-dirty');
+  if (!el) return;
+  el.classList.remove('is-clean');
+  el.classList.add('is-dirty');
+  el.innerHTML = `<span>${esc(t('logs.hasUnsaved'))}</span>`;
+}
+
+function markLogSettingsClean() {
+  const el = $('#log-settings-dirty');
+  if (!el) return;
+  el.classList.add('is-clean');
+  el.classList.remove('is-dirty');
+  el.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>${esc(t('logs.noUnsaved'))}</span>`;
+}
+
+['#log-debug-days', '#log-operational-days', '#log-pii-days', '#log-max-days',
+  '#log-debug-enabled', '#log-operational-enabled', '#log-pii-enabled', '#log-auto-purge-enabled']
+  .forEach((sel) => {
+    $(sel)?.addEventListener('input', markLogSettingsDirty);
+    $(sel)?.addEventListener('change', markLogSettingsDirty);
+  });
 
 $('#log-settings-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -8297,6 +8360,7 @@ $('#log-settings-form')?.addEventListener('submit', async (e) => {
       }),
     });
     notify.success(t('logs.retentionSaved'));
+    markLogSettingsClean();
     await loadLogSettings();
   } catch (ex) {
     notify.error(ex.message);
@@ -8305,6 +8369,11 @@ $('#log-settings-form')?.addEventListener('submit', async (e) => {
 
 $('#log-purge-now-btn')?.addEventListener('click', async () => {
   if (!hasPermission('LOG_SETTINGS_EDIT')) return;
+  const ok = await notify.confirm(t('logs.purgeHint'), {
+    title: t('logs.purgeNow'),
+    okLabel: t('logs.purgeNow'),
+  });
+  if (!ok) return;
   try {
     const result = await api('/log-settings/purge-expired', { method: 'POST' });
     notify.success(t('logs.purgeDone', { count: result.deleted ?? 0 }));
@@ -8315,56 +8384,510 @@ $('#log-purge-now-btn')?.addEventListener('click', async () => {
   }
 });
 
-async function loadLogs() {
-  await loadLogSettings();
-  const logs = await api('/logs');
-  ensureTableToolbar('#logs-toolbar', 'logs', loadLogs);
-  const data = paginateClient(logs, 'logs', (l) => [
-    l.createdAt,
-    l.source,
-    l.action,
-    l.statusCode,
-    formatLogSummary(l),
-  ].join(' '));
-  const rows = data.items.map((l, idx) => `
-    <tr>
-      <td>${formatDateTime(l.createdAt)}</td>
-      <td>${l.source}</td>
-      <td><code>${esc(l.action)}</code></td>
-      <td>${l.statusCode || '–'}</td>
-      <td class="metadata-cell oneline" title="${esc(formatLogSummary(l))}">${esc(formatLogSummary(l))}</td>
-      <td><button type="button" class="btn ghost btn-sm" data-log-detail="${idx}">${t('logs.viewDetails')}</button></td>
-    </tr>
+async function loadLogRetentionStatus() {
+  const box = $('#log-retention-status');
+  const overview = $('#log-retention-overview');
+  const samplesEl = $('#log-retention-samples');
+  try {
+    const status = await api('/log-settings/status');
+    logsRetentionStatus = status;
+    renderLogsKpis(status);
+    if (box) {
+      box.classList.add('hidden');
+      box.setAttribute('aria-hidden', 'true');
+    }
+    const purgeOn = status.settings?.autoPurgeEnabled !== false;
+    const nextAt = purgeOn ? computeNextBerlinPurgeIso() : null;
+    const nextLabel = nextAt ? formatPurgeScheduleTime(nextAt) : '–';
+    if (overview) {
+      overview.innerHTML = `
+        <article class="logs-overview-card">
+          <span class="logs-overview-icon is-ok" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/></svg></span>
+          <div>
+            <div class="logs-overview-label">${esc(t('logs.kpiStored'))}</div>
+            <div class="logs-overview-value">${esc(Number(status.totalLogs ?? 0).toLocaleString())}</div>
+          </div>
+        </article>
+        <article class="logs-overview-card">
+          <span class="logs-overview-icon is-warn" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+          <div>
+            <div class="logs-overview-label">${esc(t('logs.kpiExpired'))}</div>
+            <div class="logs-overview-value">${esc(Number(status.expiredLogs ?? 0).toLocaleString())}</div>
+            <div class="logs-overview-sub">${esc(t('logs.kpiExpiredSub'))}</div>
+          </div>
+        </article>
+        <article class="logs-overview-card">
+          <span class="logs-overview-icon is-ok" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span>
+          <div>
+            <div class="logs-overview-label">${esc(t('logs.kpiNext'))}</div>
+            <div class="logs-overview-value">${esc(purgeOn ? nextLabel : '–')}</div>
+            <div class="logs-overview-sub">${esc(purgeOn ? formatRelativeUntil(nextAt) : t('logs.kpiNextOff'))}</div>
+          </div>
+        </article>
+        <article class="logs-overview-card">
+          <span class="logs-overview-icon is-err" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span>
+          <div>
+            <div class="logs-overview-label">${esc(t('logs.statusPermanentShort'))}</div>
+            <div class="logs-overview-sub">${esc(t('logs.statusPermanent'))}</div>
+          </div>
+        </article>
+      `;
+    }
+    if (samplesEl && status.samples?.length) {
+      const rows = status.samples.map((s) => `
+        <tr>
+          <td>${esc(formatAuditDateTime(s.createdAt))}</td>
+          <td>${esc(s.source)} / <code>${esc(s.action)}</code></td>
+          <td>${esc(t(`logs.rule.${s.retentionRule}`))}</td>
+          <td>${esc(formatAuditDateTime(s.expiresAt))}</td>
+        </tr>
+      `).join('');
+      samplesEl.innerHTML = `
+        <div class="table-wrap logs-upcoming-table-wrap">
+          <table class="logs-data-table retention-samples-table">
+            <thead><tr>
+              <th>${t('logs.time')}</th>
+              <th>${t('logs.source')}</th>
+              <th>${t('logs.retentionRule')}</th>
+              <th>${t('logs.deletesOn')}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      scheduleEnhanceResponsiveTables();
+    } else if (samplesEl) {
+      samplesEl.innerHTML = `<p class="field-hint">${esc(t('logs.upcomingEmpty'))}</p>`;
+    }
+  } catch {
+    if (overview) overview.innerHTML = '';
+    if (samplesEl) samplesEl.innerHTML = '';
+  }
+}
+
+function formatAuditDateTime(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${pad2(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function formatAuditShortDate(value) {
+  if (!value) return '–';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${pad2(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatRelativeUntil(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return t('logs.overdue');
+  const hours = Math.round(diffMs / 36e5);
+  if (hours < 48) return t('logs.inHours', { count: hours });
+  const days = Math.round(hours / 24);
+  return t('logs.inDays', { count: days });
+}
+
+function httpStatusLabel(code) {
+  if (code == null || code === '') return '–';
+  const n = Number(code);
+  const map = {
+    200: 'OK',
+    201: 'Created',
+    202: 'Accepted',
+    204: 'No Content',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    409: 'Conflict',
+    422: 'Unprocessable',
+    429: 'Too Many Requests',
+    500: 'Server Error',
+    502: 'Bad Gateway',
+    503: 'Unavailable',
+  };
+  return Number.isFinite(n) ? `${n} ${map[n] || ''}`.trim() : String(code);
+}
+
+function httpStatusTone(code) {
+  const n = Number(code);
+  if (!Number.isFinite(n)) return 'neutral';
+  if (n >= 200 && n < 300) return n === 202 ? 'info' : 'ok';
+  if (n >= 400 && n < 500) return 'warn';
+  if (n >= 500) return 'err';
+  return 'neutral';
+}
+
+function logSourceMeta(source) {
+  const s = String(source || '').toLowerCase();
+  if (s.includes('hostaway')) return { label: source, tone: 'hostaway', mark: 'H' };
+  if (s.includes('fonio')) return { label: source, tone: 'fonio', mark: 'f' };
+  if (s.includes('check24')) return { label: source, tone: 'check24', mark: '24' };
+  if (s.includes('admin') || s.includes('brainions')) return { label: source, tone: 'admin', mark: 'b' };
+  return { label: source || '–', tone: 'default', mark: 'API' };
+}
+
+function logRetentionLabel(log) {
+  if (!log?.expiresAt) return '–';
+  const created = log.createdAt ? new Date(log.createdAt) : null;
+  const expires = new Date(log.expiresAt);
+  if (Number.isNaN(expires.getTime())) return '–';
+  let days = null;
+  if (created && !Number.isNaN(created.getTime())) {
+    days = Math.max(1, Math.round((expires.getTime() - created.getTime()) / 864e5));
+  }
+  const when = formatAuditShortDate(log.expiresAt);
+  return days != null ? `${days} ${t('logs.daysShort')}, ${when}` : when;
+}
+
+function renderLogsKpis(status) {
+  const el = $('#logs-kpis');
+  if (!el) return;
+  const purgeOn = status?.settings?.autoPurgeEnabled !== false;
+  const next = purgeOn ? computeNextBerlinPurgeIso() : null;
+  const cards = [
+    {
+      tone: 'blue',
+      icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/>',
+      label: t('logs.kpiStored'),
+      value: Number(status?.totalLogs ?? 0).toLocaleString(),
+      sub: t('logs.kpiStoredSub'),
+    },
+    {
+      tone: 'warn',
+      icon: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+      label: t('logs.kpiExpired'),
+      value: Number(status?.expiredLogs ?? 0).toLocaleString(),
+      sub: t('logs.kpiExpiredSub'),
+    },
+    {
+      tone: 'ok',
+      icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+      label: t('logs.kpiCleanup'),
+      value: purgeOn ? t('logs.kpiCleanupAuto') : t('logs.kpiCleanupOff'),
+      sub: purgeOn ? t('logs.kpiCleanupSub') : t('logs.statusPurgeOff'),
+    },
+    {
+      tone: 'purple',
+      icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+      label: t('logs.kpiNext'),
+      value: '–',
+      sub: purgeOn ? formatRelativeUntil(next) : t('logs.kpiNextOff'),
+    },
+  ];
+  if (purgeOn && next) {
+    cards[3].value = formatPurgeScheduleTime(next);
+  }
+  el.innerHTML = cards.map((c) => `
+    <article class="logs-kpi">
+      <span class="logs-kpi-icon is-${esc(c.tone)}" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
+      </span>
+      <div class="logs-kpi-body">
+        <div class="logs-kpi-label">${esc(c.label)}</div>
+        <div class="logs-kpi-value">${esc(String(c.value))}</div>
+        <div class="logs-kpi-sub">${esc(c.sub)}</div>
+      </div>
+    </article>
   `).join('');
-  $('#logs-table').innerHTML = `
-    <table><thead><tr>
-      ${sortTh('logs', 'createdAt', t('logs.time'))}
-      ${sortTh('logs', 'source', t('logs.source'))}
-      ${sortTh('logs', 'action', t('logs.action'))}
-      <th>${t('logs.status')}</th>
-      <th>${t('logs.details')}</th>
-      <th></th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
-  bindSortableHeaders('#logs-table', 'logs', loadLogs);
-  renderTableInfo('#logs-info', data, data.maxTotal);
-  renderPagination('#logs-pagination', data, 'logs', loadLogs);
-  data.items.forEach((log, idx) => {
-    $(`[data-log-detail="${idx}"]`)?.addEventListener('click', () => showLogDetail(log));
+}
+
+function setLogsView(view) {
+  logsActiveView = view === 'retention' ? 'retention' : 'entries';
+  $$('.logs-tab').forEach((btn) => {
+    const on = btn.dataset.logsTab === logsActiveView;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
   });
+  $('#logs-view-entries')?.classList.toggle('hidden', logsActiveView !== 'entries');
+  $('#logs-view-retention')?.classList.toggle('hidden', logsActiveView !== 'retention');
+}
+
+function ensureLogsPageSizeControl() {
+  const lengthSel = $('#logs-page-size');
+  if (!lengthSel) return;
+  const s = tableState.logs;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.logs.pageSize = Number(lengthSel.value) || 25;
+    tableState.logs.page = 1;
+    loadLogs({ silent: true });
+  });
+}
+
+function bindLogsUi() {
+  if (logsUiBound) return;
+  logsUiBound = true;
+
+  $$('.logs-tab').forEach((btn) => {
+    btn.addEventListener('click', () => setLogsView(btn.dataset.logsTab));
+  });
+  $('#logs-open-retention-btn')?.addEventListener('click', () => setLogsView('retention'));
+
+  const syncFiltersFromDom = () => {
+    const s = tableState.logs;
+    s.search = $('#logs-search')?.value || '';
+    s.dateFrom = $('#logs-date-from')?.value || '';
+    s.dateTo = $('#logs-date-to')?.value || '';
+    s.source = $('#logs-filter-source')?.value || 'all';
+    s.action = $('#logs-filter-action')?.value || 'all';
+    s.retention = $('#logs-filter-retention')?.value || 'all';
+    s.status = 'all';
+    s.method = 'all';
+    s.page = 1;
+    loadLogs({ silent: true });
+  };
+
+  ensureLogsPageSizeControl();
+  $('#logs-search')?.addEventListener('input', () => {
+    clearTimeout(searchTimers.logs);
+    searchTimers.logs = setTimeout(syncFiltersFromDom, 280);
+  });
+  ['#logs-date-from', '#logs-date-to', '#logs-filter-source', '#logs-filter-action', '#logs-filter-retention']
+    .forEach((sel) => $(sel)?.addEventListener('change', syncFiltersFromDom));
+
+  $('#logs-clear-filters-btn')?.addEventListener('click', () => {
+    tableState.logs.search = '';
+    tableState.logs.dateFrom = '';
+    tableState.logs.dateTo = '';
+    tableState.logs.source = 'all';
+    tableState.logs.action = 'all';
+    tableState.logs.retention = 'all';
+    tableState.logs.status = 'all';
+    tableState.logs.method = 'all';
+    tableState.logs.page = 1;
+    if ($('#logs-search')) $('#logs-search').value = '';
+    if ($('#logs-date-from')) $('#logs-date-from').value = '';
+    if ($('#logs-date-to')) $('#logs-date-to').value = '';
+    if ($('#logs-filter-source')) $('#logs-filter-source').value = 'all';
+    if ($('#logs-filter-action')) $('#logs-filter-action').value = 'all';
+    if ($('#logs-filter-retention')) $('#logs-filter-retention').value = 'all';
+    loadLogs({ silent: true });
+  });
+
+  document.querySelectorAll('[data-logs-drawer-close]').forEach((el) => {
+    el.addEventListener('click', closeLogsDrawer);
+  });
+}
+
+function isCleanLogAction(action) {
+  const a = String(action || '').trim();
+  if (!a) return false;
+  // Drop raw HTTP route actions like "PATCH /api/v1/admin/..."
+  if (/^(GET|POST|PUT|PATCH|DELETE)\s+\//i.test(a)) return false;
+  if (/^\/?api\//i.test(a)) return false;
+  if (a.includes('/api/')) return false;
+  return true;
+}
+
+function logMetadataObject(log) {
+  const meta = log?.metadata;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  return meta;
+}
+
+function logLooksLikePii(log) {
+  const hints = ['email', 'phone', 'token', 'password', 'guest', 'caller'];
+  const scan = (value, depth = 0) => {
+    if (depth > 5 || value == null) return false;
+    if (Array.isArray(value)) return value.some((item) => scan(item, depth + 1));
+    if (typeof value === 'object') {
+      return Object.entries(value).some(([key, nested]) => {
+        const lower = String(key).toLowerCase();
+        if (hints.some((h) => lower.includes(h))) return true;
+        return scan(nested, depth + 1);
+      });
+    }
+    return false;
+  };
+  return scan(logMetadataObject(log));
+}
+
+function logRetentionRule(log) {
+  const settings = logsRetentionStatus?.settings || {};
+  const debugOn = settings.debugAutoDelete !== false;
+  const piiOn = settings.piiAutoDelete !== false;
+  const opsOn = settings.operationalAutoDelete !== false;
+  const level = String(log?.level || '').toUpperCase();
+  if (level === 'DEBUG' && debugOn) return 'debug';
+  if (logLooksLikePii(log) && piiOn) return 'pii';
+  if (!opsOn) return 'max_cap';
+  return 'operational';
+}
+
+function populateLogsFilterOptions(facets = logsFacets) {
+  const sources = [...(facets.sources || [])].filter(Boolean).sort();
+  const actions = [...(facets.actions || [])]
+    .filter(isCleanLogAction)
+    .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
+
+  const fill = (sel, allKey, values, format = (v) => v) => {
+    const el = $(sel);
+    if (!el) return;
+    const current = el.value || 'all';
+    el.innerHTML = `<option value="all">${esc(t(allKey))}</option>${values
+      .map((v) => `<option value="${esc(String(v))}">${esc(String(format(v)))}</option>`)
+      .join('')}`;
+    el.value = [...el.options].some((o) => o.value === current) ? current : 'all';
+  };
+  fill('#logs-filter-source', 'logs.filterSourceAll', sources);
+  fill('#logs-filter-action', 'logs.filterActionAll', actions);
+  const retentionSel = $('#logs-filter-retention');
+  if (retentionSel && document.activeElement !== retentionSel) {
+    retentionSel.value = tableState.logs.retention || 'all';
+  }
+}
+
+function renderLogsTable() {
+  const s = tableState.logs;
+  const items = logsPageResult.items || [];
+  const pageData = {
+    items,
+    total: logsPageResult.total || 0,
+    page: logsPageResult.page || s.page || 1,
+    pageSize: logsPageResult.pageSize || s.pageSize || 25,
+    totalPages: logsPageResult.totalPages || 1,
+    maxTotal: logsPageResult.total || 0,
+  };
+  if (s.page !== pageData.page) s.page = pageData.page;
+
+  const rows = items.map((l) => {
+    const src = logSourceMeta(l.source);
+    const tone = httpStatusTone(l.statusCode);
+    return `
+      <tr data-log-id="${esc(l.id)}">
+        <td class="logs-col-time">${esc(formatAuditDateTime(l.createdAt))}</td>
+        <td class="logs-col-source">
+          <span class="logs-source">
+            <span class="logs-source-icon is-${esc(src.tone)}" aria-hidden="true">${esc(src.mark)}</span>
+            <span class="logs-source-label">${esc(src.label)}</span>
+          </span>
+        </td>
+        <td class="logs-col-action"><code class="logs-action-code">${esc(l.action || '–')}</code></td>
+        <td class="logs-col-http"><span class="logs-http-pill is-${tone}">${esc(httpStatusLabel(l.statusCode))}</span></td>
+        <td class="logs-col-summary" title="${esc(formatLogSummary(l))}">${esc(formatLogSummary(l))}</td>
+        <td class="logs-col-retention">${esc(logRetentionLabel(l))}</td>
+        <td class="logs-col-actions">
+          <button type="button" class="btn ghost btn-sm logs-view-btn" data-log-detail="${esc(l.id)}">${t('logs.viewDetails')}</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const tableEl = $('#logs-table');
+  if (tableEl) {
+    tableEl.innerHTML = `
+      <table class="logs-data-table">
+        <thead><tr>
+          ${sortTh('logs', 'createdAt', t('logs.time'))}
+          ${sortTh('logs', 'source', t('logs.source'))}
+          ${sortTh('logs', 'action', t('logs.action'))}
+          <th>${t('logs.httpStatus')}</th>
+          <th>${t('logs.summary')}</th>
+          <th>${t('logs.retentionCol')}</th>
+          <th>${t('logs.actions')}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="7" class="empty-row">—</td></tr>`}</tbody>
+      </table>`;
+    bindSortableHeaders('#logs-table', 'logs', () => loadLogs({ silent: true }));
+    tableEl.querySelectorAll('[data-log-detail]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const log = logsCache.find((x) => String(x.id) === String(btn.dataset.logDetail));
+        if (log) showLogDetail(log);
+      });
+    });
+  }
+  renderTableInfo('#logs-info', pageData, pageData.maxTotal);
+  renderPagination('#logs-pagination', pageData, 'logs', () => loadLogs({ silent: true }));
   scheduleEnhanceResponsiveTables();
+}
+
+async function loadLogs({ silent = false } = {}) {
+  bindLogsUi();
+  setLogsView(logsActiveView);
+  ensureLogsPageSizeControl();
+  if (!silent) await loadLogSettings();
+  else if (!logsRetentionStatus) await loadLogRetentionStatus();
+
+  const s = tableState.logs;
+  const params = new URLSearchParams();
+  params.set('page', String(s.page || 1));
+  params.set('pageSize', String(s.pageSize || 25));
+  if (s.search?.trim()) params.set('search', s.search.trim());
+  if (s.source && s.source !== 'all') params.set('source', s.source);
+  if (s.action && s.action !== 'all') params.set('action', s.action);
+  if (s.retention && s.retention !== 'all') params.set('retention', s.retention);
+  if (s.dateFrom) params.set('dateFrom', s.dateFrom);
+  if (s.dateTo) params.set('dateTo', s.dateTo);
+  if (s.sortBy) {
+    params.set('sortBy', s.sortBy);
+    params.set('sortDir', s.sortDir || 'desc');
+  }
+
+  const data = await api(`/logs?${params.toString()}`);
+  if (Array.isArray(data)) {
+    // Legacy API fallback (hard-capped list)
+    logsPageResult = {
+      items: data,
+      total: data.length,
+      page: 1,
+      pageSize: data.length || 25,
+      totalPages: 1,
+    };
+    logsFacets = {
+      sources: [...new Set(data.map((l) => l.source).filter(Boolean))],
+      actions: [...new Set(data.map((l) => l.action).filter(Boolean))],
+    };
+  } else {
+    logsPageResult = {
+      items: Array.isArray(data.items) ? data.items : [],
+      total: Number(data.total) || 0,
+      page: Number(data.page) || s.page || 1,
+      pageSize: Number(data.pageSize) || s.pageSize || 25,
+      totalPages: Number(data.totalPages) || 1,
+    };
+    if (data.facets) {
+      logsFacets = {
+        sources: data.facets.sources || [],
+        actions: data.facets.actions || [],
+      };
+    }
+  }
+  tableState.logs.page = logsPageResult.page;
+  logsCache = logsPageResult.items;
+  populateLogsFilterOptions(logsFacets);
+  renderLogsTable();
 }
 
 function formatLogSummary(log) {
   const meta = log.metadata ?? {};
   if (typeof meta.middlewareAction === 'string' && meta.middlewareAction) {
-    return truncateText(meta.middlewareAction, 100);
+    return truncateText(meta.middlewareAction, 120);
   }
   if (meta.outcomeDetail) {
-    return truncateText(`${meta.outcome ?? 'result'}: ${meta.outcomeDetail}`, 100);
+    return truncateText(`${meta.outcome ?? 'result'}: ${meta.outcomeDetail}`, 120);
   }
-  if (meta.event) return truncateText(meta.event, 100);
-  if (meta.path) return truncateText(`${log.method ?? ''} ${meta.path}`.trim(), 100);
-  if (meta.role) return truncateText(`${meta.role}${meta.adminId ? ` · ${meta.adminId.slice(0, 8)}…` : ''}`, 100);
+  if (meta.event) return truncateText(meta.event, 120);
+  if (meta.path) return truncateText(`${log.method ?? ''} ${meta.path}`.trim(), 120);
+  if (meta.role) return truncateText(`${meta.role}${meta.adminId ? ` · ${meta.adminId.slice(0, 8)}…` : ''}`, 120);
   const parts = [];
   if (meta.verified === true) parts.push('verified');
   if (meta.verified === false) parts.push(`failed: ${meta.message ?? '?'}`);
@@ -8373,10 +8896,11 @@ function formatLogSummary(log) {
   if (meta.availableCount !== undefined) parts.push(`${meta.availableCount} available`);
   if (meta.requestType) parts.push(meta.requestType);
   if (meta.status) parts.push(meta.status);
-  if (parts.length) return truncateText(parts.join(' · '), 100);
+  if (log.ipHash) parts.push(`ip: ${log.ipHash}`);
+  if (parts.length) return truncateText(parts.join(' · '), 120);
   const keys = Object.keys(meta);
   if (!keys.length) return '–';
-  return truncateText(keys.slice(0, 4).map((k) => `${k}=…`).join(' · '), 100);
+  return truncateText(keys.slice(0, 4).map((k) => `${k}=…`).join(' · '), 120);
 }
 
 function formatLogMetadata(metadata) {
@@ -8401,6 +8925,21 @@ function renderReadableFields(obj) {
 function renderRawJsonDetails(label, data) {
   const json = typeof data === 'string' ? data : JSON.stringify(data ?? {}, null, 2);
   return `<details class="modal-details-raw"><summary>${esc(label)}</summary><pre class="json-block">${esc(json)}</pre></details>`;
+}
+
+function renderLogsJsonBlock(title, data, emptyHint) {
+  const empty = data == null || (typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0);
+  const json = empty ? null : (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
+  return `
+    <section class="logs-json-block">
+      <header class="logs-json-header">
+        <h4>${esc(title)}</h4>
+        <span class="logs-sanitized-pill">${esc(t('logs.sanitized'))}</span>
+      </header>
+      ${empty
+        ? `<p class="field-hint">${esc(emptyHint || t('logs.noRequestBody'))}</p>`
+        : `<pre class="logs-json-pre">${esc(json)}</pre>`}
+    </section>`;
 }
 
 function renderModalMetadataSections(meta) {
@@ -8451,23 +8990,75 @@ function renderModalMetadataSections(meta) {
   return parts.join('');
 }
 
+function closeLogsDrawer() {
+  const drawer = $('#logs-drawer');
+  if (!drawer) return;
+  drawer.classList.add('hidden');
+  drawer.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('logs-drawer-open');
+}
+
 function showLogDetail(log) {
   const meta = log.metadata ?? {};
-  const modal = $('#log-detail-modal');
-  const body = $('#log-detail-modal-body');
-  $('#log-detail-modal-title').textContent =
-    `${t('logs.detailTitle')} — ${log.source} / ${log.action}`;
+  const drawer = $('#logs-drawer');
+  const body = $('#logs-drawer-body');
+  if (!drawer || !body) {
+    // fallback modal
+    const modal = $('#log-detail-modal');
+    const modalBody = $('#log-detail-modal-body');
+    if (modal && modalBody) {
+      $('#log-detail-modal-title').textContent = `${t('logs.detailTitle')} — ${log.source} / ${log.action}`;
+      modalBody.innerHTML = `
+        <p><strong>${t('logs.time')}:</strong> ${formatDateTime(log.createdAt)} · <strong>${t('logs.status')}:</strong> ${log.statusCode ?? '–'}</p>
+        <p><strong>${t('logs.summary')}:</strong> ${esc(formatLogSummary(log))}</p>
+        ${renderModalMetadataSections(meta)}
+      `;
+      modal.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+    }
+    return;
+  }
+
+  const src = logSourceMeta(log.source);
+  const req = meta.requestReceived ?? meta.request ?? null;
+  const res = meta.responseRecorded ?? meta.response ?? null;
+  const sample = (logsRetentionStatus?.samples || []).find((s) => s.id === log.id);
+  const ruleKey = sample?.retentionRule;
+
   body.innerHTML = `
-    <p><strong>${t('logs.time')}:</strong> ${formatDateTime(log.createdAt)} · <strong>${t('logs.status')}:</strong> ${log.statusCode ?? '–'}${meta.callId ? ` · <strong>${t('fonioActivity.callId')}:</strong> ${esc(meta.callId)}` : ''}</p>
-    <p><strong>${t('logs.summary')}:</strong> ${esc(formatLogSummary(log))}</p>
-    ${renderModalMetadataSections(meta)}
+    <dl class="logs-meta-list">
+      <div><dt>${t('logs.time')}</dt><dd>${esc(formatAuditDateTime(log.createdAt))}</dd></div>
+      <div><dt>${t('logs.source')}</dt><dd><span class="logs-source"><span class="logs-source-icon is-${esc(src.tone)}">${esc(src.mark)}</span>${esc(src.label)}</span></dd></div>
+      <div><dt>${t('logs.action')}</dt><dd><code>${esc(log.action || '–')}</code></dd></div>
+      <div><dt>${t('logs.httpStatus')}</dt><dd><span class="logs-http-pill is-${httpStatusTone(log.statusCode)}">${esc(httpStatusLabel(log.statusCode))}</span></dd></div>
+      ${meta.callId || meta.requestId ? `<div><dt>${t('logs.requestId')}</dt><dd><code>${esc(meta.callId || meta.requestId)}</code></dd></div>` : ''}
+      ${log.ipHash ? `<div><dt>${t('logs.ipHash')}</dt><dd><code>${esc(log.ipHash)}</code></dd></div>` : ''}
+      ${meta.userAgent ? `<div><dt>${t('logs.userAgent')}</dt><dd>${esc(meta.userAgent)}</dd></div>` : ''}
+      <div><dt>${t('logs.environment')}</dt><dd><span class="logs-env-pill">${esc(t('logs.envProduction'))}</span></dd></div>
+    </dl>
+    ${renderLogsJsonBlock(t('logs.requestBlock'), req, t('logs.noRequestBody'))}
+    ${renderLogsJsonBlock(t('logs.responseBlock'), res || meta, t('logs.noResponseBody'))}
+    <section class="logs-retention-card">
+      <h4>${t('logs.retentionInfo')}</h4>
+      <dl class="logs-meta-list compact">
+        <div><dt>${t('logs.retentionRule')}</dt><dd>${esc(ruleKey ? t(`logs.rule.${ruleKey}`) : t('logs.rule.operational'))}</dd></div>
+        <div><dt>${t('logs.retentionCol')}</dt><dd>${esc(logRetentionLabel(log))}</dd></div>
+        <div><dt>${t('logs.deletesOn')}</dt><dd>${esc(formatAuditDateTime(log.expiresAt))}</dd></div>
+      </dl>
+      <button type="button" class="btn ghost btn-sm" id="logs-drawer-to-retention">${t('logs.goRetentionSettings')}</button>
+    </section>
   `;
-  modal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  body.querySelector('#logs-drawer-to-retention')?.addEventListener('click', () => {
+    closeLogsDrawer();
+    setLogsView('retention');
+  });
+  drawer.classList.remove('hidden');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('logs-drawer-open');
 }
 
 $('#log-detail-modal-close')?.addEventListener('click', () => {
-  $('#log-detail-modal').classList.add('hidden');
+  $('#log-detail-modal')?.classList.add('hidden');
   document.body.classList.remove('modal-open');
 });
 $('#log-detail-modal')?.addEventListener('click', (e) => {

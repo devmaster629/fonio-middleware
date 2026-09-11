@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260912d" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260912q" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -899,70 +899,216 @@
       </section>
 
       <section id="tab-logs" class="tab hidden">
-        <header class="page-header"><h2 data-i18n="logs.title">API audit log</h2></header>
-        <p class="field-hint" data-i18n="logs.hint">Technical API events (fonio calls, admin actions, webhooks). Sensitive fields are masked; IPs are hashed. Full call transcripts remain in fonio.</p>
-        <div class="card" id="log-settings-card">
-          <h3 data-i18n="logs.retentionTitle">Log retention (GDPR)</h3>
-          <p class="field-hint" data-i18n="logs.retentionHint">Expired log entries are permanently removed from the database (not archived). Personal data in logs is masked; phone numbers and emails are never stored in plain text.</p>
-          <form id="log-settings-form" class="log-settings-form">
-            <div class="log-retention-option">
-              <label class="checkbox-row log-retention-toggle">
-                <input type="checkbox" id="log-debug-enabled" checked />
-                <span data-i18n="logs.debugEnabled">Delete development / debug logs automatically</span>
-              </label>
-              <label>
-                <span data-i18n="logs.debugDays">Keep for (days)</span>
-                <input type="number" id="log-debug-days" min="7" max="14" value="14" />
-                <span class="field-hint" data-i18n="logs.debugDaysHint">7-14 days</span>
-              </label>
+        <header class="page-header logs-page-header">
+          <div class="logs-page-heading">
+            <h2 data-i18n="logs.title">API audit log</h2>
+            <p class="page-subtitle" data-i18n="logs.hint">Technical events from system integrations and API calls. Sensitive fields are masked and IP addresses are hashed.</p>
+          </div>
+          <div class="logs-page-actions">
+            <button type="button" id="logs-open-retention-btn" class="btn ghost logs-retention-btn">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span data-i18n="logs.retentionSettingsBtn">Retention settings</span>
+            </button>
+          </div>
+        </header>
+
+        <nav class="logs-tabs" role="tablist" aria-label="Audit log views">
+          <button type="button" class="logs-tab active" data-logs-tab="entries" role="tab" aria-selected="true" data-i18n="logs.tabEntries">Log entries</button>
+          <button type="button" class="logs-tab" data-logs-tab="retention" role="tab" aria-selected="false" data-i18n="logs.tabRetention">Retention settings</button>
+        </nav>
+
+        <div id="logs-view-entries" class="logs-view">
+          <div id="logs-kpis" class="logs-kpis" aria-live="polite"></div>
+
+          <div class="logs-board">
+            <div id="logs-filters" class="logs-filters fonio-activity-toolbar">
+              <div class="fonio-activity-toolbar-row">
+                <div class="fonio-activity-search">
+                  <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input type="search" id="logs-search" data-i18n-placeholder="logs.searchPlaceholder" placeholder="Search logs..." autocomplete="off" aria-label="Search logs" />
+                </div>
+                <label>
+                  <span data-i18n="logs.filterDateFrom">From</span>
+                  <input type="date" id="logs-date-from" />
+                </label>
+                <label>
+                  <span data-i18n="logs.filterDateTo">To</span>
+                  <input type="date" id="logs-date-to" />
+                </label>
+                <label>
+                  <span data-i18n="logs.source">Source</span>
+                  <select id="logs-filter-source">
+                    <option value="all" data-i18n="logs.filterSourceAll">All sources</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="logs.action">Action</span>
+                  <select id="logs-filter-action">
+                    <option value="all" data-i18n="logs.filterActionAll">All actions</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="logs.retentionCol">Retention</span>
+                  <select id="logs-filter-retention">
+                    <option value="all" data-i18n="logs.filterRetentionAll">All rules</option>
+                    <option value="debug" data-i18n="logs.rule.debug">Debug</option>
+                    <option value="operational" data-i18n="logs.rule.operational">Operational</option>
+                    <option value="pii" data-i18n="logs.rule.pii">Personal data</option>
+                    <option value="max_cap" data-i18n="logs.rule.max_cap">Maximum cap</option>
+                  </select>
+                </label>
+                <button type="button" id="logs-clear-filters-btn" class="btn ghost btn-sm" data-i18n="logs.clearFilters">Reset</button>
+              </div>
             </div>
-            <div class="log-retention-option">
-              <label class="checkbox-row log-retention-toggle">
-                <input type="checkbox" id="log-operational-enabled" checked />
-                <span data-i18n="logs.operationalEnabled">Delete operational / security logs automatically</span>
-              </label>
-              <label>
-                <span data-i18n="logs.operationalDays">Keep for (days)</span>
-                <input type="number" id="log-operational-days" min="1" max="90" value="30" />
-              </label>
+            <div class="fonio-activity-board-divider" aria-hidden="true"></div>
+            <div class="table-wrap logs-table-wrap" id="logs-table"></div>
+            <div class="logs-table-footer fonio-activity-table-footer">
+              <div id="logs-info" class="table-info"></div>
+              <div class="logs-footer-right fonio-activity-footer-right">
+                <div id="logs-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="logs-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="logs-page-size" aria-label="Per page">
+                    <option value="10">10 / page</option>
+                    <option value="25" selected>25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <div class="log-retention-option">
-              <label class="checkbox-row log-retention-toggle">
-                <input type="checkbox" id="log-pii-enabled" checked />
-                <span data-i18n="logs.piiEnabled">Delete logs with personal data sooner (GDPR)</span>
-              </label>
-              <label>
-                <span data-i18n="logs.piiDays">Keep for (days)</span>
-                <input type="number" id="log-pii-days" min="1" max="30" value="30" />
-              </label>
-            </div>
-            <div class="log-retention-option">
-              <label class="checkbox-row log-retention-toggle">
-                <input type="checkbox" id="log-auto-purge-enabled" checked />
-                <span data-i18n="logs.autoPurgeEnabled">Run automatic cleanup every night (3:00 AM)</span>
-              </label>
-              <label>
-                <span data-i18n="logs.maxDays">Maximum storage cap (days)</span>
-                <input type="number" id="log-max-days" min="30" max="90" value="90" />
-                <span class="field-hint" data-i18n="logs.maxDaysHint">30-90 days - nothing is kept longer than this</span>
-              </label>
-            </div>
-            <div class="form-actions" style="grid-column: 1 / -1;">
-              <button type="submit" class="btn primary" data-i18n="logs.retentionSave">Save retention settings</button>
-            </div>
-          </form>
-          <p id="log-settings-readonly-hint" class="field-hint hidden" data-i18n="logs.retentionReadonly">Only EDITOR or ADMIN can change log retention.</p>
-          <div id="log-retention-status" class="log-retention-status hidden">
-            <h4 data-i18n="logs.statusTitle">Retention status</h4>
-            <ul id="log-retention-status-list" class="retention-status-list"></ul>
-            <div id="log-retention-samples"></div>
-            <button type="button" id="log-purge-now-btn" class="btn ghost btn-sm" data-i18n="logs.purgeNow">Delete expired logs now</button>
           </div>
         </div>
-        <div id="logs-toolbar" class="table-toolbar"></div>
-        <div class="table-wrap" id="logs-table"></div>
-        <div id="logs-info" class="table-info"></div>
-        <div id="logs-pagination" class="table-pagination"></div>
+
+        <div id="logs-view-retention" class="logs-view hidden">
+          <section class="logs-retention-section">
+            <header class="logs-retention-section-head">
+              <h3 data-i18n="logs.retentionRulesTitle">Retention rules</h3>
+              <p data-i18n="logs.retentionRulesHint">Configure how long each log category is kept before permanent deletion.</p>
+              <p class="logs-retention-schedule" data-i18n="logs.cleanupRunsAt">Nightly cleanup runs at 03:00 AM for all expired logs</p>
+            </header>
+            <form id="log-settings-form" class="logs-retention-rules-grid">
+              <article class="logs-retention-rule-card">
+                <div class="logs-retention-rule-top">
+                  <span class="logs-retention-rule-icon is-debug" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  </span>
+                  <label class="logs-switch">
+                    <input type="checkbox" id="log-debug-enabled" checked />
+                    <span class="logs-switch-ui" aria-hidden="true"></span>
+                    <span data-i18n="logs.enabled">Enabled</span>
+                  </label>
+                </div>
+                <h4 data-i18n="logs.ruleCardDebugTitle">Development &amp; debug</h4>
+                <label class="logs-retention-field">
+                  <span data-i18n="logs.debugDays">Keep for (days)</span>
+                  <input type="number" id="log-debug-days" min="7" max="14" value="14" />
+                </label>
+              </article>
+
+              <article class="logs-retention-rule-card">
+                <div class="logs-retention-rule-top">
+                  <span class="logs-retention-rule-icon is-ops" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </span>
+                  <label class="logs-switch">
+                    <input type="checkbox" id="log-operational-enabled" checked />
+                    <span class="logs-switch-ui" aria-hidden="true"></span>
+                    <span data-i18n="logs.enabled">Enabled</span>
+                  </label>
+                </div>
+                <h4 data-i18n="logs.ruleCardOpsTitle">Operational &amp; security</h4>
+                <label class="logs-retention-field">
+                  <span data-i18n="logs.operationalDays">Keep for (days)</span>
+                  <input type="number" id="log-operational-days" min="1" max="90" value="30" />
+                </label>
+              </article>
+
+              <article class="logs-retention-rule-card">
+                <div class="logs-retention-rule-top">
+                  <span class="logs-retention-rule-icon is-pii" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span class="logs-gdpr-badge">GDPR</span>
+                  </span>
+                  <label class="logs-switch">
+                    <input type="checkbox" id="log-pii-enabled" checked />
+                    <span class="logs-switch-ui" aria-hidden="true"></span>
+                    <span data-i18n="logs.enabled">Enabled</span>
+                  </label>
+                </div>
+                <h4 data-i18n="logs.ruleCardPiiTitle">Personal-data logs (GDPR)</h4>
+                <label class="logs-retention-field">
+                  <span data-i18n="logs.piiDays">Keep for (days)</span>
+                  <input type="number" id="log-pii-days" min="1" max="30" value="30" />
+                </label>
+              </article>
+
+              <article class="logs-retention-rule-card">
+                <div class="logs-retention-rule-top">
+                  <span class="logs-retention-rule-icon is-cleanup" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  </span>
+                  <label class="logs-switch">
+                    <input type="checkbox" id="log-auto-purge-enabled" checked />
+                    <span class="logs-switch-ui" aria-hidden="true"></span>
+                    <span data-i18n="logs.enabled">Enabled</span>
+                  </label>
+                </div>
+                <h4 data-i18n="logs.ruleCardCleanupTitle">Max age &amp; purge</h4>
+                <label class="logs-retention-field">
+                  <span data-i18n="logs.maxDays">Hard maximum (days)</span>
+                  <input type="number" id="log-max-days" min="30" max="90" value="90" />
+                </label>
+              </article>
+
+              <div class="logs-retention-save-row">
+                <p id="log-settings-dirty" class="logs-retention-dirty is-clean">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span data-i18n="logs.noUnsaved">No unsaved changes</span>
+                </p>
+                <button type="submit" class="btn primary" data-i18n="logs.retentionSave">Save changes</button>
+              </div>
+            </form>
+            <p id="log-settings-readonly-hint" class="field-hint hidden" data-i18n="logs.retentionReadonly">Only EDITOR or ADMIN can change log retention.</p>
+          </section>
+
+          <section class="logs-retention-section">
+            <header class="logs-retention-section-head">
+              <h3 data-i18n="logs.retentionOverviewTitle">Retention overview</h3>
+            </header>
+            <div id="log-retention-overview" class="logs-retention-overview"></div>
+            <div class="logs-retention-warn" role="status">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              <span data-i18n="logs.permanentWarn">Expired logs are permanently deleted and cannot be recovered.</span>
+            </div>
+          </section>
+
+          <section class="logs-retention-section">
+            <header class="logs-retention-section-head logs-retention-section-head-row">
+              <div>
+                <h3 data-i18n="logs.upcomingTitle">Upcoming deletions</h3>
+                <p data-i18n="logs.upcomingHint">Recent entries and when they will be deleted.</p>
+              </div>
+            </header>
+            <div id="log-retention-status" class="hidden" aria-hidden="true"></div>
+            <div id="log-retention-samples" class="logs-upcoming-wrap"></div>
+            <div class="logs-purge-row">
+              <button type="button" id="log-purge-now-btn" class="btn logs-purge-btn" data-i18n="logs.purgeNow">Delete expired logs now</button>
+              <p class="field-hint" data-i18n="logs.purgeHint">Permanently deletes all eligible expired log entries from the database. This action cannot be undone.</p>
+            </div>
+          </section>
+        </div>
+
+        <div id="logs-drawer" class="logs-drawer hidden" aria-hidden="true">
+          <div class="logs-drawer-backdrop" data-logs-drawer-close></div>
+          <aside class="logs-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="logs-drawer-title">
+            <header class="logs-drawer-header">
+              <h3 id="logs-drawer-title" data-i18n="logs.eventDetails">Event details</h3>
+              <button type="button" class="logs-drawer-close" data-logs-drawer-close aria-label="Close">&times;</button>
+            </header>
+            <div id="logs-drawer-body" class="logs-drawer-body"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="tab-fonioActivity" class="tab hidden">
@@ -1433,10 +1579,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260912d"></script>
+  <script src="/admin/i18n.js?v=20260912q"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260912d"></script>
+  <script src="/admin/app.js?v=20260912q"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

@@ -215,13 +215,63 @@ export class LogSettingsService {
     return this.getResolved().then((s) => s.autoPurgeEnabled);
   }
 
+  /** Next 03:00 Europe/Berlin as ISO (same clock as the purge cron). */
   private nextPurgeAt(): string {
-    const next = new Date();
-    next.setHours(3, 0, 0, 0);
-    if (next.getTime() <= Date.now()) {
-      next.setDate(next.getDate() + 1);
+    const timeZone = 'Europe/Berlin';
+    const now = new Date();
+    const dateFmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    let day = dateFmt.format(now); // YYYY-MM-DD
+    if (timeFmt.format(now) >= '03:00') {
+      const [y, m, d] = day.split('-').map(Number);
+      day = dateFmt.format(new Date(Date.UTC(y, m - 1, d, 12) + 86_400_000));
     }
-    return next.toISOString();
+    return this.berlinLocalToIso(day, 3, 0, 0);
+  }
+
+  private berlinLocalToIso(
+    ymd: string,
+    hour: number,
+    minute: number,
+    second: number,
+  ): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    let utcMs = Date.UTC(y, m - 1, d, hour, minute, second);
+    for (let i = 0; i < 3; i += 1) {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Berlin',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(new Date(utcMs));
+      const get = (type: string) =>
+        Number(parts.find((p) => p.type === type)?.value);
+      const asUtc = Date.UTC(
+        get('year'),
+        get('month') - 1,
+        get('day'),
+        get('hour') === 24 ? 0 : get('hour'),
+        get('minute'),
+        get('second'),
+      );
+      const target = Date.UTC(y, m - 1, d, hour, minute, second);
+      utcMs += target - asUtc;
+    }
+    return new Date(utcMs).toISOString();
   }
 
   private clamp(value: number, min: number, max: number): number {
