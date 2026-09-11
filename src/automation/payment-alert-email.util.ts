@@ -273,7 +273,8 @@ export function buildAppliedEmail(input: {
   occurredAt?: Date;
   appliedMode: 'automatic' | 'manual';
   reviewedBy?: string;
-  chargeId: number;
+  chargeId?: number;
+  offlineListing?: boolean;
   guestName?: string | null;
   listingName?: string | null;
   dashboardUrl: string;
@@ -296,12 +297,23 @@ export function buildAppliedEmail(input: {
   if (input.occurredAt) {
     rows.push(['Eingegangen', formatReceivedAtDe(input.occurredAt)]);
   }
-  rows.push(['Hostaway-Charge-ID', String(input.chargeId)]);
+  if (input.offlineListing) {
+    rows.push([
+      'Hostaway',
+      'Einheit archiviert / offline — lokal verbucht (kein Hostaway-API-Aufruf)',
+    ]);
+  } else if (input.chargeId != null) {
+    rows.push(['Hostaway-Charge-ID', String(input.chargeId)]);
+  }
   if (input.reference) rows.push(['Verwendungszweck', input.reference]);
   if (input.reviewedBy) rows.push(['Geprüft von', input.reviewedBy]);
 
+  const intro = input.offlineListing
+    ? `Eine Zahlung wurde lokal ${modeLabel} (Hostaway-Einheit ist archiviert/offline).`
+    : `Eine Zahlung wurde in Hostaway ${modeLabel}.`;
+
   const text = [
-    `Eine Zahlung wurde in Hostaway ${modeLabel}.`,
+    intro,
     '',
     ...rows.map(([k, v]) => `${padLabel(k)}${v}`),
     '',
@@ -327,7 +339,7 @@ export function buildAppliedEmail(input: {
   <div style="max-width:640px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
     <div style="padding:20px 24px;">
       <div style="font-size:15px;color:#166534;font-weight:700;margin-bottom:8px;">Zahlung ${escapeHtml(modeLabel)}</div>
-      <p style="margin:0 0 16px;color:#374151;">Eine Zahlung wurde in Hostaway ${escapeHtml(modeLabel)}.</p>
+      <p style="margin:0 0 16px;color:#374151;">${escapeHtml(intro)}</p>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 20px;">${htmlRows}</table>
       <div style="text-align:center;margin:8px 0 16px;">
         <a href="${escapeHtml(input.dashboardUrl)}"

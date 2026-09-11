@@ -16,6 +16,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { looksLikeArchivedListingApiError } from '../hostaway/listing-offline.util';
 import { Check24BookingService } from './check24-booking.service';
 import { Check24SyncSettingsService } from './check24-sync-settings.service';
 import { Check24SyncService } from './check24-sync.service';
@@ -123,7 +124,18 @@ export class Check24AdminController {
       const propertyId = await this.sync.syncListingContent(listingId);
       return { ok: true, propertyId };
     } catch (err) {
-      throw new BadRequestException(this.check24.describeError(err));
+      const message = this.check24.describeError(err);
+      // Archived units must not surface as CHECK24 licence / API errors.
+      if (looksLikeArchivedListingApiError(message)) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: 'listing_archived_offline',
+          message:
+            'Listing is archived/offline in Hostaway — CHECK24 sync skipped',
+        };
+      }
+      throw new BadRequestException(message);
     }
   }
 

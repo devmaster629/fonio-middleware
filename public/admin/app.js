@@ -5179,10 +5179,13 @@ function paymentStatusBadge(status) {
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
-/** History board status pills: Matched / Pending / Needs review / Unmatched */
+/** History board status pills: Auto / By admin / Pending / Needs review / Skip */
 function paymentHistoryStatusMeta(status) {
-  if (status === 'AUTO_APPLIED' || status === 'MANUALLY_APPLIED') {
-    return { key: 'matched', cls: 'is-ok', label: t('payments.historyStatus.matched') };
+  if (status === 'AUTO_APPLIED') {
+    return { key: 'matched', cls: 'is-ok is-auto', label: t('payments.historyStatus.auto') };
+  }
+  if (status === 'MANUALLY_APPLIED') {
+    return { key: 'matched', cls: 'is-ok is-admin', label: t('payments.historyStatus.byAdmin') };
   }
   if (status === 'PENDING_REVIEW') {
     return { key: 'needs_review', cls: 'is-warn', label: t('payments.historyStatus.needsReview') };

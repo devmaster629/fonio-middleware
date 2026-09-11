@@ -259,6 +259,7 @@ export class HostawaySyncService implements OnModuleInit {
     });
 
     this.logger.log(`Synced ${remoteListings.length} listings`);
+    await this.clearCheck24ErrorsForOfflineListings();
     return remoteListings.length;
   }
 
@@ -275,8 +276,28 @@ export class HostawaySyncService implements OnModuleInit {
     });
     if (result.count > 0) {
       this.logger.log(`Marked ${result.count} removed Hostaway listings as hidden`);
+      await this.clearCheck24ErrorsForOfflineListings();
     }
     return result.count;
+  }
+
+  /** Archived units must not keep CHECK24 error banners or licence-related retries. */
+  private async clearCheck24ErrorsForOfflineListings(): Promise<void> {
+    const offline = await this.prisma.listing.findMany({
+      where: {
+        OR: [
+          { isBookable: false },
+          { status: { in: [ListingStatus.HIDDEN, ListingStatus.DRAFT] } },
+        ],
+        check24Mapping: { is: { lastError: { not: null } } },
+      },
+      select: { id: true },
+    });
+    if (!offline.length) return;
+    await this.prisma.check24PropertyMapping.updateMany({
+      where: { listingId: { in: offline.map((l) => l.id) } },
+      data: { lastError: null, enabled: false },
+    });
   }
 
   async syncListingCalendar(
@@ -663,7 +684,10 @@ export class HostawaySyncService implements OnModuleInit {
     if (
       normalized.includes('hidden') ||
       normalized.includes('ausgeblendet') ||
-      normalized.includes('archived')
+      normalized.includes('archived') ||
+      normalized.includes('inactive') ||
+      normalized.includes('disabled') ||
+      normalized.includes('deaktiviert')
     ) {
       return ListingStatus.HIDDEN;
     }

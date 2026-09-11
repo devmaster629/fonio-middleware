@@ -72,7 +72,7 @@ Hostaway remains source of truth for guest, stay dates, and booking total. Match
 
 **Auto-apply:** when an enabled plan’s **next amount due** equals the bank payment and the guest name/email matches, the payment is applied automatically (even if other same-guest bookings look similar). Saving a plan re-runs the review queue immediately. Deleting a plan restores any **auto-applied** payments for that reservation back to the review queue (manually confirmed payments are left alone).
 
-If Hostaway rejects the charge (e.g. **archived listing** → HTTP 403), the payment stays in the **review queue** with the error shown — it is not moved to History as Failed.
+If Hostaway rejects a charge because the **listing is archived**, the middleware records the payment **locally** (AUTO_APPLIED / MANUALLY_APPLIED) without calling Hostaway again and **does not** show an apply error. Staff do not need a Hostaway licence for archived units.
 
 API:
 

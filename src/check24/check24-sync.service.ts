@@ -9,6 +9,7 @@ import { ListingStatus } from '@prisma/client';
 import { mapWithConcurrency } from '../common/utils/concurrency.util';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
+import { isListingOffline, looksLikeArchivedListingApiError } from '../hostaway/listing-offline.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildAvailabilityRanges,
@@ -152,6 +153,23 @@ export class Check24SyncService {
             if (doRates) await this.syncListingRates(listing.id);
           } catch (err) {
             const message = this.check24.describeError(err);
+            // Archived / licence rejections: clear quietly — never surface as sync errors.
+            if (
+              isListingOffline(listing) ||
+              looksLikeArchivedListingApiError(message)
+            ) {
+              const propertyId = this.mapper.propertyIdForHostaway(
+                listing.hostawayId,
+              );
+              await this.upsertMapping(listing.id, propertyId, {
+                lastError: null,
+                enabled: false,
+              });
+              this.logger.log(
+                `CHECK24 skipped archived/offline listing ${listing.hostawayId}: ${message}`,
+              );
+              return;
+            }
             attemptErrors.set(listing.hostawayId, message);
             failedThisRound.push(listing);
             const propertyId = this.mapper.propertyIdForHostaway(
@@ -226,13 +244,38 @@ export class Check24SyncService {
   async retryFailedListings() {
     const failed = await this.prisma.check24PropertyMapping.findMany({
       where: { lastError: { not: null } },
-      include: { listing: { select: { hostawayId: true } } },
+      include: {
+        listing: {
+          select: { id: true, hostawayId: true, status: true, isBookable: true },
+        },
+      },
     });
     if (!failed.length) {
       return { attempted: 0, succeeded: 0, errors: [] as Array<{ hostawayId: number; error: string }> };
     }
 
-    const listingIds = failed
+    // Archived / offline units: clear stale errors silently — never retry CHECK24.
+    const offline = failed.filter((m) => isListingOffline(m.listing));
+    for (const mapping of offline) {
+      await this.prisma.check24PropertyMapping.update({
+        where: { id: mapping.id },
+        data: { lastError: null, enabled: false },
+      });
+      this.logger.log(
+        `CHECK24 cleared lastError for archived/offline listing ${mapping.listing.hostawayId}`,
+      );
+    }
+
+    const activeFailed = failed.filter((m) => !isListingOffline(m.listing));
+    if (!activeFailed.length) {
+      return {
+        attempted: 0,
+        succeeded: offline.length,
+        errors: [] as Array<{ hostawayId: number; error: string }>,
+      };
+    }
+
+    const listingIds = activeFailed
       .map((m) => m.listing.hostawayId)
       .filter((id): id is number => Number.isFinite(id));
 
@@ -245,7 +288,7 @@ export class Check24SyncService {
 
     return {
       attempted: listingIds.length,
-      succeeded: listingIds.length - (result.errors?.length ?? 0),
+      succeeded: listingIds.length - (result.errors?.length ?? 0) + offline.length,
       errors: result.errors ?? [],
     };
   }
@@ -254,6 +297,17 @@ export class Check24SyncService {
     const listing = await this.prisma.listing.findUniqueOrThrow({
       where: { id: listingId },
     });
+    if (isListingOffline(listing)) {
+      const propertyId = this.mapper.propertyIdForHostaway(listing.hostawayId);
+      await this.upsertMapping(listing.id, propertyId, {
+        lastError: null,
+        enabled: false,
+      });
+      this.logger.log(
+        `CHECK24 skipped content sync for archived/offline listing ${listing.hostawayId}`,
+      );
+      return propertyId;
+    }
     const remote = await this.hostaway.getListing(listing.hostawayId);
     const property = this.mapper.mapListing(listing, remote);
     await this.check24.pushProperties([property]);
@@ -274,6 +328,18 @@ export class Check24SyncService {
   ): Promise<{ pushed: boolean; reason?: string }> {
     if (!this.isConfigured()) {
       return { pushed: false, reason: 'check24_not_configured' };
+    }
+
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { status: true, isBookable: true, hostawayId: true },
+    });
+    if (listing && isListingOffline(listing)) {
+      await this.prisma.check24PropertyMapping.updateMany({
+        where: { listingId },
+        data: { lastError: null, enabled: false },
+      });
+      return { pushed: false, reason: 'listing_archived_offline' };
     }
 
     const daysAhead = Number(this.config.get('CALENDAR_SYNC_DAYS') ?? 365);

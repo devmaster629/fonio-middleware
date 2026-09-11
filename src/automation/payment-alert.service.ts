@@ -173,7 +173,9 @@ export class PaymentAlertService {
     occurredAt?: Date;
     appliedMode: 'automatic' | 'manual';
     reviewedBy?: string;
-    chargeId: number;
+    chargeId?: number;
+    /** Payment recorded locally because the Hostaway unit is archived. */
+    offlineListing?: boolean;
   }): Promise<void> {
     if (!this.isEnabled()) return;
 
@@ -182,7 +184,7 @@ export class PaymentAlertService {
       include: { listing: true },
     });
 
-    const correlationId = `pay-alert-${params.chargeId}-${Date.now()}`;
+    const correlationId = `pay-alert-${params.chargeId ?? 'offline'}-${Date.now()}`;
     const email = buildAppliedEmail({
       reservationHostawayId: params.reservationHostawayId,
       amount: params.amount,
@@ -193,6 +195,7 @@ export class PaymentAlertService {
       appliedMode: params.appliedMode,
       reviewedBy: params.reviewedBy,
       chargeId: params.chargeId,
+      offlineListing: params.offlineListing,
       guestName: reservation?.guestName,
       listingName: reservation?.listing?.name,
       dashboardUrl: this.dashboardPaymentsUrl(),
@@ -207,8 +210,9 @@ export class PaymentAlertService {
       action: 'applied',
       metadata: {
         reservationHostawayId: params.reservationHostawayId,
-        chargeId: params.chargeId,
+        chargeId: params.chargeId ?? null,
         appliedMode: params.appliedMode,
+        offlineListing: params.offlineListing === true,
       },
     });
   }

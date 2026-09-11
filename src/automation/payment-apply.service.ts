@@ -3,6 +3,7 @@ import { ExternalPaymentSource } from '@prisma/client';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { GuestRequestInboxService } from '../hostaway/guest-request-inbox.service';
 import { PaymentInboxService } from '../hostaway/payment-inbox.service';
+import { isListingOffline } from '../hostaway/listing-offline.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { GuestCheckinReleaseService } from './guest-checkin-release.service';
 import { PaymentAlertService } from './payment-alert.service';
@@ -33,7 +34,11 @@ export class PaymentApplyService {
     reviewedBy?: string;
     /** Optional reviewer note; when set it becomes the Hostaway charge description. */
     descriptionOverride?: string;
-  }): Promise<{ chargeId: number; inboxMessageId?: number }> {
+  }): Promise<{
+    chargeId: number | null;
+    offline?: boolean;
+    inboxMessageId?: number;
+  }> {
     const paymentMethod =
       params.source === ExternalPaymentSource.PAYPAL
         ? 'paypal'
@@ -41,8 +46,50 @@ export class PaymentApplyService {
 
     const reservation = await this.prisma.reservation.findUnique({
       where: { hostawayId: params.reservationHostawayId },
-      include: { notifiedCharges: true },
+      include: { notifiedCharges: true, listing: true },
     });
+
+    // Archived / non-bookable Hostaway units stay offline (no licence fee).
+    // Never call Hostaway charge APIs — record ledger locally only.
+    if (reservation?.listing && isListingOffline(reservation.listing)) {
+      this.logger.log(
+        `Reservation ${params.reservationHostawayId} listing ${reservation.listing.hostawayId} is archived/offline — applying payment locally without Hostaway API`,
+      );
+      if (reservation.id) {
+        await this.paymentPlans
+          .recordPaymentApplied(reservation.id, params.amount)
+          .catch((err) => {
+            this.logger.warn(
+              `Payment plan advance failed for offline listing ${params.reservationHostawayId}: ${
+                err instanceof Error ? err.message : err
+              }`,
+            );
+          });
+      }
+      await this.checkinRelease
+        .releaseAfterPayment(params.reservationHostawayId)
+        .catch((err) => {
+          this.logger.warn(
+            `Post-payment check-in release failed for ${params.reservationHostawayId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        });
+      await this.alerts.notifyApplied({
+        reservationHostawayId: params.reservationHostawayId,
+        amount: params.amount,
+        currency: params.currency,
+        source: params.source,
+        reference: params.reference,
+        occurredAt: params.occurredAt,
+        appliedMode: params.appliedMode ?? 'automatic',
+        reviewedBy: params.reviewedBy,
+        chargeId: undefined,
+        offlineListing: true,
+      });
+      return { chargeId: null, offline: true };
+    }
+
     const total =
       reservation?.totalPrice != null && Number.isFinite(reservation.totalPrice)
         ? reservation.totalPrice

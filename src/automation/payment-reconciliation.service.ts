@@ -10,6 +10,11 @@ import {
   PaymentMatchDecision,
   Prisma,
 } from '@prisma/client';
+import { HostawayClient } from '../hostaway/hostaway.client';
+import {
+  isListingOffline,
+  looksLikeArchivedListingApiError,
+} from '../hostaway/listing-offline.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   isInquiryReservationStatus,
@@ -19,7 +24,6 @@ import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
 import { PaymentPlanService } from './payment-plan.service';
-import { HostawayClient } from '../hostaway/hostaway.client';
 
 @Injectable()
 export class PaymentReconciliationService {
@@ -103,16 +107,30 @@ export class PaymentReconciliationService {
 
     // Previous Hostaway apply failures stay in review; do not keep retrying on
     // every Qonto poll unless the operator (or plan save) forces another attempt.
+    // Exception: archived/offline units — always retry so we record locally quietly.
     const priorApplyFailed =
       !!payment.error &&
       /hostaway apply failed|status code 403|status code 4\d\d/i.test(
         payment.error,
-      );
+      ) &&
+      !looksLikeArchivedListingApiError(payment.error);
+
+    let matchedListingOffline = false;
+    if (match.best?.reservationId) {
+      const matchedRes = await this.prisma.reservation.findUnique({
+        where: { id: match.best.reservationId },
+        select: {
+          listing: { select: { status: true, isBookable: true } },
+        },
+      });
+      matchedListingOffline = isListingOffline(matchedRes?.listing);
+    }
+
     const tryAutoApply =
       allowAutoApply &&
       match.decision === PaymentMatchDecision.UNAMBIGUOUS &&
       !!match.best &&
-      (forceAutoApply || !priorApplyFailed);
+      (forceAutoApply || !priorApplyFailed || matchedListingOffline);
 
     if (tryAutoApply && match.best) {
       try {
@@ -132,7 +150,9 @@ export class PaymentReconciliationService {
             status: ExternalPaymentStatus.AUTO_APPLIED,
             matchDecision: match.decision,
             matchScore: match.best.score,
-            matchReason: match.reason,
+            matchReason: applied.offline
+              ? `${match.reason} · listing archived/offline (local apply)`
+              : match.reason,
             matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
             matchedReservationId: match.best.reservationId,
             hostawayChargeId: applied.chargeId,
@@ -152,6 +172,45 @@ export class PaymentReconciliationService {
         return { id: updated.id, status: updated.status };
       } catch (error) {
         const message = this.formatApplyError(error);
+        // Hostaway sometimes returns 403 for archived units before our local
+        // status catches up — treat as silent offline apply, not a failure.
+        const treatAsOffline =
+          matchedListingOffline || looksLikeArchivedListingApiError(message);
+        if (treatAsOffline) {
+          this.logger.log(
+            `Auto-apply treated as offline for payment ${payment.id}: ${message}`,
+          );
+          const updated = await this.prisma.externalPayment.update({
+            where: { id: payment.id },
+            data: {
+              status: ExternalPaymentStatus.AUTO_APPLIED,
+              matchDecision: match.decision,
+              matchScore: match.best.score,
+              matchReason: `${match.reason} · listing archived/offline (local apply)`,
+              matchCandidates:
+                match.candidates as unknown as Prisma.InputJsonValue,
+              matchedReservationId: match.best.reservationId,
+              hostawayChargeId: null,
+              error: null,
+              allocations: {
+                create: [
+                  {
+                    reservationId: match.best.reservationId,
+                    amount: payment.amount,
+                    hostawayChargeId: null,
+                    sortOrder: 0,
+                  },
+                ],
+              },
+            },
+          });
+          if (match.best.reservationId) {
+            await this.paymentPlans
+              .recordPaymentApplied(match.best.reservationId, payment.amount)
+              .catch(() => undefined);
+          }
+          return { id: updated.id, status: updated.status };
+        }
         // Keep the payment in the review queue so staff can confirm manually.
         // FAILED hid it from Reconciliation and required a History → Retry.
         const updated = await this.prisma.externalPayment.update({
@@ -397,39 +456,70 @@ export class PaymentReconciliationService {
       reservationId: string;
       reservationHostawayId: number;
       amount: number;
-      chargeId: number;
+      chargeId: number | null;
       note?: string;
+      offline?: boolean;
     }> = [];
 
     try {
       for (const [index, line] of normalized.entries()) {
         const reservation = byHostawayId.get(line.reservationHostawayId)!;
-        const applied = await this.apply.applyToReservation({
-          reservationHostawayId: reservation.hostawayId,
-          amount: line.amount,
-          currency: payment.currency,
-          source: payment.source,
-          reference: payment.reference ?? undefined,
-          occurredAt: payment.occurredAt,
-          appliedMode: 'manual',
-          reviewedBy: reviewerEmail,
-          descriptionOverride:
-            line.note ||
-            (normalized.length > 1
-              ? `Teilzahlung ${index + 1}/${normalized.length}`
-              : undefined),
-        });
-        appliedLines.push({
-          reservationId: reservation.id,
-          reservationHostawayId: reservation.hostawayId,
-          amount: line.amount,
-          chargeId: applied.chargeId,
-          note: line.note,
-        });
+        try {
+          const applied = await this.apply.applyToReservation({
+            reservationHostawayId: reservation.hostawayId,
+            amount: line.amount,
+            currency: payment.currency,
+            source: payment.source,
+            reference: payment.reference ?? undefined,
+            occurredAt: payment.occurredAt,
+            appliedMode: 'manual',
+            reviewedBy: reviewerEmail,
+            descriptionOverride:
+              line.note ||
+              (normalized.length > 1
+                ? `Teilzahlung ${index + 1}/${normalized.length}`
+                : undefined),
+          });
+          appliedLines.push({
+            reservationId: reservation.id,
+            reservationHostawayId: reservation.hostawayId,
+            amount: line.amount,
+            chargeId: applied.chargeId,
+            note: line.note,
+            offline: applied.offline,
+          });
+        } catch (lineError) {
+          const message = this.formatApplyError(lineError);
+          const listing = await this.prisma.reservation.findUnique({
+            where: { id: reservation.id },
+            select: {
+              listing: { select: { status: true, isBookable: true } },
+            },
+          });
+          if (
+            isListingOffline(listing?.listing) ||
+            looksLikeArchivedListingApiError(message)
+          ) {
+            await this.paymentPlans
+              .recordPaymentApplied(reservation.id, line.amount)
+              .catch(() => undefined);
+            appliedLines.push({
+              reservationId: reservation.id,
+              reservationHostawayId: reservation.hostawayId,
+              amount: line.amount,
+              chargeId: null,
+              note: line.note,
+              offline: true,
+            });
+            continue;
+          }
+          throw lineError;
+        }
       }
     } catch (error) {
       // Best-effort rollback of Hostaway charges already created in this split.
       for (const line of appliedLines) {
+        if (line.chargeId == null) continue;
         try {
           await this.hostaway.cancelGuestCharge(
             line.reservationHostawayId,
@@ -446,6 +536,9 @@ export class PaymentReconciliationService {
     }
 
     const primary = appliedLines[0];
+    const offlineNote = appliedLines.some((l) => l.offline)
+      ? 'Listing archived/offline — recorded locally without Hostaway charge'
+      : null;
     return this.prisma.externalPayment.update({
       where: { id: payment.id },
       data: {
@@ -456,6 +549,7 @@ export class PaymentReconciliationService {
         reviewedAt: new Date(),
         reviewNote:
           note ||
+          offlineNote ||
           (appliedLines.length > 1
             ? `Split across ${appliedLines.length} bookings`
             : null),
