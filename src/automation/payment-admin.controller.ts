@@ -71,11 +71,19 @@ export class PaymentAdminController {
         dto.treatAsPaidUntilDaysBeforeArrival === undefined
           ? undefined
           : dto.treatAsPaidUntilDaysBeforeArrival,
+      treatAsPaidUntilDaysAfterDeparture:
+        dto.treatAsPaidUntilDaysAfterDeparture === undefined
+          ? undefined
+          : dto.treatAsPaidUntilDaysAfterDeparture,
       hostDuePercent: dto.hostDuePercent,
       hostDueByDaysBeforeArrival:
         dto.hostDueByDaysBeforeArrival === undefined
           ? undefined
           : dto.hostDueByDaysBeforeArrival,
+      hostDueByDaysAfterDeparture:
+        dto.hostDueByDaysAfterDeparture === undefined
+          ? undefined
+          : dto.hostDueByDaysAfterDeparture,
       overdueGraceDays:
         dto.overdueGraceDays === undefined ? undefined : dto.overdueGraceDays,
       autoRequestInbox: dto.autoRequestInbox,

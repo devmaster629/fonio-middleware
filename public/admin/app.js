@@ -702,45 +702,18 @@ function ensurePaymentsToolbar(loader) {
   if (!el) return;
   const tabKey = 'payments';
   const s = tableState[tabKey];
-  if (el.dataset.toolbarInit === 'payments-v4') {
-    const sourceSel = el.querySelector('[data-payment-filter="source"]');
-    const matchSel = el.querySelector('[data-payment-filter="match"]');
+  const lengthSel = document.querySelector(`[data-table-length="${tabKey}"]`);
+  if (el.dataset.toolbarInit === 'payments-v6') {
     const dateSel = el.querySelector('[data-payment-filter="date"]');
-    if (sourceSel) sourceSel.value = s.source || 'all';
-    if (matchSel) matchSel.value = s.match || 'all';
+    const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
     if (dateSel) dateSel.value = s.date || 'all';
+    if (lengthSel) lengthSel.value = String(s.pageSize);
+    if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
     return;
   }
-  el.dataset.toolbarInit = 'payments-v4';
+  el.dataset.toolbarInit = 'payments-v6';
   el.innerHTML = `
     <div class="payments-toolbar-filters">
-      <label class="payments-search-field">
-        <span class="payments-filter-label">${t('table.search')}</span>
-        <span class="payments-search-wrap">
-          <svg class="payments-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-            <circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/>
-            <path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-          <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.searchPlaceholder'))}" />
-        </span>
-      </label>
-      <label>
-        <span class="payments-filter-label">${t('payments.source')}</span>
-        <select data-payment-filter="source">
-          <option value="all">${t('payments.filterAllSources')}</option>
-          <option value="QONTO">Qonto</option>
-          <option value="PAYPAL">PayPal</option>
-        </select>
-      </label>
-      <label>
-        <span class="payments-filter-label">${t('payments.matchStatus')}</span>
-        <select data-payment-filter="match">
-          <option value="all">${t('payments.filterAllMatch')}</option>
-          <option value="PARTIAL_UNCLEAR">${t('payments.decision.PARTIAL_UNCLEAR')}</option>
-          <option value="AMBIGUOUS">${t('payments.decision.AMBIGUOUS')}</option>
-          <option value="NO_MATCH">${t('payments.decision.NO_MATCH')}</option>
-        </select>
-      </label>
       <label>
         <span class="payments-filter-label">${t('payments.dateFilter')}</span>
         <select data-payment-filter="date">
@@ -750,27 +723,31 @@ function ensurePaymentsToolbar(loader) {
           <option value="30d">${t('payments.filter30d')}</option>
         </select>
       </label>
-      <label class="payments-toolbar-length">
-        <span class="payments-filter-label">${t('table.show')}</span>
-        <select data-table-length="${tabKey}">
-          ${PAGE_SIZE_OPTIONS.map((n) =>
-            `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-          ).join('')}
-        </select>
+      <label class="payments-search-field payments-reconcile-search-field">
+        <span class="payments-filter-label">${t('table.search')}</span>
+        <span class="payments-search-wrap">
+          <svg class="payments-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+            <circle cx="11" cy="11" r="6.25" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M16 16.5 20 20.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.searchPlaceholder'))}" />
+        </span>
       </label>
     </div>
   `;
-  const sourceSel = el.querySelector('[data-payment-filter="source"]');
-  const matchSel = el.querySelector('[data-payment-filter="match"]');
   const dateSel = el.querySelector('[data-payment-filter="date"]');
-  if (sourceSel) sourceSel.value = s.source || 'all';
-  if (matchSel) matchSel.value = s.match || 'all';
   if (dateSel) dateSel.value = s.date || 'all';
-  el.querySelector(`[data-table-length="${tabKey}"]`)?.addEventListener('change', (e) => {
-    tableState[tabKey].pageSize = Number(e.target.value);
-    tableState[tabKey].page = 1;
-    loader();
-  });
+  if (lengthSel) {
+    lengthSel.value = String(s.pageSize);
+    if (lengthSel.dataset.bound !== '1') {
+      lengthSel.dataset.bound = '1';
+      lengthSel.addEventListener('change', (e) => {
+        tableState[tabKey].pageSize = Number(e.target.value) || 10;
+        tableState[tabKey].page = 1;
+        loader();
+      });
+    }
+  }
   el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
     clearTimeout(searchTimers[tabKey]);
     searchTimers[tabKey] = setTimeout(() => {
@@ -778,16 +755,6 @@ function ensurePaymentsToolbar(loader) {
       tableState[tabKey].page = 1;
       loader();
     }, 300);
-  });
-  sourceSel?.addEventListener('change', (e) => {
-    tableState[tabKey].source = e.target.value;
-    tableState[tabKey].page = 1;
-    loader();
-  });
-  matchSel?.addEventListener('change', (e) => {
-    tableState[tabKey].match = e.target.value;
-    tableState[tabKey].page = 1;
-    loader();
   });
   dateSel?.addEventListener('change', (e) => {
     tableState[tabKey].date = e.target.value;
@@ -801,28 +768,18 @@ function ensurePaymentsHistoryToolbar(loader) {
   if (!el) return;
   const tabKey = 'paymentsHistory';
   const s = tableState[tabKey];
-  if (el.dataset.toolbarInit === 'payments-history-v2') {
+  const lengthSel = document.querySelector(`[data-table-length="${tabKey}"]`);
+  if (el.dataset.toolbarInit === 'payments-history-v4') {
     const sourceSel = el.querySelector('[data-history-filter="source"]');
-    const statusSel = el.querySelector('[data-history-filter="status"]');
-    const lengthSel = el.querySelector(`[data-table-length="${tabKey}"]`);
     const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
     if (sourceSel) sourceSel.value = s.source || 'all';
-    if (statusSel) statusSel.value = s.status || 'all';
     if (lengthSel) lengthSel.value = String(s.pageSize);
     if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
     return;
   }
-  el.dataset.toolbarInit = 'payments-history-v2';
+  el.dataset.toolbarInit = 'payments-history-v4';
   el.innerHTML = `
     <div class="payments-toolbar-filters payments-history-toolbar-filters">
-      <label class="payments-toolbar-length">
-        <span class="payments-filter-label sr-only">${t('table.show')}</span>
-        <select data-table-length="${tabKey}" aria-label="${esc(t('table.show'))}">
-          ${PAGE_SIZE_OPTIONS.map((n) =>
-            `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-          ).join('')}
-        </select>
-      </label>
       <label class="payments-search-field payments-history-search-field">
         <span class="payments-filter-label sr-only">${t('table.search')}</span>
         <span class="payments-search-wrap">
@@ -832,17 +789,6 @@ function ensurePaymentsHistoryToolbar(loader) {
           </svg>
           <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.historySearchPlaceholder'))}" />
         </span>
-      </label>
-      <label>
-        <span class="payments-filter-label sr-only">${t('payments.status')}</span>
-        <select data-history-filter="status">
-          <option value="all">${t('payments.filterAllStatus')}</option>
-          <option value="matched">${t('payments.historyStatus.matched')}</option>
-          <option value="pending">${t('payments.historyStatus.pending')}</option>
-          <option value="needs_review">${t('payments.historyStatus.needsReview')}</option>
-          <option value="skipped">${t('payments.historyStatus.skipped')}</option>
-          <option value="failed">${t('payments.historyStatus.failed')}</option>
-        </select>
       </label>
       <label>
         <span class="payments-filter-label sr-only">${t('payments.source')}</span>
@@ -855,14 +801,18 @@ function ensurePaymentsHistoryToolbar(loader) {
     </div>
   `;
   const sourceSel = el.querySelector('[data-history-filter="source"]');
-  const statusSel = el.querySelector('[data-history-filter="status"]');
   if (sourceSel) sourceSel.value = s.source || 'all';
-  if (statusSel) statusSel.value = s.status || 'all';
-  el.querySelector(`[data-table-length="${tabKey}"]`)?.addEventListener('change', (e) => {
-    tableState[tabKey].pageSize = Number(e.target.value);
-    tableState[tabKey].page = 1;
-    loader();
-  });
+  if (lengthSel) {
+    lengthSel.value = String(s.pageSize);
+    if (lengthSel.dataset.bound !== '1') {
+      lengthSel.dataset.bound = '1';
+      lengthSel.addEventListener('change', (e) => {
+        tableState[tabKey].pageSize = Number(e.target.value) || 25;
+        tableState[tabKey].page = 1;
+        loader();
+      });
+    }
+  }
   el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
     clearTimeout(searchTimers[tabKey]);
     searchTimers[tabKey] = setTimeout(() => {
@@ -873,11 +823,6 @@ function ensurePaymentsHistoryToolbar(loader) {
   });
   sourceSel?.addEventListener('change', (e) => {
     tableState[tabKey].source = e.target.value;
-    tableState[tabKey].page = 1;
-    loader();
-  });
-  statusSel?.addEventListener('change', (e) => {
-    tableState[tabKey].status = e.target.value;
     tableState[tabKey].page = 1;
     loader();
   });
@@ -7664,8 +7609,6 @@ async function loadPaymentsReconcile() {
     const paymentList = Array.isArray(response) ? response : (response.items || []);
     ensurePaymentsToolbar(loadPayments);
 
-    const sourceFilter = tableState.payments.source || 'all';
-    const matchFilter = tableState.payments.match || 'all';
     const dateFilter = tableState.payments.date || 'all';
     const now = Date.now();
     const dateMs =
@@ -7677,12 +7620,6 @@ async function loadPaymentsReconcile() {
             ? 30 * 24 * 60 * 60 * 1000
             : null;
     let filtered = paymentList.filter((p) => {
-      if (sourceFilter !== 'all' && String(p.source || '').toUpperCase() !== sourceFilter) {
-        return false;
-      }
-      if (matchFilter !== 'all' && String(p.matchDecision || '') !== matchFilter) {
-        return false;
-      }
       if (dateMs != null) {
         const ts = new Date(p.occurredAt || p.createdAt).getTime();
         if (!Number.isFinite(ts) || now - ts > dateMs) return false;
@@ -7903,132 +7840,433 @@ async function loadPaymentsReconcile() {
 
 async function loadPortalPaymentRules() {
   const list = $('#portal-rules-list');
+  const statsEl = $('#portal-rules-stats');
   if (!list) return;
-  const rules = await api('/payments/portal-rules');
+
+  const fetched = await api('/payments/portal-rules');
+  const rules = Array.isArray(fetched) ? fetched : [];
   const canEdit = hasPermission('PAYMENTS_ADMIN');
-  list.innerHTML = (Array.isArray(rules) ? rules : [])
+  const unitPercent = t('payments.portalUnitPercent');
+  const unitDays = t('payments.portalUnitDays');
+
+  const optionalStr = (v) => (v == null || v === '' ? '' : String(v));
+  const portalMark = (name, key) => {
+    const src = String(name || key || '').replace(/[^a-zA-Z0-9]/g, '');
+    return (src.slice(0, 2) || '??').toUpperCase();
+  };
+  const PORTAL_LOGO_KEYS = new Set([
+    'airbnb',
+    'bookingcom',
+    'vrbo',
+    'expedia',
+    'agoda',
+    'check24',
+    'hometogo',
+    'interhome',
+    'atraveo',
+    'travanto',
+    'direct',
+  ]);
+  const portalLogoHtml = (displayName, portalKey) => {
+    const key = String(portalKey || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+    if (PORTAL_LOGO_KEYS.has(key)) {
+      return `<span class="portal-rule-logo" aria-hidden="true"><img src="/admin/assets/portals/${esc(key)}.svg" alt="" width="38" height="38" loading="lazy" /></span>`;
+    }
+    return `<span class="portal-rule-logo is-fallback" aria-hidden="true">${esc(portalMark(displayName, portalKey))}</span>`;
+  };
+  const automationFlags = (rule) =>
+    [
+      rule.skipUnpaidReminder,
+      rule.autoRequestInbox,
+      rule.autoRequestOnImport,
+      rule.autoSendGuestPaymentLink,
+      rule.autoCancelIfUnpaid,
+    ].filter(Boolean).length;
+
+  const numField = ({ name, label, help, value, suffix, min, max, disabled }) => `
+    <label class="portal-field">
+      <span>${esc(label)}</span>
+      <span class="portal-input-wrap">
+        <input type="number" name="${esc(name)}" min="${min}" max="${max}" value="${esc(value)}" placeholder="—" ${disabled ? 'disabled' : ''} />
+        <span class="portal-input-suffix">${esc(suffix)}</span>
+      </span>
+      <span class="portal-field-help">${esc(help)}</span>
+    </label>`;
+
+  const switchRow = ({ name, label, help, checked, disabled }) => `
+    <label class="portal-switch-row">
+      <span class="portal-switch-copy">
+        <strong>${esc(label)}</strong>
+        <small>${esc(help)}</small>
+      </span>
+      <span class="portal-switch">
+        <input type="checkbox" name="${esc(name)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+        <span class="portal-switch-ui"></span>
+      </span>
+    </label>`;
+
+  const enabledCount = rules.filter((r) => r.enabled).length;
+  let lastSavedMs = 0;
+  for (const rule of rules) {
+    const ts = Date.parse(rule.updatedAt || '');
+    if (Number.isFinite(ts) && ts > lastSavedMs) lastSavedMs = ts;
+  }
+  const lastSavedLabel =
+    lastSavedMs > 0
+      ? (typeof formatDashboardDateTime === 'function'
+          ? formatDashboardDateTime(new Date(lastSavedMs).toISOString())
+          : formatDateTime(new Date(lastSavedMs).toISOString()))
+      : '–';
+
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <span class="portal-rules-stat">${esc(t('payments.portalChannelsCount', { count: rules.length }))}</span>
+      <span class="portal-rules-stat is-enabled">${esc(t('payments.portalEnabledCount', { count: enabledCount }))}</span>
+      <span class="portal-rules-stat">${esc(t('payments.portalLastSaved', { when: lastSavedLabel }))}</span>`;
+  }
+
+  const defaultOpenKey =
+    (rules.find((r) => r.enabled) || rules[0] || {})?.portalKey || '';
+
+  list.innerHTML = rules
     .map((rule) => {
       const matchers = Array.isArray(rule.channelMatchers)
         ? rule.channelMatchers.join(', ')
         : '';
-      const unverified =
-        rule.treatAsPaidUntilDaysBeforeArrival == null
-          ? ''
-          : String(rule.treatAsPaidUntilDaysBeforeArrival);
-      const dueBy =
-        rule.hostDueByDaysBeforeArrival == null
-          ? ''
-          : String(rule.hostDueByDaysBeforeArrival);
-      const unverifiedAfter =
-        rule.treatAsPaidUntilDaysAfterDeparture == null
-          ? ''
-          : String(rule.treatAsPaidUntilDaysAfterDeparture);
-      const dueByAfter =
-        rule.hostDueByDaysAfterDeparture == null
-          ? ''
-          : String(rule.hostDueByDaysAfterDeparture);
-      const overdue =
-        rule.overdueGraceDays == null ? '' : String(rule.overdueGraceDays);
-      const depositPct =
-        rule.depositDuePercent == null ? '' : String(rule.depositDuePercent);
-      const depositDays =
-        rule.depositDueDaysAfterBooking == null
-          ? ''
-          : String(rule.depositDueDaysAfterBooking);
-      const paymentDeadline =
-        rule.paymentDeadlineDays == null ? '' : String(rule.paymentDeadlineDays);
-      const guestReminder =
-        rule.guestReminderDaysBeforeDeadline == null
-          ? ''
-          : String(rule.guestReminderDaysBeforeDeadline);
+      const enabled = !!rule.enabled;
+      const autoCount = automationFlags(rule);
+      const portalPct = Number(rule.portalAssumedPaidPercent) || 0;
+      const hostPct = Number(rule.hostDuePercent) || 0;
+      const summaryMeta = enabled
+        ? `<strong>${esc(t('payments.portalShareSummary', { portal: portalPct, host: hostPct }))}</strong><br />${esc(
+            t(
+              autoCount === 1
+                ? 'payments.portalAutomationCount'
+                : 'payments.portalAutomationCountPlural',
+              { count: autoCount },
+            ),
+          )}`
+        : esc(t('payments.portalNoRules'));
+      const badgeClass = enabled
+        ? 'portal-rule-badge is-enabled'
+        : 'portal-rule-badge';
+      const badgeText = enabled
+        ? t('payments.portalEnabled')
+        : t('payments.portalNotConfigured');
+      const logoHtml = portalLogoHtml(rule.displayName, rule.portalKey);
+      const isOpen = rule.portalKey === defaultOpenKey;
+      const disabledAttr = !canEdit;
+      const matchersDisabled = rule.isFallback || !canEdit;
+
+      const initial = {
+        enabled,
+        skipUnpaidReminder: !!rule.skipUnpaidReminder,
+        autoRequestInbox: !!rule.autoRequestInbox,
+        autoRequestOnImport: !!rule.autoRequestOnImport,
+        autoSendGuestPaymentLink: !!rule.autoSendGuestPaymentLink,
+        autoCancelIfUnpaid: !!rule.autoCancelIfUnpaid,
+        portalAssumedPaidPercent: String(portalPct),
+        hostDuePercent: String(hostPct),
+        depositDuePercent: optionalStr(rule.depositDuePercent),
+        depositDueDaysAfterBooking: optionalStr(rule.depositDueDaysAfterBooking),
+        treatAsPaidUntilDaysBeforeArrival: optionalStr(
+          rule.treatAsPaidUntilDaysBeforeArrival,
+        ),
+        treatAsPaidUntilDaysAfterDeparture: optionalStr(
+          rule.treatAsPaidUntilDaysAfterDeparture,
+        ),
+        hostDueByDaysBeforeArrival: optionalStr(rule.hostDueByDaysBeforeArrival),
+        hostDueByDaysAfterDeparture: optionalStr(rule.hostDueByDaysAfterDeparture),
+        overdueGraceDays: optionalStr(rule.overdueGraceDays),
+        paymentDeadlineDays: optionalStr(rule.paymentDeadlineDays),
+        guestReminderDaysBeforeDeadline: optionalStr(
+          rule.guestReminderDaysBeforeDeadline,
+        ),
+        channelMatchers: matchers,
+      };
+
       return `
-      <details class="portal-rule-details">
-        <summary class="portal-rule-summary">
-          <span class="portal-rule-summary-title">${esc(rule.displayName)}</span>
-          <span class="portal-rule-summary-meta">${esc(rule.portalKey)}${rule.isFallback ? ` · ${t('payments.portalFallback')}` : ''}</span>
-        </summary>
-      <form class="portal-rule-form" data-portal-key="${esc(rule.portalKey)}">
-        <div class="portal-rule-toggles">
-          <label class="checkbox-row">
-            <input type="checkbox" name="enabled" ${rule.enabled ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalEnabled')}</span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="skipUnpaidReminder" ${rule.skipUnpaidReminder ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalSkipReminder')}</span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="autoRequestInbox" ${rule.autoRequestInbox ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalAutoInbox')}</span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="autoRequestOnImport" ${rule.autoRequestOnImport ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalAutoImport')}</span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="autoSendGuestPaymentLink" ${rule.autoSendGuestPaymentLink ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalGuestPayLink')}</span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="autoCancelIfUnpaid" ${rule.autoCancelIfUnpaid ? 'checked' : ''} ${canEdit ? '' : 'disabled'} />
-            <span>${t('payments.portalAutoCancel')}</span>
-          </label>
+      <article class="portal-rule-card${isOpen ? ' is-open' : ''}" data-portal-key="${esc(rule.portalKey)}">
+        <button type="button" class="portal-rule-summary" aria-expanded="${isOpen ? 'true' : 'false'}">
+          <span class="portal-rule-brand">
+            ${logoHtml}
+            <span>
+              <span class="portal-rule-name">${esc(rule.displayName)}${rule.isFallback ? ` · ${esc(t('payments.portalFallback'))}` : ''}</span>
+              <span class="portal-rule-key">${esc(rule.portalKey)}</span>
+            </span>
+          </span>
+          <span class="${esc(badgeClass)}">${esc(badgeText)}</span>
+          <span class="portal-rule-summary-meta">${summaryMeta}</span>
+          <span class="portal-rule-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="portal-rule-body">
+          <form class="portal-rule-form" data-portal-key="${esc(rule.portalKey)}" data-initial="${encodeURIComponent(JSON.stringify(initial))}">
+            <div class="portal-rule-layout">
+              <div class="portal-rule-panel">
+                <h4>${esc(t('payments.portalSectionStatus'))}</h4>
+                ${switchRow({
+                  name: 'enabled',
+                  label: t('payments.portalEnabled'),
+                  help: t('payments.portalEnabledHelp'),
+                  checked: enabled,
+                  disabled: disabledAttr,
+                })}
+                <label class="portal-field">
+                  <span>${esc(t('payments.portalMatchers'))}</span>
+                  <span class="portal-input-wrap is-text">
+                    <input type="text" name="channelMatchers" value="${esc(matchers)}" ${matchersDisabled ? 'disabled' : ''} />
+                  </span>
+                  <span class="portal-field-help">${esc(t('payments.portalMatchersHelp'))}</span>
+                </label>
+                <h4>${esc(t('payments.portalSectionDeposit'))}</h4>
+                <div class="portal-rule-fields">
+                  ${numField({
+                    name: 'depositDuePercent',
+                    label: t('payments.portalDepositPercent'),
+                    help: t('payments.portalDepositPercentHelp'),
+                    value: initial.depositDuePercent,
+                    suffix: unitPercent,
+                    min: 0,
+                    max: 100,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'depositDueDaysAfterBooking',
+                    label: t('payments.portalDepositDays'),
+                    help: t('payments.portalDepositDaysHelp'),
+                    value: initial.depositDueDaysAfterBooking,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'paymentDeadlineDays',
+                    label: t('payments.portalPaymentDeadline'),
+                    help: t('payments.portalPaymentDeadlineHelp'),
+                    value: initial.paymentDeadlineDays,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'guestReminderDaysBeforeDeadline',
+                    label: t('payments.portalGuestReminder'),
+                    help: t('payments.portalGuestReminderHelp'),
+                    value: initial.guestReminderDaysBeforeDeadline,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 90,
+                    disabled: disabledAttr,
+                  })}
+                </div>
+              </div>
+              <div class="portal-rule-panel">
+                <h4>${esc(t('payments.portalSectionRecognition'))}</h4>
+                <div class="portal-rule-fields">
+                  ${numField({
+                    name: 'portalAssumedPaidPercent',
+                    label: t('payments.portalAssumed'),
+                    help: t('payments.portalAssumedHelp'),
+                    value: initial.portalAssumedPaidPercent,
+                    suffix: unitPercent,
+                    min: 0,
+                    max: 100,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'hostDuePercent',
+                    label: t('payments.portalHostDue'),
+                    help: t('payments.portalHostDueHelp'),
+                    value: initial.hostDuePercent,
+                    suffix: unitPercent,
+                    min: 0,
+                    max: 100,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'treatAsPaidUntilDaysBeforeArrival',
+                    label: t('payments.portalUnverifiedUntil'),
+                    help: t('payments.portalUnverifiedUntilHelp'),
+                    value: initial.treatAsPaidUntilDaysBeforeArrival,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'treatAsPaidUntilDaysAfterDeparture',
+                    label: t('payments.portalUnverifiedAfterCheckout'),
+                    help: t('payments.portalUnverifiedAfterCheckoutHelp'),
+                    value: initial.treatAsPaidUntilDaysAfterDeparture,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'hostDueByDaysBeforeArrival',
+                    label: t('payments.portalHostDueBy'),
+                    help: t('payments.portalHostDueByHelp'),
+                    value: initial.hostDueByDaysBeforeArrival,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'hostDueByDaysAfterDeparture',
+                    label: t('payments.portalHostDueByAfterCheckout'),
+                    help: t('payments.portalHostDueByAfterCheckoutHelp'),
+                    value: initial.hostDueByDaysAfterDeparture,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 365,
+                    disabled: disabledAttr,
+                  })}
+                  ${numField({
+                    name: 'overdueGraceDays',
+                    label: t('payments.portalOverdueGrace'),
+                    help: t('payments.portalOverdueGraceHelp'),
+                    value: initial.overdueGraceDays,
+                    suffix: unitDays,
+                    min: 0,
+                    max: 90,
+                    disabled: disabledAttr,
+                  })}
+                </div>
+              </div>
+              <div class="portal-rule-panel">
+                <h4>${esc(t('payments.portalSectionAutomation'))}</h4>
+                <div class="portal-rule-fields is-stack">
+                  ${switchRow({
+                    name: 'skipUnpaidReminder',
+                    label: t('payments.portalSkipReminder'),
+                    help: t('payments.portalSkipReminderHelp'),
+                    checked: !!rule.skipUnpaidReminder,
+                    disabled: disabledAttr,
+                  })}
+                  ${switchRow({
+                    name: 'autoRequestInbox',
+                    label: t('payments.portalAutoInbox'),
+                    help: t('payments.portalAutoInboxHelp'),
+                    checked: !!rule.autoRequestInbox,
+                    disabled: disabledAttr,
+                  })}
+                  ${switchRow({
+                    name: 'autoRequestOnImport',
+                    label: t('payments.portalAutoImport'),
+                    help: t('payments.portalAutoImportHelp'),
+                    checked: !!rule.autoRequestOnImport,
+                    disabled: disabledAttr,
+                  })}
+                  ${switchRow({
+                    name: 'autoSendGuestPaymentLink',
+                    label: t('payments.portalGuestPayLink'),
+                    help: t('payments.portalGuestPayLinkHelp'),
+                    checked: !!rule.autoSendGuestPaymentLink,
+                    disabled: disabledAttr,
+                  })}
+                  ${switchRow({
+                    name: 'autoCancelIfUnpaid',
+                    label: t('payments.portalAutoCancel'),
+                    help: t('payments.portalAutoCancelHelp'),
+                    checked: !!rule.autoCancelIfUnpaid,
+                    disabled: disabledAttr,
+                  })}
+                </div>
+              </div>
+            </div>
+            <div class="portal-rule-actions">
+              <span class="portal-rule-save-meta">✓ ${esc(t('payments.portalAllSaved'))}</span>
+              ${
+                canEdit
+                  ? `<div class="portal-rule-actions-right">
+                <button type="button" class="btn ghost btn-sm portal-rule-reset">${esc(t('payments.portalReset'))}</button>
+                <button type="submit" class="btn primary btn-sm">${esc(t('payments.portalSaveNamed', { name: rule.displayName }))}</button>
+              </div>`
+                  : ''
+              }
+            </div>
+          </form>
         </div>
-        <div class="portal-rule-grid">
-          <label>
-            <span>${t('payments.portalAssumed')}</span>
-            <input type="number" name="portalAssumedPaidPercent" min="0" max="100" value="${Number(rule.portalAssumedPaidPercent) || 0}" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalDepositPercent')}</span>
-            <input type="number" name="depositDuePercent" min="0" max="100" value="${esc(depositPct)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalDepositDays')}</span>
-            <input type="number" name="depositDueDaysAfterBooking" min="0" max="365" value="${esc(depositDays)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalHostDue')}</span>
-            <input type="number" name="hostDuePercent" min="0" max="100" value="${Number(rule.hostDuePercent) || 0}" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalUnverifiedUntil')}</span>
-            <input type="number" name="treatAsPaidUntilDaysBeforeArrival" min="0" max="365" value="${esc(unverified)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalUnverifiedAfterCheckout')}</span>
-            <input type="number" name="treatAsPaidUntilDaysAfterDeparture" min="0" max="365" value="${esc(unverifiedAfter)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalHostDueBy')}</span>
-            <input type="number" name="hostDueByDaysBeforeArrival" min="0" max="365" value="${esc(dueBy)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalHostDueByAfterCheckout')}</span>
-            <input type="number" name="hostDueByDaysAfterDeparture" min="0" max="365" value="${esc(dueByAfter)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalOverdueGrace')}</span>
-            <input type="number" name="overdueGraceDays" min="0" max="90" value="${esc(overdue)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalPaymentDeadline')}</span>
-            <input type="number" name="paymentDeadlineDays" min="0" max="365" value="${esc(paymentDeadline)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label>
-            <span>${t('payments.portalGuestReminder')}</span>
-            <input type="number" name="guestReminderDaysBeforeDeadline" min="0" max="90" value="${esc(guestReminder)}" placeholder="—" ${canEdit ? '' : 'disabled'} />
-          </label>
-          <label class="portal-rule-matchers">
-            <span>${t('payments.portalMatchers')}</span>
-            <input type="text" name="channelMatchers" value="${esc(matchers)}" ${rule.isFallback || !canEdit ? 'disabled' : ''} />
-          </label>
-        </div>
-        ${canEdit ? `<div class="form-actions"><button type="submit" class="btn primary btn-sm">${t('payments.portalSave')}</button></div>` : ''}
-      </form>
-      </details>`;
+      </article>`;
     })
     .join('');
+
+  const restoreForm = (form) => {
+    let initial;
+    try {
+      initial = JSON.parse(
+        decodeURIComponent(form.getAttribute('data-initial') || '') || '{}',
+      );
+    } catch {
+      initial = {};
+    }
+    const setCheck = (name, val) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (el) el.checked = !!val;
+    };
+    const setVal = (name, val) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (el) el.value = val == null ? '' : String(val);
+    };
+    setCheck('enabled', initial.enabled);
+    setCheck('skipUnpaidReminder', initial.skipUnpaidReminder);
+    setCheck('autoRequestInbox', initial.autoRequestInbox);
+    setCheck('autoRequestOnImport', initial.autoRequestOnImport);
+    setCheck('autoSendGuestPaymentLink', initial.autoSendGuestPaymentLink);
+    setCheck('autoCancelIfUnpaid', initial.autoCancelIfUnpaid);
+    setVal('portalAssumedPaidPercent', initial.portalAssumedPaidPercent);
+    setVal('hostDuePercent', initial.hostDuePercent);
+    setVal('depositDuePercent', initial.depositDuePercent);
+    setVal('depositDueDaysAfterBooking', initial.depositDueDaysAfterBooking);
+    setVal(
+      'treatAsPaidUntilDaysBeforeArrival',
+      initial.treatAsPaidUntilDaysBeforeArrival,
+    );
+    setVal(
+      'treatAsPaidUntilDaysAfterDeparture',
+      initial.treatAsPaidUntilDaysAfterDeparture,
+    );
+    setVal('hostDueByDaysBeforeArrival', initial.hostDueByDaysBeforeArrival);
+    setVal('hostDueByDaysAfterDeparture', initial.hostDueByDaysAfterDeparture);
+    setVal('overdueGraceDays', initial.overdueGraceDays);
+    setVal('paymentDeadlineDays', initial.paymentDeadlineDays);
+    setVal(
+      'guestReminderDaysBeforeDeadline',
+      initial.guestReminderDaysBeforeDeadline,
+    );
+    setVal('channelMatchers', initial.channelMatchers);
+  };
+
+  list.querySelectorAll('.portal-rule-summary').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.portal-rule-card');
+      if (!card) return;
+      const willOpen = !card.classList.contains('is-open');
+      list.querySelectorAll('.portal-rule-card.is-open').forEach((openCard) => {
+        openCard.classList.remove('is-open');
+        openCard
+          .querySelector('.portal-rule-summary')
+          ?.setAttribute('aria-expanded', 'false');
+      });
+      if (willOpen) {
+        card.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+
+  list.querySelectorAll('.portal-rule-reset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const form = btn.closest('form');
+      if (form) restoreForm(form);
+    });
+  });
 
   list.querySelectorAll('.portal-rule-form').forEach((form) => {
     form.addEventListener('submit', async (e) => {
@@ -8052,7 +8290,8 @@ async function loadPortalPaymentRules() {
         autoRequestOnImport:
           form.querySelector('[name="autoRequestOnImport"]')?.checked === true,
         autoSendGuestPaymentLink:
-          form.querySelector('[name="autoSendGuestPaymentLink"]')?.checked === true,
+          form.querySelector('[name="autoSendGuestPaymentLink"]')?.checked ===
+          true,
         autoCancelIfUnpaid:
           form.querySelector('[name="autoCancelIfUnpaid"]')?.checked === true,
         portalAssumedPaidPercent: Number(fd.get('portalAssumedPaidPercent')) || 0,
@@ -8060,7 +8299,9 @@ async function loadPortalPaymentRules() {
         depositDuePercent: optionalInt('depositDuePercent'),
         depositDueDaysAfterBooking: optionalInt('depositDueDaysAfterBooking'),
         paymentDeadlineDays: optionalInt('paymentDeadlineDays'),
-        guestReminderDaysBeforeDeadline: optionalInt('guestReminderDaysBeforeDeadline'),
+        guestReminderDaysBeforeDeadline: optionalInt(
+          'guestReminderDaysBeforeDeadline',
+        ),
         treatAsPaidUntilDaysBeforeArrival: optionalInt(
           'treatAsPaidUntilDaysBeforeArrival',
         ),
@@ -8095,14 +8336,9 @@ async function loadPaymentsHistory() {
     const paymentList = Array.isArray(response) ? response : (response.items || []);
     ensurePaymentsHistoryToolbar(loadPaymentsHistory);
     const s = tableState.paymentsHistory;
-    const statusFilter = s.status || 'all';
     const sourceFilter = s.source || 'all';
     const filtered = paymentList.filter((p) => {
       if (sourceFilter !== 'all' && String(p.source || '').toUpperCase() !== sourceFilter) return false;
-      if (statusFilter !== 'all') {
-        const key = paymentHistoryStatusMeta(p.status).key;
-        if (key !== statusFilter) return false;
-      }
       return true;
     });
     const data = paginateClient(filtered, 'paymentsHistory', (p) => [
@@ -9731,7 +9967,6 @@ function renderFonioActivityTable() {
         <td class="fonio-activity-col-time">${esc(formatDashboardDateTime(log.createdAt))}</td>
         <td>${fonioActionChip(log.action)}</td>
         <td>${fonioStatusPill(log.statusCode)}</td>
-        <td class="fonio-activity-col-callid"><code>${esc(meta.callId ?? '-')}</code></td>
         <td class="metadata-cell oneline" title="${esc(requestText)}">${esc(requestText)}</td>
         <td>${fonioOutcomePill(log)}</td>
         <td class="metadata-cell oneline" title="${esc(summary)}">${esc(summary)}</td>
@@ -9748,13 +9983,12 @@ function renderFonioActivityTable() {
           ${sortTh('fonioActivity', 'createdAt', t('logs.time'))}
           ${sortTh('fonioActivity', 'action', t('fonioActivity.action'))}
           <th>${t('logs.status')}</th>
-          <th>${t('fonioActivity.callId')}</th>
           <th>${t('fonioActivity.request')}</th>
           <th>${t('fonioActivity.outcome')}</th>
           <th>${t('fonioActivity.summary')}</th>
           <th>${t('fonioActivity.duration')}</th>
         </tr></thead>
-        <tbody>${rows || `<tr><td colspan="8">${esc(t('fonioActivity.none'))}</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="7">${esc(t('fonioActivity.none'))}</td></tr>`}</tbody>
       </table>`;
   }
 
@@ -12008,14 +12242,14 @@ function renderCheck24ApartmentsRows(mappings) {
                   m.ratesSyncedAt || m.availabilitySyncedAt || m.contentSyncedAt,
                 ) || t('check24.notSynced');
               return `<tr class="${state === 'ready' ? '' : state === 'archived' ? 'is-archived-row' : 'is-attention-row'}">
-                <td><strong>${esc(m.listing?.name || '—')}</strong></td>
-                <td><code>${esc(String(m.listing?.hostawayId ?? '—'))}</code></td>
-                <td><code>${esc(m.check24PropertyId || '—')}</code></td>
-                <td>${dataCell}</td>
-                <td>${state === 'archived' ? '—' : check24SyncChip('availability', m.availabilitySyncedAt)}</td>
-                <td>${state === 'archived' ? '—' : check24SyncChip('prices', m.ratesSyncedAt)}</td>
-                <td>${esc(last)}</td>
-                <td><span class="check24-status-badge ${statusCls}" title="${esc(reason)}">${esc(statusLabel)}</span></td>
+                <td data-col="property" data-label="${esc(t('check24.col.property'))}"><strong>${esc(m.listing?.name || '—')}</strong></td>
+                <td data-col="hostaway" data-label="${esc(t('check24.col.hostawayId'))}"><code>${esc(String(m.listing?.hostawayId ?? '—'))}</code></td>
+                <td data-col="check24" data-label="${esc(t('check24.col.check24Id'))}"><code>${esc(m.check24PropertyId || '—')}</code></td>
+                <td data-col="data" data-label="${esc(t('check24.col.data'))}">${dataCell}</td>
+                <td data-col="availability" data-label="${esc(t('check24.col.availability'))}">${state === 'archived' ? '—' : check24SyncChip('availability', m.availabilitySyncedAt)}</td>
+                <td data-col="prices" data-label="${esc(t('check24.col.prices'))}">${state === 'archived' ? '—' : check24SyncChip('prices', m.ratesSyncedAt)}</td>
+                <td data-col="last" data-label="${esc(t('check24.col.lastSent'))}">${esc(last)}</td>
+                <td data-col="status" data-label="${esc(t('check24.col.status'))}"><span class="check24-status-badge ${statusCls}" title="${esc(reason)}">${esc(statusLabel)}</span></td>
               </tr>`;
             })
             .join('')}

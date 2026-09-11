@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Expedia">
+  <rect width="64" height="64" rx="14" fill="#FFC72C"/>
+  <path fill="#0C2340" d="M18 20.5h28v5.2H25.6V30h18.2v5H25.6v4.3H46V44.5H18v-24z"/>
+</svg>

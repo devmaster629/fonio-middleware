@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260912w" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260913a" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -827,7 +827,18 @@
             <div class="table-wrap" id="payments-table"></div>
             <div class="payments-queue-board-foot">
               <div id="payments-info" class="table-info"></div>
-              <div id="payments-pagination" class="table-pagination"></div>
+              <div class="payments-queue-foot-right">
+                <div id="payments-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="payments-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="payments-page-size" data-table-length="payments" aria-label="Per page">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -840,17 +851,33 @@
             <div class="table-wrap" id="payments-history-table"></div>
             <div class="payments-queue-board-foot">
               <div id="payments-history-info" class="table-info"></div>
-              <div id="payments-history-pagination" class="table-pagination"></div>
+              <div class="payments-queue-foot-right">
+                <div id="payments-history-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="payments-history-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="payments-history-page-size" data-table-length="paymentsHistory" aria-label="Per page">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="payments-view-portal" class="payments-view hidden">
-          <div class="card" id="portal-rules-card">
-            <h3 data-i18n="payments.portalRulesTitle">Portal payment rules</h3>
-            <p class="field-hint" data-i18n="payments.portalRulesHint">
-              Per booking portal: share assumed paid via the portal, when our share is due, and whether to request outstanding amounts via the Hostaway inbox. Fully Paid reservations in Hostaway are never reminded.
-            </p>
+          <div class="portal-rules-shell" id="portal-rules-card">
+            <header class="portal-rules-header">
+              <div class="portal-rules-heading">
+                <h3 data-i18n="payments.portalRulesTitle">Portal payment rules</h3>
+                <p class="field-hint" data-i18n="payments.portalRulesHint">
+                  Configure how payments, deposits, reminders, and outstanding balances are handled for each booking channel.
+                </p>
+              </div>
+              <div id="portal-rules-stats" class="portal-rules-stats" aria-live="polite"></div>
+            </header>
             <div id="portal-rules-list" class="portal-rules-list"></div>
             <p id="portal-rules-readonly-hint" class="field-hint hidden" data-i18n="payments.portalRulesReadonly">Only users with Payments admin permission can edit these rules.</p>
           </div>
@@ -1698,10 +1725,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260912w"></script>
+  <script src="/admin/i18n.js?v=20260913a"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260912w"></script>
+  <script src="/admin/app.js?v=20260913a"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
