@@ -703,7 +703,7 @@ function ensurePaymentsToolbar(loader) {
   const tabKey = 'payments';
   const s = tableState[tabKey];
   const lengthSel = document.querySelector(`[data-table-length="${tabKey}"]`);
-  if (el.dataset.toolbarInit === 'payments-v6') {
+  if (el.dataset.toolbarInit === 'payments-v7') {
     const dateSel = el.querySelector('[data-payment-filter="date"]');
     const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
     if (dateSel) dateSel.value = s.date || 'all';
@@ -711,18 +711,9 @@ function ensurePaymentsToolbar(loader) {
     if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
     return;
   }
-  el.dataset.toolbarInit = 'payments-v6';
+  el.dataset.toolbarInit = 'payments-v7';
   el.innerHTML = `
     <div class="payments-toolbar-filters">
-      <label>
-        <span class="payments-filter-label">${t('payments.dateFilter')}</span>
-        <select data-payment-filter="date">
-          <option value="all">${t('payments.filterAllTime')}</option>
-          <option value="24h">${t('payments.filter24h')}</option>
-          <option value="7d">${t('payments.filter7d')}</option>
-          <option value="30d">${t('payments.filter30d')}</option>
-        </select>
-      </label>
       <label class="payments-search-field payments-reconcile-search-field">
         <span class="payments-filter-label">${t('table.search')}</span>
         <span class="payments-search-wrap">
@@ -732,6 +723,15 @@ function ensurePaymentsToolbar(loader) {
           </svg>
           <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" placeholder="${esc(t('payments.searchPlaceholder'))}" />
         </span>
+      </label>
+      <label>
+        <span class="payments-filter-label">${t('payments.dateFilter')}</span>
+        <select data-payment-filter="date">
+          <option value="all">${t('payments.filterAllTime')}</option>
+          <option value="24h">${t('payments.filter24h')}</option>
+          <option value="7d">${t('payments.filter7d')}</option>
+          <option value="30d">${t('payments.filter30d')}</option>
+        </select>
       </label>
     </div>
   `;
