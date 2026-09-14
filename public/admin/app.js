@@ -212,7 +212,7 @@ function updateMobilePageTitle(tab) {
 }
 
 function enhanceResponsiveTables(root = document) {
-  root.querySelectorAll('.table-wrap table, #payments-table table').forEach((table) => {
+  root.querySelectorAll('.table-wrap table:not(.no-responsive-stack), #payments-table table').forEach((table) => {
     const headers = [...table.querySelectorAll('thead th')].map((th) => {
       const raw = th.getAttribute('data-label') || th.textContent || '';
       return raw.replace(/\s*[▲▼]\s*/g, '').trim();
@@ -364,10 +364,11 @@ function applyRoleUi() {
   const canWebhooks = hasPermission('WEBHOOKS_MANAGE');
 
   const syncBtn = $('#sync-btn');
-  syncBtn?.toggleAttribute('disabled', !canSyncRun);
-  if (syncBtn) {
-    syncBtn.title = canSyncRun ? '' : t('dashboard.syncReadonly');
-  }
+  const syncBtnCard = $('#sync-btn-card');
+  [syncBtn, syncBtnCard].forEach((btn) => {
+    btn?.toggleAttribute('disabled', !canSyncRun);
+    if (btn) btn.title = canSyncRun ? '' : t('dashboard.syncReadonly');
+  });
   $('#check24-sync-btn')?.toggleAttribute('disabled', !canSyncRun);
   $('#check24-poll-btn')?.toggleAttribute('disabled', !canSyncRun);
   $('#check24-webhook-btn')?.toggleAttribute('disabled', !canWebhooks);
@@ -1203,19 +1204,11 @@ $$('.payments-subnav-btn').forEach((btn) => {
   });
 });
 
-$('#auto-sync-enabled')?.addEventListener('change', () => {
-  syncSettingsDirty = true;
-});
-$('#auto-sync-interval')?.addEventListener('change', () => {
-  syncSettingsDirty = true;
-});
-
-$('#sync-settings-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+async function saveSyncSettings({ silent = false } = {}) {
   const intervalMinutes = Number($('#auto-sync-interval').value);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5 || intervalMinutes > 1440) {
     notify.error(t('dashboard.autoSyncIntervalInvalid'));
-    return;
+    return false;
   }
   try {
     await api('/sync/settings', {
@@ -1226,17 +1219,34 @@ $('#sync-settings-form').addEventListener('submit', async (e) => {
       }),
     });
     syncSettingsDirty = false;
-    notify.success(t('dashboard.autoSyncSaved'));
+    if (!silent) notify.success(t('dashboard.autoSyncSaved'));
     loadDashboard();
+    return true;
   } catch (ex) {
     notify.error(ex.message);
+    return false;
   }
+}
+
+$('#auto-sync-enabled')?.addEventListener('change', () => {
+  syncSettingsDirty = true;
+});
+$('#auto-sync-interval')?.addEventListener('change', () => {
+  syncSettingsDirty = true;
 });
 
-$('#sync-btn').addEventListener('click', async () => {
+$('#sync-settings-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await saveSyncSettings();
+});
+
+async function runHostawaySyncNow() {
   const el = $('#sync-result');
   if (el) el.innerHTML = `<p>${t('dashboard.syncRunning')}</p>`;
-  $('#sync-btn').disabled = true;
+  const buttons = [$('#sync-btn'), $('#sync-btn-card')].filter(Boolean);
+  buttons.forEach((btn) => {
+    btn.disabled = true;
+  });
   try {
     const data = await api('/sync', { method: 'POST' });
     if (!data.started) {
@@ -1251,11 +1261,40 @@ $('#sync-btn').addEventListener('click', async () => {
     if (el) el.innerHTML = `<p class="error">${t('dashboard.syncError', { message: ex.message })}</p>`;
     notify.error(t('dashboard.syncError', { message: ex.message }));
   } finally {
-    $('#sync-btn').disabled = !hasPermission('SYNC_RUN');
+    const canRun = hasPermission('SYNC_RUN');
+    buttons.forEach((btn) => {
+      btn.disabled = !canRun;
+    });
   }
+}
+
+$('#sync-btn')?.addEventListener('click', () => {
+  runHostawaySyncNow();
+});
+$('#sync-btn-card')?.addEventListener('click', () => {
+  runHostawaySyncNow();
 });
 
-$('#webhook-refresh-btn')?.addEventListener('click', () => loadDashboard());
+function bindWebhookPageSize() {
+  const lengthSel = $('#webhooks-page-size');
+  if (!lengthSel || lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.value = String(tableState.webhooks.pageSize || 10);
+  lengthSel.addEventListener('change', (e) => {
+    tableState.webhooks.pageSize = Number(e.target.value) || 10;
+    tableState.webhooks.page = 1;
+    renderWebhookDashboard(cachedWebhookJobs);
+  });
+}
+
+$('#webhook-filter-search')?.addEventListener('input', (e) => {
+  clearTimeout(searchTimers.webhooks);
+  searchTimers.webhooks = setTimeout(() => {
+    tableState.webhooks.search = e.target.value || '';
+    tableState.webhooks.page = 1;
+    renderWebhookDashboard(cachedWebhookJobs);
+  }, 250);
+});
 
 ['webhook-filter-range', 'webhook-filter-event', 'webhook-filter-result', 'trend-filter-range'].forEach((id) => {
   $(`#${id}`)?.addEventListener('change', (e) => {
@@ -1309,10 +1348,21 @@ function classifyWebhookStatus(job) {
 }
 
 function webhookStatusBadge(kind) {
-  if (kind === 'success') return `<span class="status-badge ok">✓ ${t('dashboard.status.success')}</span>`;
-  if (kind === 'failed') return `<span class="status-badge err">✕ ${t('dashboard.status.failed')}</span>`;
+  if (kind === 'success') return `<span class="status-badge ok">${t('dashboard.status.success')}</span>`;
+  if (kind === 'failed') return `<span class="status-badge err">${t('dashboard.status.failed')}</span>`;
   if (kind === 'running') return `<span class="status-badge run">${t('dashboard.status.running')}</span>`;
-  return `<span class="status-badge warn">! ${t('dashboard.status.warning')}</span>`;
+  return `<span class="status-badge warn">${t('dashboard.status.warning')}</span>`;
+}
+
+function formatNextSyncLabel(nextAt, intervalMinutes) {
+  if (!nextAt) return `~${intervalMinutes} min`;
+  const ms = nextAt.getTime() - Date.now();
+  const absMin = Math.max(0, Math.round(Math.abs(ms) / 60000));
+  const when = formatDashboardDateTime(nextAt);
+  if (ms <= 0) return t('dashboard.nextSyncDue', { time: when });
+  if (absMin < 60) return t('dashboard.nextSyncInMin', { time: when, n: absMin });
+  const hours = Math.round(absMin / 60);
+  return t('dashboard.nextSyncInHours', { time: when, n: hours });
 }
 
 function filterWebhookJobs(jobs) {
@@ -1512,6 +1562,14 @@ function renderWebhookDashboard(allJobs) {
   populateWebhookEventFilter(allJobs);
   const filtered = filterWebhookJobs(allJobs);
   renderWebhookTrend(filtered);
+  bindWebhookPageSize();
+
+  const searchInput = $('#webhook-filter-search');
+  if (searchInput && document.activeElement !== searchInput) {
+    searchInput.value = tableState.webhooks.search || '';
+  }
+  const lengthSel = $('#webhooks-page-size');
+  if (lengthSel) lengthSel.value = String(tableState.webhooks.pageSize || 10);
 
   const webhookData = paginateClient(filtered, 'webhooks', (w) =>
     [w.startedAt, w.jobType, w.status, JSON.stringify(w.metadata || {}), w.error || ''].join(' '),
@@ -1524,37 +1582,76 @@ function renderWebhookDashboard(allJobs) {
         kind === 'success'
           ? `${meta.listings ?? 0} ${t('dashboard.listings')}, ${meta.reservations ?? 0} ${t('dashboard.reservations')}`
           : w.error || w.status;
+      const detail =
+        kind === 'success'
+          ? t('dashboard.webhookPayloadProcessed')
+          : w.error || w.status;
       const resId = meta.reservationId || meta.hostawayReservationId;
       const eventLabel = resId
         ? `${webhookEventName(w)} · #${resId}`
         : webhookEventName(w);
-      return `<tr>
-      <td>${formatDashboardDateTime(w.startedAt)}</td>
-      <td>${esc(eventLabel)}</td>
-      <td>${esc(String(result))}</td>
-      <td>${webhookStatusBadge(kind)}</td>
-    </tr>`;
-    })
+      return {
+        time: formatDashboardDateTime(w.startedAt),
+        eventLabel,
+        result: String(result),
+        detail: String(detail),
+        badge: webhookStatusBadge(kind),
+      };
+    });
+
+  const tableRows = whRows
+    .map(
+      (row) => `<tr>
+      <td>${row.time}</td>
+      <td>${esc(row.eventLabel)}</td>
+      <td>${esc(row.result)}</td>
+      <td>${row.badge}</td>
+    </tr>`,
+    )
     .join('');
+
+  const listRows = whRows
+    .map(
+      (row) => `
+      <article class="webhook-feed-item">
+        <span class="webhook-feed-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51 15.42 17.49"/><path d="m15.41 6.51-6.82 3.98"/></svg>
+        </span>
+        <div class="webhook-feed-copy">
+          <div class="webhook-feed-title">${esc(row.eventLabel)}</div>
+          <div class="webhook-feed-time">${row.time}</div>
+        </div>
+        <div class="webhook-feed-status">
+          ${row.badge}
+          <div class="webhook-feed-detail">${esc(row.detail)}</div>
+        </div>
+      </article>`,
+    )
+    .join('');
+
   $('#webhook-activity').innerHTML = `
-    <table><thead><tr>
-      <th>${t('dashboard.webhookCol.time')}</th>
-      <th>${t('dashboard.webhookCol.event')}</th>
-      <th>${t('dashboard.webhookCol.result')}</th>
-      <th>${t('dashboard.webhookCol.status')}</th>
-    </tr></thead>
-    <tbody>${whRows || `<tr><td colspan="4">${t('dashboard.webhookEmpty')}</td></tr>`}</tbody></table>`;
+    <div class="webhook-desktop-table">
+      <table class="no-responsive-stack"><thead><tr>
+        <th>${t('dashboard.webhookCol.time')}</th>
+        <th>${t('dashboard.webhookCol.event')}</th>
+        <th>${t('dashboard.webhookCol.result')}</th>
+        <th>${t('dashboard.webhookCol.status')}</th>
+      </tr></thead>
+      <tbody>${tableRows || `<tr><td colspan="4">${t('dashboard.webhookEmpty')}</td></tr>`}</tbody></table>
+    </div>
+    <div class="webhook-feed-list">
+      ${listRows || `<div class="webhook-feed-empty">${t('dashboard.webhookEmpty')}</div>`}
+    </div>`;
   renderTableInfo('#webhooks-info', webhookData, webhookData.maxTotal);
   renderPagination('#webhooks-pagination', webhookData, 'webhooks', () =>
     renderWebhookDashboard(cachedWebhookJobs),
   );
-  scheduleEnhanceResponsiveTables();
 }
 
 function healthBadge(state) {
-  if (state === 'ok') return `<span class="health-badge ok">✓ ${t('dashboard.health.healthy')}</span>`;
-  if (state === 'warn') return `<span class="health-badge warn">! ${t('dashboard.health.degraded')}</span>`;
-  return `<span class="health-badge err">✕ ${t('dashboard.health.down')}</span>`;
+  if (state === 'ok') return `<span class="health-badge ok">${t('dashboard.health.operational')}</span>`;
+  if (state === 'warn') return `<span class="health-badge warn">${t('dashboard.health.degraded')}</span>`;
+  return `<span class="health-badge err">${t('dashboard.health.down')}</span>`;
 }
 
 function dashStatIcon(kind) {
@@ -1614,6 +1711,18 @@ async function loadDashboard() {
       : '';
   }
 
+  const syncBadge = $('#hostaway-sync-badge');
+  if (syncBadge) {
+    syncBadge.className = `dash-synced-badge ${inProgress ? 'is-running' : syncOk ? 'is-ok' : syncFailed ? 'is-error' : 'is-idle'}`;
+    syncBadge.textContent = inProgress
+      ? t('dashboard.badge.syncing')
+      : syncOk
+        ? t('dashboard.badge.synced')
+        : syncFailed
+          ? t('dashboard.badge.failed')
+          : t('dashboard.badge.idle');
+  }
+
   $('#stats').innerHTML = `
     <div class="stat-card dash-stat">
       <div class="dash-stat-top">
@@ -1668,9 +1777,10 @@ async function loadDashboard() {
     const base = last?.finishedAt || last?.startedAt;
     const intervalMs = (settings.intervalMinutes || 30) * 60 * 1000;
     const nextAt = base ? new Date(new Date(base).getTime() + intervalMs) : null;
-    $('#auto-sync-hint').textContent = nextAt
-      ? formatDashboardDateTime(nextAt)
-      : `~${settings.intervalMinutes} min`;
+    $('#auto-sync-hint').textContent = formatNextSyncLabel(
+      nextAt,
+      settings.intervalMinutes || 30,
+    );
   } else {
     $('#auto-sync-hint').textContent = t('dashboard.autoSyncOff');
   }
@@ -1691,15 +1801,29 @@ async function loadDashboard() {
     else check24State = 'err';
   }
 
-  $('#system-health-list').innerHTML = [
+  const healthItems = [
     ['hostaway', hostawayState],
     ['webhooks', webhookState],
     ['fonio', fonioState],
     ['check24', check24State],
-  ]
+  ];
+  const allHealthOk = healthItems.every(([, state]) => state === 'ok');
+  const anyHealthDown = healthItems.some(([, state]) => state === 'err');
+  const healthSummary = $('#system-health-summary');
+  if (healthSummary) {
+    healthSummary.className = `dash-health-summary ${allHealthOk ? 'is-ok' : anyHealthDown ? 'is-error' : 'is-warn'}`;
+    healthSummary.textContent = allHealthOk
+      ? t('dashboard.health.allOperational')
+      : anyHealthDown
+        ? t('dashboard.health.someDown')
+        : t('dashboard.health.someDegraded');
+  }
+
+  $('#system-health-list').innerHTML = healthItems
     .map(
       ([key, state]) => `
     <div class="health-row">
+      <span class="health-dot ${state}" aria-hidden="true"></span>
       <div class="health-copy">
         <div class="health-name">${t(`dashboard.health.${key}`)}</div>
         <div class="health-desc">${t(`dashboard.health.${key}Desc`)}</div>

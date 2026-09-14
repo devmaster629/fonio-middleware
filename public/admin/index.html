@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260914d" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260914h" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -119,39 +119,52 @@
         <div class="stats" id="stats"></div>
         <div class="dashboard-mid-grid">
           <div class="card dash-panel" id="sync-settings-card">
-            <div class="dash-panel-header">
-              <span class="dash-panel-icon" aria-hidden="true">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              </span>
-              <h3 data-i18n="dashboard.hostawaySync">Hostaway synchronization</h3>
+            <div class="dash-panel-header sync-card-header">
+              <span class="dash-panel-icon dash-hostaway-mark" aria-hidden="true">H</span>
+              <div class="dash-panel-title-wrap">
+                <h3 data-i18n="dashboard.hostawaySync">Hostaway synchronization</h3>
+                <p class="dash-panel-subtitle" data-i18n="dashboard.hostawaySyncHint">Keep your data in sync with Hostaway.</p>
+              </div>
+              <span id="hostaway-sync-badge" class="dash-synced-badge">Synced</span>
             </div>
             <div class="dash-panel-body">
               <form id="sync-settings-form" class="sync-settings-form-v2">
                 <div class="setting-row">
+                  <span class="setting-row-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                  </span>
                   <div class="setting-copy">
-                    <div class="setting-title" data-i18n="dashboard.autoSyncEnable">Automatic synchronization</div>
-                    <div class="setting-desc" data-i18n="dashboard.autoSyncEnableHint">Keep data in sync automatically</div>
+                    <div class="setting-title" data-i18n="dashboard.autoSyncEnable">Auto-sync</div>
+                    <div class="setting-desc" data-i18n="dashboard.autoSyncEnableHint">Automatically sync data with Hostaway</div>
                   </div>
-                  <label class="toggle-switch" aria-label="Automatic synchronization">
+                  <label class="toggle-switch" aria-label="Auto-sync">
                     <input type="checkbox" id="auto-sync-enabled" />
                     <span class="toggle-slider" aria-hidden="true"></span>
                   </label>
                 </div>
                 <div class="setting-row">
+                  <span class="setting-row-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </span>
                   <div class="setting-copy">
                     <div class="setting-title" data-i18n="dashboard.autoSyncInterval">Sync interval</div>
-                    <div class="setting-desc" data-i18n="dashboard.autoSyncIntervalHint">How often data is synchronized</div>
                   </div>
                   <select id="auto-sync-interval" class="setting-control"></select>
                 </div>
-                <div class="setting-row">
+                <div class="setting-row setting-row-last">
+                  <span class="setting-row-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </span>
                   <div class="setting-copy">
                     <div class="setting-title" data-i18n="dashboard.nextSync">Next sync</div>
-                    <div class="setting-desc" data-i18n="dashboard.nextSyncHint">Upcoming automatic synchronization</div>
                   </div>
                   <div id="auto-sync-hint" class="setting-value"></div>
                 </div>
-                <button type="submit" class="btn primary" data-i18n="dashboard.autoSyncSave">Save settings</button>
+                <button type="submit" class="btn primary sync-settings-save-btn" data-i18n="dashboard.autoSyncSave">Save settings</button>
+                <button id="sync-btn-card" class="btn primary sync-now-btn sync-now-btn-card" type="button">
+                  <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                  <span data-i18n="dashboard.syncBtn">Sync now</span>
+                </button>
               </form>
               <p id="sync-settings-readonly-hint" class="field-hint hidden" data-i18n="dashboard.autoSyncReadonly">Only EDITOR or ADMIN can change sync settings.</p>
             </div>
@@ -162,6 +175,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
               </span>
               <h3 data-i18n="dashboard.systemHealth">System health</h3>
+              <span id="system-health-summary" class="dash-health-summary"></span>
             </div>
             <div class="dash-panel-body">
               <div id="system-health-list" class="health-list"></div>
@@ -179,6 +193,10 @@
             </div>
             <div class="dash-panel-body">
               <div class="webhook-filters" id="webhooks-filters">
+                <label class="webhook-search-field">
+                  <span class="sr-only" data-i18n="table.search">Search</span>
+                  <input type="search" id="webhook-filter-search" autocomplete="off" data-i18n-placeholder="dashboard.webhookSearchPlaceholder" placeholder="Search webhooks…" />
+                </label>
                 <select id="webhook-filter-range" aria-label="Time range">
                   <option value="24h" data-i18n="dashboard.filter.24h">Last 24 hours</option>
                   <option value="7d" data-i18n="dashboard.filter.7d">Last 7 days</option>
@@ -193,15 +211,22 @@
                   <option value="failed" data-i18n="dashboard.filter.failed">Failed</option>
                   <option value="warning" data-i18n="dashboard.filter.warning">Warnings</option>
                 </select>
-                <button type="button" class="webhook-refresh-btn" id="webhook-refresh-btn">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                  <span data-i18n="dashboard.refresh">Refresh</span>
-                </button>
               </div>
-              <div class="table-wrap" id="webhook-activity"></div>
+              <div class="table-wrap webhook-activity-wrap" id="webhook-activity"></div>
               <div class="card-footer-row">
                 <div id="webhooks-info" class="table-info"></div>
-                <div id="webhooks-pagination" class="table-pagination"></div>
+                <div class="webhooks-footer-right">
+                  <div id="webhooks-pagination" class="table-pagination"></div>
+                  <label class="table-page-size" for="webhooks-page-size">
+                    <span class="sr-only" data-i18n="table.show">Show</span>
+                    <select id="webhooks-page-size" data-table-length="webhooks" aria-label="Per page">
+                      <option value="10">10 / page</option>
+                      <option value="25">25 / page</option>
+                      <option value="50">50 / page</option>
+                      <option value="100">100 / page</option>
+                    </select>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -1726,10 +1751,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260914d"></script>
+  <script src="/admin/i18n.js?v=20260914h"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260914d"></script>
+  <script src="/admin/app.js?v=20260914h"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
