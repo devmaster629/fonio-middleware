@@ -501,6 +501,8 @@ export class HostawaySyncService implements OnModuleInit {
     remote: HostawayReservation,
     listing: Pick<Listing, 'id'>,
   ) {
+    const remotePhone = remote.phone?.trim() || null;
+    const remoteEmail = remote.guestEmail?.trim() || null;
     const base = {
       listingId: listing.id,
       arrivalDate: new Date(remote.arrivalDate),
@@ -510,11 +512,11 @@ export class HostawaySyncService implements OnModuleInit {
       children: remote.children,
       pets: remote.pets,
       status: remote.status,
-      guestPhone: remote.phone?.trim() || null,
-      guestEmail: remote.guestEmail?.trim() || null,
+      guestPhone: remotePhone,
+      guestEmail: remoteEmail,
       guestName: remote.guestName?.trim() || null,
-      phoneHash: remote.phone ? hashPhoneForStorage(remote.phone) : null,
-      emailHash: remote.guestEmail ? hashValue(remote.guestEmail) : null,
+      phoneHash: remotePhone ? hashPhoneForStorage(remotePhone) : null,
+      emailHash: remoteEmail ? hashValue(remoteEmail) : null,
       guestNameMasked: remote.guestName ? maskGuestName(remote.guestName) : null,
       guestFirstNameHint:
         remote.guestFirstName?.trim() ||
@@ -544,13 +546,25 @@ export class HostawaySyncService implements OnModuleInit {
         : {}),
     };
 
+    // Preserve locally stored contact when Hostaway has none yet (CHECK24 defers
+    // email/phone on Hostaway until payment so Anreise automations cannot fire).
+    const update: Record<string, unknown> = { ...base };
+    if (!remoteEmail) {
+      delete update.guestEmail;
+      delete update.emailHash;
+    }
+    if (!remotePhone) {
+      delete update.guestPhone;
+      delete update.phoneHash;
+    }
+
     return {
       create: {
         hostawayId: remote.id,
         ...base,
         hostawayConversationId: null as number | null,
       },
-      update: base,
+      update,
     };
   }
 

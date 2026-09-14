@@ -83,6 +83,10 @@ describe('Check24BookingService cancellations', () => {
     expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
       'listing-1',
       172749,
+      expect.objectContaining({
+        forceOpenFrom: '2026-09-01',
+        forceOpenTo: '2026-09-03',
+      }),
     );
   });
 
@@ -100,6 +104,10 @@ describe('Check24BookingService cancellations', () => {
     expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
       'listing-1',
       172749,
+      expect.objectContaining({
+        forceOpenFrom: '2026-09-01',
+        forceOpenTo: '2026-09-03',
+      }),
     );
     expect(result).toMatchObject({
       processed: true,
@@ -120,6 +128,10 @@ describe('Check24BookingService cancellations', () => {
     expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
       'listing-1',
       172749,
+      expect.objectContaining({
+        forceOpenFrom: '2026-09-01',
+        forceOpenTo: '2026-09-03',
+      }),
     );
     expect(result).toMatchObject({
       processed: true,
@@ -156,6 +168,10 @@ describe('Check24BookingService cancellations', () => {
       check24PropertyId: 'ha-172749',
       status: 'booked',
     });
+    prisma.reservation.findUnique.mockResolvedValue({
+      arrivalDate: new Date('2026-09-01T00:00:00.000Z'),
+      departureDate: new Date('2026-09-03T00:00:00.000Z'),
+    });
     check24.cancelBooking.mockResolvedValue({});
 
     const result = await service.propagateHostawayCancellation(62144308, {
@@ -173,6 +189,10 @@ describe('Check24BookingService cancellations', () => {
     expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
       'listing-1',
       172749,
+      expect.objectContaining({
+        forceOpenFrom: '2026-09-01',
+        forceOpenTo: '2026-09-03',
+      }),
     );
     expect(result).toMatchObject({
       processed: true,

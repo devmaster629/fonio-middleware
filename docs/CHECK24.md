@@ -102,8 +102,10 @@ Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBo
 
 ## Pre-check-in / Anreise after payment
 
-CHECK24 imports create the Hostaway reservation **without** guest email/phone first (so Hostaway “at reservation” email/WhatsApp automations have no recipient), then attach contact and send the **payment request** only.
+CHECK24 imports create the Hostaway reservation **without** guest email/phone on Hostaway, and **do not** attach contact until the first qualifying payment is applied. Contact is stored locally only so Hostaway “at reservation” email/WhatsApp automations have no recipient. After payment, the middleware pushes contact to Hostaway and then sends Anreise / check-in templates.
 
-Anreise / check-in templates are sent by the middleware **after the first qualifying payment** is applied (Qonto/PayPal match). Fonio “send check-in info” is also gated until payment.
+**Still required in Hostaway:** set Inbox automations that send pre-check-in on “reservation” to also require **Payment status = paid** (or disable them for the CHECK24 channel / Buchungsportal=CHECK24). Channel-only rules that do not need email can still fire — those must be payment-gated in Hostaway.
 
-**Still required in Hostaway:** set the Inbox automation that sends pre-check-in on “reservation” to also require **Payment status = paid** (or disable it for the CHECK24 channel). ChargeAutomation rules that fire on new bookings should be aligned the same way.
+## Cancellation → availability
+
+After cancel, the middleware syncs the Hostaway calendar, then **force-opens** the cancelled stay nights `[dateFrom, dateTo)` in the local cache before pushing to CHECK24. This avoids the Hostaway calendar lag where a push immediately after cancel still reported those nights as closed. A follow-up push runs ~45s later (`CHECK24_CANCEL_AVAILABILITY_RETRY_MS`).

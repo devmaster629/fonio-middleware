@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawayConversationService } from '../hostaway/hostaway-conversation.service';
 import { HostawayMessagingService } from '../hostaway/hostaway-messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +14,7 @@ export class GuestCheckinReleaseService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly hostaway: HostawayClient,
     private readonly conversations: HostawayConversationService,
     private readonly messaging: HostawayMessagingService,
   ) {}
@@ -36,7 +38,45 @@ export class GuestCheckinReleaseService {
   }
 
   /**
-   * After a payment is booked: send Anreiseinfo once (email via Hostaway template).
+   * CHECK24 imports keep email/phone off Hostaway until payment (so Anreise
+   * automations have no recipient). Push stored local contact to Hostaway once paid.
+   */
+  async attachStoredGuestContactAfterPayment(
+    reservationHostawayId: number,
+  ): Promise<{ attached: boolean; reason?: string }> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: reservationHostawayId },
+      select: { guestEmail: true, guestPhone: true },
+    });
+    if (!reservation) return { attached: false, reason: 'reservation_not_found' };
+
+    const guestEmail = reservation.guestEmail?.trim() || undefined;
+    const guestPhone = reservation.guestPhone?.trim() || undefined;
+    if (!guestEmail && !guestPhone) {
+      return { attached: false, reason: 'no_local_contact' };
+    }
+
+    try {
+      await this.hostaway.updateReservation(reservationHostawayId, {
+        ...(guestEmail ? { guestEmail } : {}),
+        ...(guestPhone ? { phone: guestPhone } : {}),
+      });
+      this.logger.log(
+        `Attached stored guest contact to Hostaway reservation ${reservationHostawayId} after payment`,
+      );
+      return { attached: true };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to attach guest contact after payment for ${reservationHostawayId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return { attached: false, reason: 'hostaway_update_failed' };
+    }
+  }
+
+  /**
+   * After a payment is booked: attach deferred contact, then send Anreiseinfo once.
    */
   async releaseAfterPayment(reservationHostawayId: number): Promise<{
     sent: boolean;
@@ -57,6 +97,8 @@ export class GuestCheckinReleaseService {
     if (!paid) {
       return { sent: false, reason: 'payment_required' };
     }
+
+    await this.attachStoredGuestContactAfterPayment(reservationHostawayId);
 
     const template = await this.messaging.resolveCheckinTemplate({
       reservationHostawayId: reservation.hostawayId,

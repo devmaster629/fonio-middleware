@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
+import {
+  hashPhoneForStorage,
+  hashValue,
+} from '../common/utils/crypto.util';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -129,8 +133,10 @@ export class Check24BookingService {
     const guestPhone = guest.phone?.trim() || undefined;
 
     // Create WITHOUT guest email/phone so Hostaway "at reservation" automations
-    // (pre-check-in / Anreise / WhatsApp) have no recipient when they fire.
-    // Contact is attached immediately after create, then we send the payment request.
+    // (pre-check-in / Anreise / WhatsApp) have no recipient.
+    // Do NOT attach contact on Hostaway until the deposit is paid — previous
+    // "attach immediately after create" undid this and re-triggered Anreise.
+    // Contact is stored locally only; GuestCheckinRelease attaches it after payment.
     const payload: Record<string, unknown> = {
       channelId,
       listingMapId: mapping.listing.hostawayId,
@@ -154,21 +160,6 @@ export class Check24BookingService {
     const created = await this.hostaway.createReservation(payload);
     await this.applyHostawayCheck24Labels(created.id, booking.bookingId);
 
-    if (guestEmail || guestPhone) {
-      try {
-        await this.hostaway.updateReservation(created.id, {
-          ...(guestEmail ? { guestEmail } : {}),
-          ...(guestPhone ? { phone: guestPhone } : {}),
-        });
-      } catch (err) {
-        this.logger.warn(
-          `CHECK24 booking ${booking.bookingId}: attaching guest contact after create failed: ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-    }
-
     await this.hostawaySync.syncSingleReservation(created.id).catch((err) => {
       this.logger.warn(
         `CHECK24 booking ${booking.bookingId} created Hostaway ${created.id} but local sync failed: ${
@@ -176,6 +167,29 @@ export class Check24BookingService {
         }`,
       );
     });
+
+    // Keep contact only in our DB until payment (Hostaway sync must not wipe this).
+    if (guestEmail || guestPhone) {
+      try {
+        await this.prisma.reservation.updateMany({
+          where: { hostawayId: created.id },
+          data: {
+            ...(guestEmail
+              ? { guestEmail, emailHash: hashValue(guestEmail) }
+              : {}),
+            ...(guestPhone
+              ? { guestPhone, phoneHash: hashPhoneForStorage(guestPhone) }
+              : {}),
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `CHECK24 booking ${booking.bookingId}: storing local guest contact failed: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
 
     const paymentResult = await this.guestPayments
       .requestPaymentOnImport(created.id, {
@@ -276,6 +290,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         linked.check24PropertyId,
         linked.check24BookingId,
+        await this.stayDatesForHostawayReservation(hostawayReservationId),
       );
       return {
         processed: true,
@@ -307,6 +322,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         linked.check24PropertyId,
         linked.check24BookingId,
+        await this.stayDatesForHostawayReservation(hostawayReservationId),
       );
       this.logger.log(
         `CHECK24 booking ${linked.check24BookingId} cancelled after Hostaway ${hostawayReservationId}`,
@@ -331,6 +347,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         linked.check24PropertyId,
         linked.check24BookingId,
+        await this.stayDatesForHostawayReservation(hostawayReservationId),
       );
       return {
         processed: false,
@@ -431,6 +448,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
+        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
       );
       return {
         processed: true,
@@ -455,9 +473,11 @@ export class Check24BookingService {
       });
       // Always reopen CHECK24 dates even if Hostaway was already cancelled
       // (previous bug: already_cancelled skipped the availability push).
+      // Force-open the stay range: Hostaway calendar is often still closed right after cancel.
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
+        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
       );
       return {
         processed: true,
@@ -490,6 +510,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
+        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
       );
 
       return {
@@ -527,6 +548,7 @@ export class Check24BookingService {
   private async pushAvailabilityForProperty(
     check24PropertyId: string,
     check24BookingId: string,
+    forceOpenStay?: { dateFrom?: string; dateTo?: string } | null,
   ) {
     const mapping = await this.prisma.check24PropertyMapping.findUnique({
       where: { check24PropertyId },
@@ -542,6 +564,7 @@ export class Check24BookingService {
       mapping.listing.id,
       mapping.listing.hostawayId,
       check24BookingId,
+      forceOpenStay,
     );
   }
 
@@ -549,9 +572,13 @@ export class Check24BookingService {
     listingId: string,
     hostawayListingId: number,
     check24BookingId: string,
+    forceOpenStay?: { dateFrom?: string; dateTo?: string } | null,
   ) {
     const result = await this.check24Sync
-      .refreshAndPushAvailability(listingId, hostawayListingId)
+      .refreshAndPushAvailability(listingId, hostawayListingId, {
+        forceOpenFrom: forceOpenStay?.dateFrom,
+        forceOpenTo: forceOpenStay?.dateTo,
+      })
       .catch((err) => {
         this.logger.warn(
           `CHECK24 availability push after booking ${check24BookingId} failed: ${
@@ -565,6 +592,20 @@ export class Check24BookingService {
         `CHECK24 dates not pushed for booking ${check24BookingId} (listing ${hostawayListingId}): ${result.reason ?? 'unknown'}`,
       );
     }
+  }
+
+  private async stayDatesForHostawayReservation(
+    hostawayReservationId: number,
+  ): Promise<{ dateFrom?: string; dateTo?: string } | null> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: hostawayReservationId },
+      select: { arrivalDate: true, departureDate: true },
+    });
+    if (!reservation) return null;
+    return {
+      dateFrom: reservation.arrivalDate.toISOString().slice(0, 10),
+      dateTo: reservation.departureDate.toISOString().slice(0, 10),
+    };
   }
 
   private async applyHostawayCheck24Labels(

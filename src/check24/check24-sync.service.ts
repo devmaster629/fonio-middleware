@@ -321,10 +321,21 @@ export class Check24SyncService {
   /**
    * After a booking is imported or cancelled, refresh the Hostaway calendar
    * and push updated availability to CHECK24 immediately.
+   *
+   * When cancelling, pass forceOpenFrom/forceOpenTo (arrival / departure YMD).
+   * Hostaway's calendar often still reports those nights closed for a while after
+   * cancel — without an optimistic reopen, CHECK24 receives a push that keeps
+   * the cancelled stay blocked.
    */
   async refreshAndPushAvailability(
     listingId: string,
     hostawayListingId: number,
+    options?: {
+      forceOpenFrom?: string;
+      forceOpenTo?: string;
+      /** When true, do not schedule another delayed push (used by the follow-up itself). */
+      skipFollowUp?: boolean;
+    },
   ): Promise<{ pushed: boolean; reason?: string }> {
     if (!this.isConfigured()) {
       return { pushed: false, reason: 'check24_not_configured' };
@@ -354,10 +365,35 @@ export class Check24SyncService {
         format(today),
         format(end),
       );
+      if (options?.forceOpenFrom && options?.forceOpenTo) {
+        const forced = await this.forceOpenCalendarRange(
+          listingId,
+          options.forceOpenFrom,
+          options.forceOpenTo,
+        );
+        this.logger.log(
+          `CHECK24 force-opened ${forced} calendar day(s) for listing ${hostawayListingId} (${options.forceOpenFrom}→${options.forceOpenTo})`,
+        );
+      }
       await this.syncListingAvailability(listingId);
       this.logger.log(
         `Pushed CHECK24 availability for listing ${hostawayListingId} after booking change`,
       );
+
+      // Hostaway calendar lag: re-sync + force-open + push again shortly after.
+      if (
+        !options?.skipFollowUp &&
+        options?.forceOpenFrom &&
+        options?.forceOpenTo
+      ) {
+        this.scheduleFollowUpAvailabilityPush(
+          listingId,
+          hostawayListingId,
+          options.forceOpenFrom,
+          options.forceOpenTo,
+        );
+      }
+
       return { pushed: true };
     } catch (err) {
       const message = this.check24.describeError(err);
@@ -366,6 +402,64 @@ export class Check24SyncService {
       );
       return { pushed: false, reason: message };
     }
+  }
+
+  /**
+   * Mark nights [dateFrom, dateTo) available in the local calendar cache.
+   * Nightly inventory: departure day is exclusive.
+   */
+  async forceOpenCalendarRange(
+    listingId: string,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<number> {
+    const from = new Date(`${dateFrom}T00:00:00.000Z`);
+    const to = new Date(`${dateTo}T00:00:00.000Z`);
+    if (!(from < to)) return 0;
+
+    const result = await this.prisma.calendarDay.updateMany({
+      where: {
+        listingId,
+        date: { gte: from, lt: to },
+        isAvailable: false,
+      },
+      data: { isAvailable: true, syncedAt: new Date() },
+    });
+    return result.count;
+  }
+
+  private scheduleFollowUpAvailabilityPush(
+    listingId: string,
+    hostawayListingId: number,
+    forceOpenFrom: string,
+    forceOpenTo: string,
+  ) {
+    const delayMs = Number(
+      this.config.get('CHECK24_CANCEL_AVAILABILITY_RETRY_MS') ?? 45_000,
+    );
+    if (delayMs <= 0) return;
+
+    setTimeout(() => {
+      void this.refreshAndPushAvailability(listingId, hostawayListingId, {
+        forceOpenFrom,
+        forceOpenTo,
+        skipFollowUp: true,
+      })
+        .then((result) => {
+          this.logger.log(
+            `CHECK24 follow-up availability push for listing ${hostawayListingId}: pushed=${result.pushed}${
+              result.reason ? ` (${result.reason})` : ''
+            }`,
+          );
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `CHECK24 follow-up availability push failed for listing ${hostawayListingId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        });
+    }, delayMs);
   }
 
   async syncListingAvailability(listingId: string) {
