@@ -17,6 +17,18 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
+/** Nightly stay dates: [dateFrom, dateTo) as YMD strings. */
+export function eachNightYmd(dateFrom: string, dateTo: string): string[] {
+  const from = new Date(`${dateFrom}T00:00:00.000Z`);
+  const to = new Date(`${dateTo}T00:00:00.000Z`);
+  if (!(from < to)) return [];
+  const out: string[] = [];
+  for (let d = new Date(from); d < to; d = addDays(d, 1)) {
+    out.push(ymd(d));
+  }
+  return out;
+}
+
 /** Collapse consecutive calendar days with same open/closed + minStay into ranges. */
 export function buildAvailabilityRanges(
   days: LocalCalendarDay[],

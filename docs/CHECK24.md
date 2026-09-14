@@ -102,10 +102,20 @@ Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBo
 
 ## Pre-check-in / Anreise after payment
 
-CHECK24 imports create the Hostaway reservation **without** guest email/phone on Hostaway, and **do not** attach contact until the first qualifying payment is applied. Contact is stored locally only so Hostaway “at reservation” email/WhatsApp automations have no recipient. After payment, the middleware pushes contact to Hostaway and then sends Anreise / check-in templates.
+CHECK24 imports create the Hostaway reservation **without** guest email/phone on Hostaway, and **do not** attach contact until the first qualifying payment is applied. Contact is stored locally only so Hostaway “at reservation” email/WhatsApp automations have no recipient. Buchungsportal / external booking number are set on **create** when possible (avoids a follow-up update that can re-trigger automations). After payment, the middleware pushes contact to Hostaway and then sends Anreise / check-in templates.
 
-**Still required in Hostaway:** set Inbox automations that send pre-check-in on “reservation” to also require **Payment status = paid** (or disable them for the CHECK24 channel / Buchungsportal=CHECK24). Channel-only rules that do not need email can still fire — those must be payment-gated in Hostaway.
+**Still required in Hostaway:** set Inbox automations that send pre-check-in on “reservation” to also require **Payment status = paid** (or disable them for the CHECK24 channel / Buchungsportal=CHECK24). Channel-only rules that do not need email can still fire — those must be payment-gated in Hostaway. Guest portal must not show door codes / exact address until paid.
 
 ## Cancellation → availability
 
-After cancel, the middleware syncs the Hostaway calendar, then **force-opens** the cancelled stay nights `[dateFrom, dateTo)` in the local cache before pushing to CHECK24. This avoids the Hostaway calendar lag where a push immediately after cancel still reported those nights as closed. A follow-up push runs ~45s later (`CHECK24_CANCEL_AVAILABILITY_RETRY_MS`).
+After cancel, the middleware:
+
+1. Cancels in Hostaway and marks the local reservation cancelled
+2. Syncs calendar, then **force-opens** cancelled nights `[dateFrom, dateTo)` (upserts missing days; skips nights still covered by another active booking)
+3. Pushes availability to CHECK24
+4. Retries at ~45s, 5m, and 15m (`CHECK24_CANCEL_AVAILABILITY_RETRY_MS`)
+5. On every later ARI sync for **24h** (`CHECK24_CANCEL_FORCE_OPEN_HOURS`), re-applies that reopen so Hostaway calendar lag cannot leave CHECK24 closed
+
+## Hostaway checklist (operator)
+
+See the client email template in ops notes / reply from engineering: payment-gated Anreise automations, channel rules, guest portal check-in visibility, Buchungsportal custom field.

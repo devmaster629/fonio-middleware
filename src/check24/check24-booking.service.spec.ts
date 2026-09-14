@@ -11,6 +11,7 @@ describe('Check24BookingService cancellations', () => {
     },
     reservation: {
       findUnique: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     check24PropertyMapping: {
       findUnique: jest.fn(),

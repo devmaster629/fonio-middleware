@@ -1,6 +1,7 @@
 import {
   buildAvailabilityRanges,
   buildStandardPricingRanges,
+  eachNightYmd,
 } from './check24-calendar.util';
 
 function day(ymd: string, isAvailable: boolean, price: number | null, minNights: number | null = 2) {
@@ -13,6 +14,14 @@ function day(ymd: string, isAvailable: boolean, price: number | null, minNights:
 }
 
 describe('check24-calendar.util', () => {
+  it('lists each night in [from, to)', () => {
+    expect(eachNightYmd('2026-09-01', '2026-09-03')).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+    ]);
+    expect(eachNightYmd('2026-09-01', '2026-09-01')).toEqual([]);
+  });
+
   it('collapses consecutive open days with same minStay', () => {
     const ranges = buildAvailabilityRanges([
       day('2026-08-01', true, 100, 2),

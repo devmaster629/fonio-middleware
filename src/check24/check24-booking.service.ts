@@ -137,6 +137,9 @@ export class Check24BookingService {
     // Do NOT attach contact on Hostaway until the deposit is paid — previous
     // "attach immediately after create" undid this and re-triggered Anreise.
     // Contact is stored locally only; GuestCheckinRelease attaches it after payment.
+    const customFieldValues = await this.resolveCheck24CustomFieldValues(
+      booking.bookingId,
+    );
     const payload: Record<string, unknown> = {
       channelId,
       listingMapId: mapping.listing.hostawayId,
@@ -155,10 +158,31 @@ export class Check24BookingService {
       }`.slice(0, 500),
       guestNote: booking.comments?.slice(0, 500) ?? null,
       isManuallyEntered: 1,
+      // Prefer labels on create so we avoid a follow-up updateReservation that
+      // can re-trigger Hostaway "reservation updated" Anreise automations.
+      ...(customFieldValues.length > 0 ? { customFieldValues } : {}),
     };
 
-    const created = await this.hostaway.createReservation(payload);
-    await this.applyHostawayCheck24Labels(created.id, booking.bookingId);
+    let created;
+    let labelsOnCreate = customFieldValues.length > 0;
+    try {
+      created = await this.hostaway.createReservation(payload);
+    } catch (err) {
+      if (!labelsOnCreate) throw err;
+      this.logger.warn(
+        `CHECK24 booking ${booking.bookingId}: create with custom fields failed, retrying without: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      delete payload.customFieldValues;
+      labelsOnCreate = false;
+      created = await this.hostaway.createReservation(payload);
+    }
+    // Fallback update only when labels were not part of create (avoids extra
+    // "reservation updated" automation triggers when create accepted them).
+    if (!labelsOnCreate) {
+      await this.applyHostawayCheck24Labels(created.id, booking.bookingId);
+    }
 
     await this.hostawaySync.syncSingleReservation(created.id).catch((err) => {
       this.logger.warn(
@@ -499,6 +523,14 @@ export class Check24BookingService {
         },
       });
       await this.hostaway.cancelReservation(hostawayReservationId);
+      try {
+        await this.prisma.reservation.updateMany({
+          where: { hostawayId: hostawayReservationId },
+          data: { status: 'cancelled' },
+        });
+      } catch {
+        /* best effort — sync below is the source of truth */
+      }
       await this.hostawaySync.syncSingleReservation(hostawayReservationId).catch((err) => {
         this.logger.warn(
           `CHECK24 booking ${booking.bookingId} cancelled Hostaway ${hostawayReservationId} but local sync failed: ${
@@ -613,44 +645,13 @@ export class Check24BookingService {
     check24BookingId: string,
   ) {
     try {
-      const portalValue =
-        this.config.get<string>('CHECK24_HOSTAWAY_BUCHUNGSPORTAL_VALUE') ??
-        'CHECK24';
-      const configuredFieldId = Number(
-        this.config.get('CHECK24_HOSTAWAY_CUSTOM_FIELD_ID') ?? 0,
-      );
-      const fields = await this.hostaway.getCustomFields();
-      const values: Array<{ customFieldId: number; value: string }> = [];
-
-      const portalField =
-        (configuredFieldId > 0
-          ? fields.find((f) => f.id === configuredFieldId)
-          : undefined) ??
-        this.findCustomField(fields, [
-          'buchungsportal',
-          'reservation_buchungsportal',
-        ]);
-      if (portalField) {
-        values.push({ customFieldId: portalField.id, value: portalValue });
-      } else {
+      const values = await this.resolveCheck24CustomFieldValues(check24BookingId);
+      if (values.length === 0) {
         this.logger.warn(
           `Hostaway custom field Buchungsportal not found — reservation ${reservationId} has no CHECK24 portal label`,
         );
+        return;
       }
-
-      const externalField = this.findCustomField(fields, [
-        'externe buchungsnummer',
-        'externe_buchungsnummer',
-        'reservation_externe_buchungsnummer',
-      ]);
-      if (externalField) {
-        values.push({
-          customFieldId: externalField.id,
-          value: check24BookingId,
-        });
-      }
-
-      if (values.length === 0) return;
 
       await this.hostaway.updateReservation(reservationId, {
         customFieldValues: values,
@@ -662,6 +663,45 @@ export class Check24BookingService {
         }`,
       );
     }
+  }
+
+  private async resolveCheck24CustomFieldValues(
+    check24BookingId: string,
+  ): Promise<Array<{ customFieldId: number; value: string }>> {
+    const portalValue =
+      this.config.get<string>('CHECK24_HOSTAWAY_BUCHUNGSPORTAL_VALUE') ??
+      'CHECK24';
+    const configuredFieldId = Number(
+      this.config.get('CHECK24_HOSTAWAY_CUSTOM_FIELD_ID') ?? 0,
+    );
+    const fields = await this.hostaway.getCustomFields();
+    const values: Array<{ customFieldId: number; value: string }> = [];
+
+    const portalField =
+      (configuredFieldId > 0
+        ? fields.find((f) => f.id === configuredFieldId)
+        : undefined) ??
+      this.findCustomField(fields, [
+        'buchungsportal',
+        'reservation_buchungsportal',
+      ]);
+    if (portalField) {
+      values.push({ customFieldId: portalField.id, value: portalValue });
+    }
+
+    const externalField = this.findCustomField(fields, [
+      'externe buchungsnummer',
+      'externe_buchungsnummer',
+      'reservation_externe_buchungsnummer',
+    ]);
+    if (externalField) {
+      values.push({
+        customFieldId: externalField.id,
+        value: check24BookingId,
+      });
+    }
+
+    return values;
   }
 
   private findCustomField(

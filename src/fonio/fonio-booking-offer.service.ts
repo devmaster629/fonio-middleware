@@ -140,9 +140,7 @@ export class FonioBookingOfferService {
       });
 
     if (paymentResult.ok) {
-      this.logger.log(
-        `Fonio deposit request sent for inquiry ${created.id} (charge ${paymentResult.chargeId ?? 'n/a'})`,
-      );
+      this.logger.log(`Fonio deposit request sent for inquiry ${created.id}`);
     }
 
     return {

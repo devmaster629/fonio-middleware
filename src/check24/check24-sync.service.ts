@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   buildAvailabilityRanges,
   buildStandardPricingRanges,
+  eachNightYmd,
 } from './check24-calendar.util';
 import { Check24Client } from './check24.client';
 import { Check24PropertyMapper } from './check24-property.mapper';
@@ -380,13 +381,13 @@ export class Check24SyncService {
         `Pushed CHECK24 availability for listing ${hostawayListingId} after booking change`,
       );
 
-      // Hostaway calendar lag: re-sync + force-open + push again shortly after.
+      // Hostaway calendar lag: re-sync + force-open + push again at several delays.
       if (
         !options?.skipFollowUp &&
         options?.forceOpenFrom &&
         options?.forceOpenTo
       ) {
-        this.scheduleFollowUpAvailabilityPush(
+        this.scheduleFollowUpAvailabilityPushes(
           listingId,
           hostawayListingId,
           options.forceOpenFrom,
@@ -406,60 +407,175 @@ export class Check24SyncService {
 
   /**
    * Mark nights [dateFrom, dateTo) available in the local calendar cache.
-   * Nightly inventory: departure day is exclusive.
+   * Upserts missing days (updateMany alone left gaps → CHECK24 kept old closed data).
+   * Skips nights covered by another active (non-cancelled) local reservation.
    */
   async forceOpenCalendarRange(
     listingId: string,
     dateFrom: string,
     dateTo: string,
   ): Promise<number> {
+    const nights = eachNightYmd(dateFrom, dateTo);
+    if (nights.length === 0) return 0;
+
     const from = new Date(`${dateFrom}T00:00:00.000Z`);
     const to = new Date(`${dateTo}T00:00:00.000Z`);
-    if (!(from < to)) return 0;
-
-    const result = await this.prisma.calendarDay.updateMany({
+    const blocking = await this.prisma.reservation.findMany({
       where: {
         listingId,
-        date: { gte: from, lt: to },
-        isAvailable: false,
+        arrivalDate: { lt: to },
+        departureDate: { gt: from },
+        NOT: {
+          status: {
+            in: [
+              'cancelled',
+              'canceled',
+              'declined',
+              'expired',
+              'inquiryDenied',
+              'inquiryTimedout',
+              'inquiryNotPossible',
+            ],
+          },
+        },
       },
-      data: { isAvailable: true, syncedAt: new Date() },
+      select: { arrivalDate: true, departureDate: true, status: true },
     });
-    return result.count;
+    // Inquiries usually do not block Hostaway calendar; treat confirmed-style only.
+    const blockers = blocking.filter((r) => {
+      const s = (r.status || '').toLowerCase();
+      return !s.startsWith('inquiry');
+    });
+
+    const blockedNights = new Set<string>();
+    for (const r of blockers) {
+      for (const night of eachNightYmd(
+        r.arrivalDate.toISOString().slice(0, 10),
+        r.departureDate.toISOString().slice(0, 10),
+      )) {
+        blockedNights.add(night);
+      }
+    }
+
+    let touched = 0;
+    for (const night of nights) {
+      if (blockedNights.has(night)) continue;
+      const date = new Date(`${night}T00:00:00.000Z`);
+      const existing = await this.prisma.calendarDay.findUnique({
+        where: {
+          listingId_date: { listingId, date },
+        },
+        select: { id: true, isAvailable: true },
+      });
+      if (!existing) {
+        await this.prisma.calendarDay.create({
+          data: {
+            listingId,
+            date,
+            isAvailable: true,
+            syncedAt: new Date(),
+          },
+        });
+        touched += 1;
+        continue;
+      }
+      if (!existing.isAvailable) {
+        await this.prisma.calendarDay.update({
+          where: { id: existing.id },
+          data: { isAvailable: true, syncedAt: new Date() },
+        });
+        touched += 1;
+      }
+    }
+    return touched;
   }
 
-  private scheduleFollowUpAvailabilityPush(
+  /**
+   * Re-open nights for recent CHECK24 cancellations so a later Hostaway calendar
+   * sync cannot keep those stays closed on CHECK24 for the hold window.
+   */
+  async applyRecentCancelForceOpens(
+    listingId: string,
+    check24PropertyId: string,
+  ): Promise<number> {
+    const holdHours = Number(
+      this.config.get('CHECK24_CANCEL_FORCE_OPEN_HOURS') ?? 24,
+    );
+    if (holdHours <= 0) return 0;
+
+    const since = new Date(Date.now() - holdHours * 3_600_000);
+    const cancels = await this.prisma.check24Booking.findMany({
+      where: {
+        check24PropertyId,
+        status: {
+          in: ['cancelled', 'canceled', 'declined', 'failed'],
+        },
+        OR: [{ processedAt: { gte: since } }, { updatedAt: { gte: since } }],
+      },
+      select: { rawPayload: true, check24BookingId: true },
+      take: 100,
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    let total = 0;
+    for (const row of cancels) {
+      const raw =
+        row.rawPayload && typeof row.rawPayload === 'object'
+          ? (row.rawPayload as Record<string, unknown>)
+          : {};
+      const dateFrom =
+        typeof raw.dateFrom === 'string' ? raw.dateFrom.slice(0, 10) : null;
+      const dateTo =
+        typeof raw.dateTo === 'string' ? raw.dateTo.slice(0, 10) : null;
+      if (!dateFrom || !dateTo) continue;
+      total += await this.forceOpenCalendarRange(listingId, dateFrom, dateTo);
+    }
+    if (total > 0) {
+      this.logger.log(
+        `CHECK24 durable cancel reopen: ${total} day(s) for property ${check24PropertyId}`,
+      );
+    }
+    return total;
+  }
+
+  private scheduleFollowUpAvailabilityPushes(
     listingId: string,
     hostawayListingId: number,
     forceOpenFrom: string,
     forceOpenTo: string,
   ) {
-    const delayMs = Number(
-      this.config.get('CHECK24_CANCEL_AVAILABILITY_RETRY_MS') ?? 45_000,
+    const raw = String(
+      this.config.get('CHECK24_CANCEL_AVAILABILITY_RETRY_MS') ??
+        '45000,300000,900000',
     );
-    if (delayMs <= 0) return;
+    const delays = raw
+      .split(/[,\s]+/)
+      .map((part) => Number(part))
+      .filter((n) => Number.isFinite(n) && n > 0);
 
-    setTimeout(() => {
-      void this.refreshAndPushAvailability(listingId, hostawayListingId, {
-        forceOpenFrom,
-        forceOpenTo,
-        skipFollowUp: true,
-      })
-        .then((result) => {
-          this.logger.log(
-            `CHECK24 follow-up availability push for listing ${hostawayListingId}: pushed=${result.pushed}${
-              result.reason ? ` (${result.reason})` : ''
-            }`,
-          );
+    for (const delayMs of delays) {
+      setTimeout(() => {
+        void this.refreshAndPushAvailability(listingId, hostawayListingId, {
+          forceOpenFrom,
+          forceOpenTo,
+          skipFollowUp: true,
         })
-        .catch((err) => {
-          this.logger.warn(
-            `CHECK24 follow-up availability push failed for listing ${hostawayListingId}: ${
-              err instanceof Error ? err.message : err
-            }`,
-          );
-        });
-    }, delayMs);
+          .then((result) => {
+            this.logger.log(
+              `CHECK24 follow-up availability push (+${delayMs}ms) for listing ${hostawayListingId}: pushed=${result.pushed}${
+                result.reason ? ` (${result.reason})` : ''
+              }`,
+            );
+          })
+          .catch((err) => {
+            this.logger.warn(
+              `CHECK24 follow-up availability push (+${delayMs}ms) failed for listing ${hostawayListingId}: ${
+                err instanceof Error ? err.message : err
+              }`,
+            );
+          });
+      }, delayMs);
+    }
   }
 
   async syncListingAvailability(listingId: string) {
@@ -470,6 +586,8 @@ export class Check24SyncService {
     const propertyId =
       listing.check24Mapping?.check24PropertyId ??
       this.mapper.propertyIdForHostaway(listing.hostawayId);
+
+    await this.applyRecentCancelForceOpens(listing.id, propertyId);
 
     const days = await this.prisma.calendarDay.findMany({
       where: {
