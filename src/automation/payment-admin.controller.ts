@@ -29,6 +29,7 @@ import { UpdatePaymentPlanDto } from './dto/payment-plan.dto';
 import { UpdatePortalPaymentRuleDto } from './dto/portal-payment-rule.dto';
 import { isInquiryReservationStatus } from './automation.types';
 import { detectCombinedDepositHint } from './payment-split-hint.util';
+import { GuestPaymentAutomationService } from './guest-payment-automation.service';
 import { PaymentPlanService } from './payment-plan.service';
 import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { PortalPaymentRulesService } from './portal-payment-rules.service';
@@ -46,6 +47,7 @@ export class PaymentAdminController {
     private readonly config: ConfigService,
     private readonly portalRules: PortalPaymentRulesService,
     private readonly paymentPlans: PaymentPlanService,
+    private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
   @Get('portal-rules')
@@ -243,7 +245,14 @@ export class PaymentAdminController {
           const id = Number(c.hostawayId);
           const live = Number.isFinite(id) ? byHostawayId.get(id) : undefined;
           if (!live) return true;
-          return !isInquiryReservationStatus(live.status);
+          // Keep Fonio deposit inquiries visible in the review queue.
+          if (
+            isInquiryReservationStatus(live.status) &&
+            !this.guestPayments.isFonioOfferReservation(live)
+          ) {
+            return false;
+          }
+          return true;
         })
         .map((c) => {
         const id = Number(c.hostawayId);

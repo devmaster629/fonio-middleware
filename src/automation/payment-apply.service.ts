@@ -6,6 +6,7 @@ import { PaymentInboxService } from '../hostaway/payment-inbox.service';
 import { isListingOffline } from '../hostaway/listing-offline.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { GuestCheckinReleaseService } from './guest-checkin-release.service';
+import { GuestPaymentAutomationService } from './guest-payment-automation.service';
 import { PaymentAlertService } from './payment-alert.service';
 import { PaymentPlanService } from './payment-plan.service';
 
@@ -21,6 +22,7 @@ export class PaymentApplyService {
     private readonly prisma: PrismaService,
     private readonly checkinRelease: GuestCheckinReleaseService,
     private readonly paymentPlans: PaymentPlanService,
+    private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
   async applyToReservation(params: {
@@ -87,6 +89,7 @@ export class PaymentApplyService {
         chargeId: undefined,
         offlineListing: true,
       });
+      await this.confirmFonioInquiryIfNeeded(params.reservationHostawayId);
       return { chargeId: null, offline: true };
     }
 
@@ -202,9 +205,26 @@ export class PaymentApplyService {
         );
       });
 
+    await this.confirmFonioInquiryIfNeeded(params.reservationHostawayId);
+
     return {
       chargeId: charge.id,
       inboxMessageId: inboxResult.messageId,
     };
+  }
+
+  /** Fonio phone offers stay inquiry until the deposit is applied. */
+  private async confirmFonioInquiryIfNeeded(
+    reservationHostawayId: number,
+  ): Promise<void> {
+    await this.guestPayments
+      .confirmFonioInquiryAfterDeposit(reservationHostawayId)
+      .catch((err) => {
+        this.logger.warn(
+          `Fonio inquiry confirm after deposit failed for ${reservationHostawayId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
   }
 }

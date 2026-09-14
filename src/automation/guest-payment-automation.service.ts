@@ -44,6 +44,106 @@ export class GuestPaymentAutomationService {
     private readonly check24Bookings: Check24BookingService,
   ) {}
 
+  /** After Fonio phone offer — request deposit (portal direct rule) without requiring autoRequestOnImport. */
+  async requestDepositAfterFonioOffer(
+    reservationHostawayId: number,
+    hints?: { hostNote?: string | null; guestEmail?: string | null },
+  ): Promise<GuestPaymentRequestResult> {
+    const rules = await this.portalRules.list();
+    const rule = matchPortalRule(null, rules, hints);
+    if (!rule?.enabled) {
+      return { ok: false, reason: 'no_portal_rule' };
+    }
+
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: reservationHostawayId },
+      include: { notifiedCharges: true },
+    });
+    if (!reservation || reservation.guestPaymentRequestSentAt) {
+      return { ok: false, reason: 'already_requested_or_missing' };
+    }
+
+    const isPaid = await this.refreshIsPaid(
+      reservationHostawayId,
+      reservation.isPaid,
+    );
+    if (isPaid) return { ok: false, reason: 'already_paid' };
+
+    const total = Number(reservation.totalPrice) || 0;
+    let amount = depositAmount(total, rule);
+    if (amount <= 1) {
+      // Fallback: 30% deposit when portal rule has no deposit % configured.
+      amount = Math.round(total * 0.3 * 100) / 100;
+    }
+    if (amount <= 1) return { ok: false, reason: 'nothing_due' };
+
+    return this.sendGuestPaymentRequest({
+      reservationId: reservation.id,
+      reservationHostawayId,
+      rule,
+      amount,
+      phase: 'deposit',
+      deadlineDays:
+        rule.depositDueDaysAfterBooking ?? rule.paymentDeadlineDays ?? 7,
+      // Fonio offers must always try guest-portal / inbox deposit request.
+      forceGuestLink: true,
+    });
+  }
+
+  /**
+   * After a deposit is applied to a Fonio inquiry: promote to confirmed (`new`)
+   * so the calendar is blocked only once money is received.
+   */
+  async confirmFonioInquiryAfterDeposit(
+    reservationHostawayId: number,
+  ): Promise<{ confirmed: boolean; reason?: string }> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: reservationHostawayId },
+      select: {
+        id: true,
+        hostawayId: true,
+        status: true,
+        hostNote: true,
+        guestPaymentRequestSentAt: true,
+      },
+    });
+    if (!reservation) return { confirmed: false, reason: 'missing' };
+    if (!this.isFonioOfferReservation(reservation)) {
+      return { confirmed: false, reason: 'not_fonio_offer' };
+    }
+    const status = String(reservation.status || '').toLowerCase();
+    if (!status.startsWith('inquiry')) {
+      return { confirmed: false, reason: 'not_inquiry' };
+    }
+
+    try {
+      await this.hostaway.updateReservation(reservationHostawayId, {
+        status: 'new',
+      });
+      await this.prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'new' },
+      });
+      this.logger.log(
+        `Fonio inquiry ${reservationHostawayId} confirmed to new after deposit`,
+      );
+      return { confirmed: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to confirm Fonio inquiry ${reservationHostawayId}: ${message}`,
+      );
+      return { confirmed: false, reason: message };
+    }
+  }
+
+  isFonioOfferReservation(reservation: {
+    hostNote?: string | null;
+  }): boolean {
+    const note = String(reservation.hostNote || '').toLowerCase();
+    return note.includes('[fonio.ai') || note.includes('fonio.ai');
+  }
+
   /** After CHECK24 (or other) import — send first guest payment request. */
   async requestPaymentOnImport(
     reservationHostawayId: number,
@@ -94,12 +194,22 @@ export class GuestPaymentAutomationService {
     const rules = await this.portalRules.list();
     const candidates = await this.prisma.reservation.findMany({
       where: {
-        status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
         autoCanceledAt: null,
         totalPrice: { gt: 0 },
         OR: [
-          { guestPaymentRequestSentAt: { not: null } },
-          { bookedAt: { not: null } },
+          {
+            status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
+            OR: [
+              { guestPaymentRequestSentAt: { not: null } },
+              { bookedAt: { not: null } },
+            ],
+          },
+          // Fonio inquiries awaiting deposit (reminders / cancel deadline).
+          {
+            status: { startsWith: 'inquiry' },
+            hostNote: { contains: 'fonio.ai', mode: 'insensitive' },
+            guestPaymentRequestSentAt: { not: null },
+          },
         ],
       },
       include: { notifiedCharges: true, listing: true },
@@ -220,8 +330,10 @@ export class GuestPaymentAutomationService {
     phase: PaymentPhase;
     deadlineDays?: number;
     resetReminder?: boolean;
+    /** Bypass portal autoSendGuestPaymentLink (used for Fonio deposit offers). */
+    forceGuestLink?: boolean;
   }): Promise<GuestPaymentRequestResult> {
-    if (!params.rule.autoSendGuestPaymentLink) {
+    if (!params.forceGuestLink && !params.rule.autoSendGuestPaymentLink) {
       return { ok: false, reason: 'guest_link_disabled' };
     }
 

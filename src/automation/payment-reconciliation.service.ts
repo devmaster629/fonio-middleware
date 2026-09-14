@@ -20,6 +20,7 @@ import {
   isInquiryReservationStatus,
   NormalizedExternalPayment,
 } from './automation.types';
+import { GuestPaymentAutomationService } from './guest-payment-automation.service';
 import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
@@ -36,6 +37,7 @@ export class PaymentReconciliationService {
     private readonly alerts: PaymentAlertService,
     private readonly hostaway: HostawayClient,
     private readonly paymentPlans: PaymentPlanService,
+    private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
   async ingestAndReconcile(
@@ -445,7 +447,10 @@ export class PaymentReconciliationService {
           `Reservation #${line.reservationHostawayId} not found`,
         );
       }
-      if (isInquiryReservationStatus(reservation.status)) {
+      if (
+        isInquiryReservationStatus(reservation.status) &&
+        !this.guestPayments.isFonioOfferReservation(reservation)
+      ) {
         throw new BadRequestException(
           `Inquiry booking #${line.reservationHostawayId} cannot receive payments`,
         );

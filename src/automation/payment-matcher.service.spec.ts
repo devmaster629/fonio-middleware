@@ -540,7 +540,7 @@ describe('PaymentMatcherService', () => {
     );
   });
 
-  it('excludes inquiry statuses from match candidates', async () => {
+  it('excludes inquiry statuses from match candidates except Fonio offers', async () => {
     prisma.reservation.findMany.mockResolvedValue([]);
 
     const payment: NormalizedExternalPayment = {
@@ -558,13 +558,21 @@ describe('PaymentMatcherService', () => {
     expect(prisma.reservation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          status: {
-            notIn: expect.arrayContaining([
-              'inquiry',
-              'inquiryPreapproved',
-              'cancelled',
-            ]),
-          },
+          OR: expect.arrayContaining([
+            {
+              status: {
+                notIn: expect.arrayContaining([
+                  'inquiry',
+                  'inquiryPreapproved',
+                  'cancelled',
+                ]),
+              },
+            },
+            expect.objectContaining({
+              status: { startsWith: 'inquiry' },
+              hostNote: { contains: 'fonio.ai', mode: 'insensitive' },
+            }),
+          ]),
         }),
       }),
     );

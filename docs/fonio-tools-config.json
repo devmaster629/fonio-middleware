@@ -151,10 +151,14 @@
       "notes": [
         "listingId aus Verfügbarkeitsantwort (listingId Feld)",
         "Nur aufrufen wenn available=true für diese Unterkunft",
+        "Nur wenn Gast ausdrücklich buchen / Anfrage stellen möchte",
+        "Zuerst Kontaktdaten: Vorname, Nachname, E-Mail, Telefon",
         "Nur wenn bookingOfferEnabled in Admin aktiviert",
-        "Keine Preise am Telefon nennen — Team sendet Angebot aus Hostaway"
+        "Keine Preise am Telefon nennen",
+        "Erstellt Hostaway-Inquiry + Anzahlungsaufforderung — Bestätigung erst nach Zahlung",
+        "guestMessage aus API-Antwort dem Gast vorlesen; nie behaupten Buchung sei schon bestätigt"
       ],
-      "whenToUse": "Gast möchte buchen und gewünschte Unterkunft ist verfügbar"
+      "whenToUse": "Gast möchte ausdrücklich buchen und gewünschte Unterkunft ist verfügbar"
     }
   ],
   "inboundWebhook": {

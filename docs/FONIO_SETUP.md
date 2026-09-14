@@ -93,7 +93,7 @@ Use a real `hostawayId` from **Admin → Reservations**.
 
 ## Automatic booking offer
 
-When availability is confirmed and the guest wants to book:
+When availability is confirmed and the guest **explicitly wants to book**:
 
 ```
 POST /api/v1/fonio/booking-offer
@@ -101,9 +101,12 @@ POST /api/v1/fonio/booking-offer
 
 Required body: `listingId`, `checkIn`, `checkOut`, `guests`, `guestFirstName`, `guestLastName`, `guestEmail`, `phone`.
 
-Creates a reservation/inquiry in Hostaway (channel 2000). Your team sends the offer from Hostaway — **do not quote prices on the phone**.
+Creates a Hostaway **inquiry** (not a confirmed booking) on channel `BOOKING_OFFER_CHANNEL_ID` (default 2000), then requests a **deposit** via the Direct portal payment rule (guest payment link). The inquiry is promoted to confirmed (`new`) only after the deposit payment is applied.
+
+Fonio must collect contact details first and tell the guest: offer + deposit request; confirmation only after payment. Do not quote prices on the phone.
 
 Enable/disable in **Admin → Rules & verification → Automatic booking offer (fonio)**.  
+Configure deposit % / guest link under **Admin → Payments → Portal settings → Direct**.  
 `BOOKING_OFFER_ENABLED=false` in `.env` only applies as fallback when no admin config exists yet.
 
 ## Example call flow

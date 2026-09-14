@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
 import { HostawayClient } from '../hostaway/hostaway.client';
 import { HostawayPriceComponent } from '../hostaway/hostaway.types';
 import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
@@ -22,6 +23,7 @@ export class FonioBookingOfferService {
     private readonly availability: FonioAvailabilityService,
     private readonly sync: HostawaySyncService,
     private readonly config: ConfigService,
+    private readonly guestPayments: GuestPaymentAutomationService,
   ) {}
 
   async createOffer(dto: BookingOfferDto) {
@@ -64,10 +66,16 @@ export class FonioBookingOfferService {
 
     const channelId = Number(this.config.get('BOOKING_OFFER_CHANNEL_ID') ?? 2000);
     const guestName = `${dto.guestFirstName.trim()} ${dto.guestLastName.trim()}`.trim();
+    const hostNote = dto.note
+      ? `[fonio.ai – Buchungsanfrage] ${dto.note}`.slice(0, 500)
+      : '[fonio.ai – Buchungsanfrage] Telefonische Anfrage – Angebot + Anzahlung, Bestätigung erst nach Zahlungseingang';
 
+    // Always create as Hostaway inquiry — never a confirmed booking on the phone.
+    // Calendar stays open until a deposit is received and the inquiry is promoted.
     const payload: Record<string, unknown> = {
       channelId,
       listingMapId: dto.listingId,
+      status: 'inquiry',
       guestName,
       guestFirstName: dto.guestFirstName.trim(),
       guestLastName: dto.guestLastName.trim(),
@@ -80,11 +88,10 @@ export class FonioBookingOfferService {
       totalPrice: price.totalPrice,
       currency: 'EUR',
       financeField: price.components.map((c) => this.toFinanceField(c)),
-      hostNote: dto.note
-        ? `[fonio.ai – Buchungsanfrage] ${dto.note}`.slice(0, 500)
-        : '[fonio.ai – Buchungsanfrage] Telefonische Anfrage',
+      hostNote,
       guestNote: dto.note?.slice(0, 500) ?? null,
       pets: dto.pets ?? null,
+      isManuallyEntered: 1,
     };
 
     const created = await this.hostaway.createReservation(payload);
@@ -93,6 +100,50 @@ export class FonioBookingOfferService {
         `Offer created in Hostaway (${created.id}) but local sync failed: ${err instanceof Error ? err.message : err}`,
       );
     });
+
+    // If Hostaway ignored status:inquiry and created a confirmed booking, force inquiry.
+    const createdStatus = String(created.status || '').toLowerCase();
+    if (createdStatus && !createdStatus.startsWith('inquiry')) {
+      this.logger.warn(
+        `Fonio offer ${created.id} created as status=${created.status}; forcing inquiry`,
+      );
+      try {
+        await this.hostaway.updateReservation(created.id, { status: 'inquiry' });
+        await this.prisma.reservation
+          .updateMany({
+            where: { hostawayId: created.id },
+            data: { status: 'inquiry' },
+          })
+          .catch(() => undefined);
+        created.status = 'inquiry';
+      } catch (err) {
+        this.logger.error(
+          `Failed to force inquiry on Fonio offer ${created.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    const paymentResult = await this.guestPayments
+      .requestDepositAfterFonioOffer(created.id, {
+        hostNote,
+        guestEmail: dto.guestEmail.trim(),
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `Fonio deposit request failed for ${created.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+        return { ok: false, reason: 'error' as const };
+      });
+
+    if (paymentResult.ok) {
+      this.logger.log(
+        `Fonio deposit request sent for inquiry ${created.id} (charge ${paymentResult.chargeId ?? 'n/a'})`,
+      );
+    }
 
     return {
       offerCreated: true,
@@ -104,11 +155,13 @@ export class FonioBookingOfferService {
       guests: dto.guests,
       totalPrice: price.totalPrice,
       currency: 'EUR',
-      status: created.status,
+      status: 'inquiry',
+      depositRequested: paymentResult.ok === true,
+      depositRequestReason: paymentResult.ok ? undefined : paymentResult.reason,
       message:
-        'Booking inquiry created in Hostaway. Your team can send the offer from the Hostaway inbox.',
+        'Booking inquiry created in Hostaway (not confirmed). Deposit request sent when possible; confirmation only after payment.',
       guestMessage:
-        'Ihre Anfrage wurde aufgenommen. Unser Team meldet sich zeitnah mit einem Angebot per E-Mail oder Rückruf.',
+        'Vielen Dank — Ihre Anfrage ist aufgenommen. Sie erhalten von uns ein Angebot mit Bitte um Anzahlung. Eine verbindliche Buchungsbestätigung erfolgt erst nach Zahlungseingang der Anzahlung.',
     };
   }
 

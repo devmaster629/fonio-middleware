@@ -303,8 +303,15 @@ export class PaymentMatcherService {
       where: {
         departureDate: { gte: lookback },
         arrivalDate: { lte: lookahead },
-        // Inquiry statuses are quotes only — never suggest or auto-match them.
-        status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] },
+        OR: [
+          // Normal bookings (inquiries excluded — they are quotes only).
+          { status: { notIn: [...PAYMENT_EXCLUDED_RESERVATION_STATUSES] } },
+          // Exception: Fonio phone offers await deposit while still inquiry.
+          {
+            status: { startsWith: 'inquiry' },
+            hostNote: { contains: 'fonio.ai', mode: 'insensitive' },
+          },
+        ],
       },
       include: { listing: true, notifiedCharges: true, paymentPlan: true },
       take: 2000,
