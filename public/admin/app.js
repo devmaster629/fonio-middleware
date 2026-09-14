@@ -26,7 +26,7 @@ const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const tableState = {
   listings: { page: 1, pageSize: 25, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
-  groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '' },
+  groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '', chip: 'all' },
   reservations: {
     page: 1,
     pageSize: 10,
@@ -2311,7 +2311,10 @@ async function loadGroups() {
   }
   renderGroupsHeaderMeta();
   renderGroupsStats(syncStatus);
-  const rows = (data.items || []).map((g) => {
+  refreshGroupsChipCounts(data.items || []);
+
+  const items = filterGroupsByChip(data.items || []);
+  const rows = items.map((g) => {
     const listingCount = g.listings?.length ?? 0;
     const expanded = expandedGroupIds.has(g.id);
     const shortListings = (g.listings || [])
@@ -2323,7 +2326,7 @@ async function loadGroups() {
         </div>`;
       })
       .join('');
-    const synced = (g.listings || []).some((l) => l.lastSyncedAt) || listingCount > 0;
+    const synced = groupIsSynced(g);
     return `
       <tr class="group-row${expanded ? ' is-expanded' : ''}" data-group-id="${esc(g.id)}">
         <td class="group-name-cell">
@@ -2366,7 +2369,30 @@ async function loadGroups() {
       <th>${t('groups.colSync')}</th>
       <th class="group-expand-col"></th>
     </tr></thead><tbody>${rows || `<tr class="table-empty-row"><td class="table-empty-cell" colspan="6">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
+  renderGroupsMobileList(items);
   bindSortableHeaders('#listing-groups-table', 'groups', loadGroups);
+  bindGroupsExpandToggles();
+  renderTableInfo('#groups-info', data);
+  renderPagination('#groups-pagination', data, 'groups', loadGroups);
+  ensureGroupsPageSizeControl();
+  applyRoleUi();
+  scheduleEnhanceResponsiveTables();
+}
+
+function groupIsSynced(group) {
+  const listings = group?.listings || [];
+  if (!listings.length) return false;
+  return listings.some((l) => l.lastSyncedAt);
+}
+
+function filterGroupsByChip(items) {
+  const chip = tableState.groups.chip || 'all';
+  if (chip === 'synced') return items.filter((g) => groupIsSynced(g));
+  if (chip === 'withListings') return items.filter((g) => (g.listings?.length ?? 0) > 0);
+  return items;
+}
+
+function bindGroupsExpandToggles() {
   $$('[data-group-toggle]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2377,11 +2403,91 @@ async function loadGroups() {
       loadGroups();
     });
   });
-  renderTableInfo('#groups-info', data);
-  renderPagination('#groups-pagination', data, 'groups', loadGroups);
-  ensureGroupsPageSizeControl();
-  applyRoleUi();
-  scheduleEnhanceResponsiveTables();
+}
+
+function groupChevronRight() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>`;
+}
+
+function renderGroupsMobileList(items) {
+  const el = $('#groups-mobile-list');
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = `<div class="groups-mobile-empty">${t('table.infoEmpty')}</div>`;
+    return;
+  }
+  el.innerHTML = items
+    .map((g) => {
+      const listingCount = g.listings?.length ?? 0;
+      const expanded = expandedGroupIds.has(g.id);
+      const synced = groupIsSynced(g);
+      const mode = g.availabilityMode || '–';
+      const listingsHtml = (g.listings || [])
+        .map((l) => {
+          const label = groupListingDisplayName(l);
+          const listingSynced = !!l.lastSyncedAt;
+          return `
+            <button type="button" class="groups-m-listing" data-open-listing-name="${esc(l.name || '')}" data-open-listing-id="${esc(l.id || '')}">
+              ${groupListingThumbHtml(l)}
+              <span class="groups-m-listing-meta">
+                <span class="groups-m-listing-name">${esc(label)}</span>
+                <span class="groups-m-listing-city">${esc(l.city || g.city || '–')}</span>
+              </span>
+              <span class="group-sync-status ${listingSynced ? 'is-synced' : 'is-pending'}">
+                <span class="groups-m-sync-dot" aria-hidden="true"></span>
+                ${listingSynced ? t('groups.synced') : t('groups.pending')}
+              </span>
+              <span class="groups-m-listing-chevron" aria-hidden="true">${groupChevronRight()}</span>
+            </button>
+          `;
+        })
+        .join('');
+      return `
+        <article class="groups-m-card${expanded ? ' is-expanded' : ''}" data-group-id="${esc(g.id)}">
+          <button type="button" class="groups-m-card-head" data-group-toggle="${esc(g.id)}" aria-expanded="${expanded ? 'true' : 'false'}">
+            ${groupThumbHtml(g)}
+            <span class="groups-m-card-meta">
+              <span class="groups-m-card-title">${esc(g.name)}</span>
+              <span class="groups-m-card-city">${esc(g.city || '–')}</span>
+              <span class="groups-m-tags">
+                <span class="groups-m-tag is-mode">${esc(mode)}</span>
+                <span class="groups-m-tag">${t('groups.listingsCountShort', { count: listingCount })}</span>
+                <span class="groups-m-tag ${synced ? 'is-synced' : ''}">
+                  <span class="groups-m-sync-dot" aria-hidden="true"></span>
+                  ${synced ? t('groups.synced') : t('groups.pending')}
+                </span>
+              </span>
+            </span>
+            <span class="groups-m-card-chevron" aria-hidden="true">${expanded ? groupChevronUp() : groupChevronDown()}</span>
+          </button>
+          <div class="groups-m-card-body${expanded ? '' : ' hidden'}">
+            <div class="groups-m-body-head">
+              <span>${t('groups.listingsInGroupShort', { count: listingCount })}</span>
+            </div>
+            <div class="groups-m-listings">
+              ${listingsHtml || `<div class="groups-mobile-empty muted">${t('groups.noListings')}</div>`}
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  el.querySelectorAll('[data-open-listing-name]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.openListingName || '';
+      const id = btn.dataset.openListingId || '';
+      if (id) {
+        openListingAliasesModal(id);
+        return;
+      }
+      if (name) {
+        tableState.listings.search = name;
+        tableState.listings.page = 1;
+        activateTab('listings');
+      }
+    });
+  });
 }
 
 function groupListingDisplayName(listing) {
@@ -2472,7 +2578,7 @@ function renderGroupsStats(syncStatus) {
     <div class="groups-stat-card">
       <div class="groups-stat-icon">${groupBuildingIcon()}</div>
       <div>
-        <div class="groups-stat-label">${t('groups.statListings')}</div>
+        <div class="groups-stat-label">${t('groups.statListingsShort')}</div>
         <div class="groups-stat-value">${formatCount(groupsStats.groupedListings)}</div>
       </div>
     </div>
@@ -2498,12 +2604,12 @@ function ensureGroupsToolbar() {
   const el = $('#groups-toolbar');
   if (!el) return;
   const s = tableState.groups;
-  if (el.dataset.toolbarInit === 'groups-v2') {
+  if (el.dataset.toolbarInit === 'groups-v4') {
     const search = el.querySelector('[data-table-search="groups"]');
     if (search && document.activeElement !== search) search.value = s.search;
     return;
   }
-  el.dataset.toolbarInit = 'groups-v2';
+  el.dataset.toolbarInit = 'groups-v4';
   el.innerHTML = `
     <div class="groups-toolbar-row">
       <label class="groups-search">
@@ -2511,7 +2617,7 @@ function ensureGroupsToolbar() {
         <input type="search" data-table-search="groups" value="${esc(s.search)}" placeholder="${esc(t('groups.searchPlaceholder'))}" autocomplete="off" />
         <svg class="groups-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </label>
-      <div class="groups-filters">
+      <div class="groups-filters groups-filters-desktop">
         <label>
           <span>${t('listings.city')}</span>
           <select data-group-filter="city"></select>
@@ -2536,10 +2642,25 @@ function ensureGroupsToolbar() {
     sel.addEventListener('change', () => {
       const key = sel.dataset.groupFilter;
       tableState.groups[key] = sel.value;
+      if (key === 'mode') {
+        tableState.groups.chip = sel.value || 'all';
+      }
       tableState.groups.page = 1;
       loadGroups();
     });
   });
+}
+
+function renderGroupsFilterChips() {
+  /* Chips removed — mobile uses the same City/Mode filters as desktop. */
+}
+
+function refreshGroupsChipCounts() {
+  /* no-op: chip UI removed */
+}
+
+function refreshGroupsChipActive() {
+  /* no-op: chip UI removed */
 }
 
 function ensureGroupsPageSizeControl() {
