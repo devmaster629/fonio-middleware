@@ -13087,6 +13087,19 @@ function setUsersView(view) {
   $('#users-view-security')?.classList.toggle('hidden', usersActiveView !== 'security');
   $('#tab-users .users-page-header')?.classList.toggle('hidden', usersActiveView !== 'list');
   $('#users-kpis')?.classList.toggle('hidden', usersActiveView !== 'list');
+  const securityHint = $('#users-view-security .users-security-heading .field-hint');
+  if (securityHint) {
+    securityHint.textContent = isUsersMobileLayout()
+      ? t('users.securityHintMobile')
+      : t('users.securityHint');
+  }
+  const securitySearch = $('#users-security-search');
+  if (securitySearch) {
+    securitySearch.placeholder = isUsersMobileLayout()
+      ? t('users.securitySearchPlaceholderMobile')
+      : t('users.securitySearchPlaceholder');
+  }
+  document.body.classList.toggle('users-perms-view', usersActiveView === 'perms');
   if (usersActiveView === 'security') loadUsersSecurityActivity();
   if (usersActiveView === 'perms') loadRolePermissionsMatrix();
 }
@@ -13625,9 +13638,16 @@ const USERS_SECURITY_STATE = {
 };
 let usersSecurityUiBound = false;
 let usersSecurityPageResult = { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 };
+let usersSecurityMobileItems = [];
+let usersSecurityMobileLoading = false;
 let permDraft = new Set();
 let permSavedSnapshot = new Set();
 let permUiBound = false;
+let permSearchQuery = '';
+let permSectionFilter = 'all';
+let permAccordionOpen = { pages: true, features: false, sensitive: false };
+let permSectionExpanded = { pages: false, features: false, sensitive: false };
+const PERM_MOBILE_PREVIEW_COUNT = 8;
 
 const PERM_SENSITIVE_KEYS = new Set([
   'LOG_SETTINGS_EDIT',
@@ -13649,6 +13669,36 @@ const PERM_ROLE_DEFAULTS = {
   ],
   ADMIN: null, // filled from catalog minus USERS_MANAGE / ROLE_PERMISSIONS_MANAGE
 };
+
+const PERM_ROW_ICONS = {
+  DASHBOARD_VIEW: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+  LISTINGS_VIEW: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  LISTINGS_EDIT: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  GROUPS_VIEW: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  RESERVATIONS_VIEW: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  RESERVATIONS_VIEW_PII: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  CONVERSATIONS_VIEW: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  CONVERSATIONS_MANAGE: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 14h5"/>',
+  RULES_VIEW: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  RULES_EDIT: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  RULES_DELETE: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  REQUESTS_VIEW: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  PAYMENTS_VIEW: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  PAYMENTS_REVIEW: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  PAYMENTS_ADMIN: '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+  USERS_MANAGE: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  ROLE_PERMISSIONS_MANAGE: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  LOGS_VIEW: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  LOG_SETTINGS_EDIT: '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+  SYNC_RUN: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
+  SYNC_SETTINGS_EDIT: '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+  WEBHOOKS_MANAGE: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+};
+
+function permRowIcon(key) {
+  const path = PERM_ROW_ICONS[key] || '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2"/>';
+  return `<span class="users-perm-row-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></span>`;
+}
 
 function setsEqual(a, b) {
   if (a.size !== b.size) return false;
@@ -13689,28 +13739,32 @@ function formatSecurityEventTitle(log) {
 function formatSecurityActor(log) {
   const meta = log?.metadata || {};
   const adminId = meta.adminId ? String(meta.adminId) : '';
+  const roleRaw = meta.role ? String(meta.role) : '';
   if (adminId) {
     const user = cachedUsers.find((u) => u.id === adminId);
     if (user) {
       return {
-        name: formatRoleLabel(user.role) || userDisplayName(user),
-        sub: `${adminId.slice(0, 8)}…`,
+        name: userDisplayName(user) || formatRoleLabel(user.role),
+        sub: `${user.role || roleRaw || 'ADMIN'} · ${adminId.slice(0, 8)}…`,
+        role: user.role || roleRaw,
         initials: userInitials(user),
         tone: userRoleTone(user.role),
       };
     }
-    const role = meta.role ? formatRoleLabel(meta.role) : t('role.SUPER_ADMIN');
+    const role = roleRaw ? formatRoleLabel(roleRaw) : t('role.SUPER_ADMIN');
     return {
       name: role,
-      sub: `${adminId.slice(0, 8)}…`,
+      sub: `${roleRaw || 'SUPER_ADMIN'} · ${adminId.slice(0, 8)}…`,
+      role: roleRaw || 'SUPER_ADMIN',
       initials: (role || 'AD').slice(0, 2).toUpperCase(),
-      tone: userRoleTone(meta.role) || 'super',
+      tone: userRoleTone(roleRaw) || 'super',
     };
   }
   if (meta.emailHash) {
     return {
       name: t('users.securityUnknownActor'),
       sub: String(meta.emailHash),
+      role: '',
       initials: '?',
       tone: 'default',
     };
@@ -13718,6 +13772,7 @@ function formatSecurityActor(log) {
   return {
     name: '–',
     sub: '',
+    role: '',
     initials: '?',
     tone: 'default',
   };
@@ -13757,8 +13812,13 @@ function securityDateFrom() {
 function syncPermFooter() {
   const enabled = permDraft.size;
   const dirty = !setsEqual(permDraft, permSavedSnapshot);
+  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+  const defaults = new Set(defaultPermsForRole(role));
+  const isCustom = !setsEqual(permDraft, defaults);
+
   const countEl = $('#perm-enabled-count');
   if (countEl) countEl.textContent = t('perms.enabledCount', { count: enabled });
+
   const dirtyEl = $('#perm-dirty-status');
   if (dirtyEl) {
     dirtyEl.classList.toggle('is-clean', !dirty);
@@ -13767,21 +13827,58 @@ function syncPermFooter() {
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><span>${esc(t('perms.unsaved'))}</span>`
       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>${esc(t('perms.noUnsaved'))}</span>`;
   }
+
   const discardBtn = $('#perm-discard-btn');
   const saveBtn = $('#perm-save-btn');
   if (discardBtn) discardBtn.disabled = !dirty;
-  if (saveBtn) saveBtn.disabled = !dirty;
-  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
-  const defaults = new Set(defaultPermsForRole(role));
+  if (saveBtn) {
+    saveBtn.disabled = !dirty;
+    saveBtn.textContent = isUsersMobileLayout() ? t('perms.saveShort') : t('perms.save');
+  }
+
   const badge = $('#perm-access-badge');
-  if (badge) badge.hidden = setsEqual(permDraft, defaults);
+  if (badge) badge.hidden = !isCustom;
+
+  const mobileRole = $('#perm-mobile-role-name');
+  if (mobileRole) mobileRole.textContent = formatRoleLabel(role);
+  const mobileAccess = $('#perm-mobile-access-label');
+  if (mobileAccess) {
+    mobileAccess.textContent = isCustom ? t('perms.customAccess') : t('perms.defaultAccess');
+    mobileAccess.classList.toggle('is-custom', isCustom);
+  }
+  const mobileEnabled = $('#perm-mobile-enabled');
+  if (mobileEnabled) mobileEnabled.textContent = t('perms.enabledShort', { count: enabled });
+
+  const filterBtn = $('#perm-filter-btn');
+  if (filterBtn) filterBtn.classList.toggle('is-active', permSectionFilter !== 'all');
 }
 
-function renderPermToggleRow(item) {
+function matchesPermSearch(item) {
+  const q = permSearchQuery.trim().toLowerCase();
+  if (!q) return true;
+  const label = String(t(item.labelKey) || item.key).toLowerCase();
+  const desc = String(permDesc(item.key) || '').toLowerCase();
+  return label.includes(q) || desc.includes(q) || String(item.key).toLowerCase().includes(q);
+}
+
+function filterPermItems(items, section) {
+  return items.filter((item) => {
+    if (!matchesPermSearch(item)) return false;
+    if (permSectionFilter === 'pages' && section !== 'pages') return false;
+    if (permSectionFilter === 'features' && section !== 'features') return false;
+    if (permSectionFilter === 'sensitive' && section !== 'sensitive') return false;
+    if (permSectionFilter === 'enabled' && !permDraft.has(item.key)) return false;
+    if (permSectionFilter === 'disabled' && permDraft.has(item.key)) return false;
+    return true;
+  });
+}
+
+function renderPermToggleRow(item, { withIcon = false } = {}) {
   const on = permDraft.has(item.key);
   const desc = permDesc(item.key);
   return `
     <label class="users-perm-row">
+      ${withIcon ? permRowIcon(item.key) : ''}
       <span class="users-perm-row-copy">
         <strong>${esc(t(item.labelKey) || item.key)}</strong>
         ${desc ? `<span>${esc(desc)}</span>` : ''}
@@ -13792,6 +13889,56 @@ function renderPermToggleRow(item) {
       </span>
     </label>
   `;
+}
+
+function bindPermToggleInputs(root) {
+  root.querySelectorAll('input[data-perm-key]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const key = input.dataset.permKey;
+      if (input.checked) permDraft.add(key);
+      else permDraft.delete(key);
+      renderRolePermissionCheckboxes();
+    });
+  });
+}
+
+function renderPermMobileAccordion(sections) {
+  const mobile = isUsersMobileLayout();
+  return sections.map((section) => {
+    const open = !!permAccordionOpen[section.id];
+    const filtered = filterPermItems(section.items, section.id);
+    const onCount = section.items.filter((item) => permDraft.has(item.key)).length;
+    const expanded = !!permSectionExpanded[section.id];
+    const preview = mobile && !expanded && filtered.length > PERM_MOBILE_PREVIEW_COUNT
+      ? filtered.slice(0, PERM_MOBILE_PREVIEW_COUNT)
+      : filtered;
+    const hiddenCount = Math.max(0, filtered.length - preview.length);
+    const countLabel = section.id === 'sensitive'
+      ? `${onCount} ${t('perms.enabled')}`
+      : `${onCount} ${t('perms.of')} ${section.items.length} ${t('perms.enabled')}`;
+    return `
+      <section class="users-perms-accordion${section.sensitive ? ' is-sensitive' : ''}${open ? ' is-open' : ''}" data-perm-section="${esc(section.id)}">
+        <button type="button" class="users-perms-accordion-head" data-perm-accordion="${esc(section.id)}" aria-expanded="${open ? 'true' : 'false'}">
+          <span class="users-perms-accordion-title">
+            <span class="users-perms-column-icon ${esc(section.iconClass)}" aria-hidden="true">${section.iconSvg}</span>
+            <span>
+              <strong>${esc(section.title)}</strong>
+              <small>${esc(countLabel)}</small>
+            </span>
+          </span>
+          <span class="users-perms-accordion-chevron" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="users-perms-accordion-body"${open ? '' : ' hidden'}>
+          <div class="users-perms-rows">
+            ${preview.map((item) => renderPermToggleRow(item, { withIcon: mobile })).join('') || `<div class="users-perms-empty">${esc(t('perms.noMatches'))}</div>`}
+          </div>
+          ${hiddenCount > 0 ? `<button type="button" class="users-perms-show-more" data-perm-show-more="${esc(section.id)}">${esc(t('perms.showMore', { count: hiddenCount }))}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>` : ''}
+        </div>
+      </section>
+    `;
+  }).join('');
 }
 
 function renderRolePermissionCheckboxes() {
@@ -13805,7 +13952,56 @@ function renderRolePermissionCheckboxes() {
   const sensitive = actions.filter((item) => PERM_SENSITIVE_KEYS.has(item.key));
   const pagesOn = pages.filter((item) => permDraft.has(item.key)).length;
   const actionsOn = actions.filter((item) => permDraft.has(item.key)).length;
+  const mobile = isUsersMobileLayout();
 
+  const sections = [
+    {
+      id: 'pages',
+      title: t('perms.pages'),
+      items: pages,
+      iconClass: 'is-pages',
+      iconSvg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>',
+    },
+    {
+      id: 'features',
+      title: t('perms.actions'),
+      items: general,
+      iconClass: 'is-features',
+      iconSvg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>',
+    },
+    {
+      id: 'sensitive',
+      title: t('perms.sensitiveAccess'),
+      items: sensitive,
+      sensitive: true,
+      iconClass: 'is-sensitive',
+      iconSvg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    },
+  ];
+
+  if (mobile) {
+    wrap.className = 'users-perms-mobile-sections';
+    wrap.innerHTML = renderPermMobileAccordion(sections);
+    wrap.querySelectorAll('[data-perm-accordion]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.permAccordion;
+        permAccordionOpen[id] = !permAccordionOpen[id];
+        renderRolePermissionCheckboxes();
+      });
+    });
+    wrap.querySelectorAll('[data-perm-show-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.permShowMore;
+        permSectionExpanded[id] = true;
+        renderRolePermissionCheckboxes();
+      });
+    });
+    bindPermToggleInputs(wrap);
+    syncPermFooter();
+    return;
+  }
+
+  wrap.className = 'users-perms-columns';
   wrap.innerHTML = `
     <section class="users-perms-column">
       <header class="users-perms-column-head">
@@ -13820,7 +14016,7 @@ function renderRolePermissionCheckboxes() {
         </div>
         <span class="users-perms-column-count">${pagesOn} ${esc(t('perms.of'))} ${pages.length} ${esc(t('perms.enabled'))}</span>
       </header>
-      <div class="users-perms-rows">${pages.map(renderPermToggleRow).join('')}</div>
+      <div class="users-perms-rows">${pages.map((item) => renderPermToggleRow(item)).join('')}</div>
     </section>
     <section class="users-perms-column">
       <header class="users-perms-column-head">
@@ -13837,7 +14033,7 @@ function renderRolePermissionCheckboxes() {
       </header>
       <div class="users-perms-rows">
         <div class="users-perms-subhead">${esc(t('perms.generalFeatures'))}</div>
-        ${general.map(renderPermToggleRow).join('')}
+        ${general.map((item) => renderPermToggleRow(item)).join('')}
         <div class="users-perms-subhead is-sensitive">
           <span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -13845,21 +14041,53 @@ function renderRolePermissionCheckboxes() {
           </span>
           <em>${esc(t('perms.sensitiveHint'))}</em>
         </div>
-        ${sensitive.map(renderPermToggleRow).join('')}
+        ${sensitive.map((item) => renderPermToggleRow(item)).join('')}
       </div>
     </section>
   `;
 
-  wrap.querySelectorAll('input[data-perm-key]').forEach((input) => {
-    input.addEventListener('change', () => {
-      const key = input.dataset.permKey;
-      if (input.checked) permDraft.add(key);
-      else permDraft.delete(key);
+  bindPermToggleInputs(wrap);
+  syncPermFooter();
+}
+
+function closePermsFilterSheet() {
+  const sheet = $('#perms-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('users-filter-open');
+}
+
+function openPermsFilterSheet() {
+  const sheet = $('#perms-filter-sheet');
+  const body = $('#perms-filter-sheet-body');
+  if (!sheet || !body) return;
+  const options = [
+    { value: 'all', label: t('perms.filterAll') },
+    { value: 'pages', label: t('perms.pages') },
+    { value: 'features', label: t('perms.actions') },
+    { value: 'sensitive', label: t('perms.sensitiveAccess') },
+    { value: 'enabled', label: t('perms.filterEnabled') },
+    { value: 'disabled', label: t('perms.filterDisabled') },
+  ];
+  body.innerHTML = options.map((opt) => `
+    <button type="button" class="users-filter-option${opt.value === permSectionFilter ? ' is-selected' : ''}" data-perm-filter-value="${esc(opt.value)}">
+      ${esc(opt.label)}
+    </button>
+  `).join('');
+  body.querySelectorAll('[data-perm-filter-value]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      permSectionFilter = btn.dataset.permFilterValue || 'all';
+      if (permSectionFilter === 'pages') permAccordionOpen = { pages: true, features: false, sensitive: false };
+      if (permSectionFilter === 'features') permAccordionOpen = { pages: false, features: true, sensitive: false };
+      if (permSectionFilter === 'sensitive') permAccordionOpen = { pages: false, features: false, sensitive: true };
+      closePermsFilterSheet();
       renderRolePermissionCheckboxes();
-      syncPermFooter();
     });
   });
-  syncPermFooter();
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('users-filter-open');
 }
 
 function loadPermDraftFromRole(role, { resetToDefaults = false } = {}) {
@@ -13917,14 +14145,31 @@ function bindPermUi() {
       notify.error(ex.message);
     }
   });
+  let permSearchTimer = null;
+  $('#perm-search')?.addEventListener('input', (e) => {
+    clearTimeout(permSearchTimer);
+    permSearchTimer = setTimeout(() => {
+      permSearchQuery = e.target.value || '';
+      renderRolePermissionCheckboxes();
+    }, 180);
+  });
+  $('#perm-filter-btn')?.addEventListener('click', openPermsFilterSheet);
+  document.querySelectorAll('[data-perms-filter-close]').forEach((el) => {
+    el.addEventListener('click', closePermsFilterSheet);
+  });
+  window.addEventListener('resize', () => {
+    if (usersActiveView === 'perms' && cachedPermMatrix) renderRolePermissionCheckboxes();
+  });
 }
 
-async function loadUsersSecurityActivity({ silent = false } = {}) {
+async function loadUsersSecurityActivity({ silent = false, append = false } = {}) {
   const tableEl = $('#users-security-table');
   if (!tableEl) return;
   bindUsersSecurityUi();
   ensureUsersSecurityPageSizeControl();
-  USERS_SECURITY_STATE.page = tableState.usersSecurity.page || USERS_SECURITY_STATE.page;
+  if (!append) {
+    USERS_SECURITY_STATE.page = tableState.usersSecurity.page || USERS_SECURITY_STATE.page;
+  }
   USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize || USERS_SECURITY_STATE.pageSize;
   const s = USERS_SECURITY_STATE;
   const params = new URLSearchParams();
@@ -13945,9 +14190,18 @@ async function loadUsersSecurityActivity({ silent = false } = {}) {
     if (s.event === 'mutations') {
       items = items.filter((l) => !['login_success', 'login_failed'].includes(l.action));
     }
-    usersSecurityCache = items;
+    if (append && isUsersMobileLayout()) {
+      const seen = new Set(usersSecurityMobileItems.map((l) => String(l.id)));
+      usersSecurityMobileItems = [
+        ...usersSecurityMobileItems,
+        ...items.filter((l) => !seen.has(String(l.id))),
+      ];
+    } else {
+      usersSecurityMobileItems = items;
+    }
+    usersSecurityCache = isUsersMobileLayout() ? usersSecurityMobileItems : items;
     usersSecurityPageResult = {
-      items,
+      items: isUsersMobileLayout() ? usersSecurityMobileItems : items,
       total,
       page: Number(data?.page || s.page),
       pageSize: Number(data?.pageSize || s.pageSize),
@@ -13961,6 +14215,11 @@ async function loadUsersSecurityActivity({ silent = false } = {}) {
   } catch (ex) {
     if (!silent) notify.error(ex.message);
     tableEl.innerHTML = `<p class="field-hint">${esc(ex.message)}</p>`;
+    const mobileList = $('#users-security-mobile-list');
+    if (mobileList) mobileList.innerHTML = `<div class="users-security-mobile-empty">${esc(ex.message)}</div>`;
+  } finally {
+    usersSecurityMobileLoading = false;
+    syncUsersSecurityLoadMore();
   }
 }
 
@@ -13978,11 +14237,12 @@ function renderUsersSecurityKpiCards(pool) {
   const last = todays[0]?.createdAt
     ? new Date(todays[0].createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     : '–';
+  const mobile = isUsersMobileLayout();
   el.innerHTML = [
-    { tone: 'blue', value: String(todays.length), label: t('users.securityKpiToday'), icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>' },
-    { tone: 'green', value: String(successful), label: t('users.securityKpiSuccessful'), icon: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' },
-    { tone: 'red', value: String(failed), label: t('users.securityKpiFailed'), icon: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>' },
-    { tone: 'blue', value: last, label: t('users.securityKpiLast'), icon: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>' },
+    { tone: 'blue', value: String(todays.length), label: mobile ? t('users.securityKpiTodayShort') : t('users.securityKpiToday'), icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>' },
+    { tone: 'green', value: String(successful), label: mobile ? t('users.securityKpiSuccessfulShort') : t('users.securityKpiSuccessful'), icon: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' },
+    { tone: 'red', value: String(failed), label: mobile ? t('users.securityKpiFailedShort') : t('users.securityKpiFailed'), icon: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>' },
+    { tone: 'blue', value: last, label: mobile ? t('users.securityKpiLastShort') : t('users.securityKpiLast'), icon: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>' },
   ].map((c) => `
     <article class="users-security-kpi">
       <span class="users-security-kpi-icon is-${esc(c.tone)}" aria-hidden="true">
@@ -14014,11 +14274,84 @@ async function refreshUsersSecurityKpiCache() {
   }
 }
 
+function syncUsersSecurityLoadMore() {
+  const btn = $('#users-security-load-more');
+  if (!btn) return;
+  const total = Number(usersSecurityPageResult?.total || 0);
+  const loaded = usersSecurityMobileItems.length;
+  const hasMore = isUsersMobileLayout() && loaded < total;
+  btn.hidden = !hasMore;
+  btn.disabled = usersSecurityMobileLoading;
+  btn.textContent = usersSecurityMobileLoading ? t('users.securityLoading') : t('users.securityLoadMore');
+}
+
+function syncUsersSecurityFiltersBtn() {
+  const btn = $('#users-security-filters-btn');
+  if (!btn) return;
+  const active = USERS_SECURITY_STATE.event !== 'all' || USERS_SECURITY_STATE.status !== 'all';
+  btn.classList.toggle('is-active', active);
+}
+
+function renderUsersSecurityMobileCards(items) {
+  const root = $('#users-security-mobile-list');
+  if (!root) return;
+  if (!isUsersMobileLayout()) {
+    root.innerHTML = '';
+    const btn = $('#users-security-load-more');
+    if (btn) btn.hidden = true;
+    return;
+  }
+  if (!items.length) {
+    root.innerHTML = `<div class="users-security-mobile-empty">${esc(t('users.securityEmpty'))}</div>`;
+    syncUsersSecurityLoadMore();
+    return;
+  }
+  root.innerHTML = items.map((l) => {
+    const actor = formatSecurityActor(l);
+    const status = formatSecurityStatus(l);
+    const endpoint = formatSecurityEndpoint(l);
+    const eventTone = l.action === 'login_success' || l.action === 'login_failed' ? 'login' : 'system';
+    const time = formatAuditDateTime(l.createdAt).replace(',', ' ·');
+    const showEndpoint = endpoint && endpoint !== '—' && !String(l.action || '').startsWith('login_');
+    return `
+      <article class="users-security-mobile-card" data-security-id="${esc(String(l.id))}">
+        <div class="users-security-mobile-card-top">
+          <span class="users-security-event-icon is-${eventTone}" aria-hidden="true">
+            ${eventTone === 'login'
+              ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+              : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>'}
+          </span>
+          <div class="users-security-mobile-card-title">
+            <strong>${esc(formatSecurityEventTitle(l))}</strong>
+            <time>${esc(time)}</time>
+          </div>
+          <span class="users-security-status-pill is-${esc(status.tone)}">${esc(status.label)}</span>
+          <span class="users-security-mobile-chevron" aria-hidden="true">›</span>
+        </div>
+        <div class="users-security-mobile-actor">
+          <span class="users-avatar is-${esc(actor.tone)}" aria-hidden="true">${esc(actor.initials)}</span>
+          <span class="users-security-mobile-actor-meta">
+            <strong>${esc(actor.name)}</strong>
+            ${actor.sub ? `<small>${esc(actor.sub)}</small>` : ''}
+          </span>
+        </div>
+        ${showEndpoint ? `<code class="users-security-mobile-endpoint">${esc(endpoint)}</code>` : ''}
+      </article>`;
+  }).join('');
+  syncUsersSecurityLoadMore();
+}
+
 function renderUsersSecurityTable() {
   const tableEl = $('#users-security-table');
   if (!tableEl) return;
   const items = usersSecurityPageResult.items || [];
-  const rows = items.map((l) => {
+
+  // Keep desktop table on current page only when mobile is accumulating
+  const tableItems = isUsersMobileLayout()
+    ? items.slice(Math.max(0, items.length - USERS_SECURITY_STATE.pageSize))
+    : items;
+
+  const rows = tableItems.map((l) => {
     const actor = formatSecurityActor(l);
     const status = formatSecurityStatus(l);
     const eventTone = l.action === 'login_success' || l.action === 'login_failed' ? 'login' : 'system';
@@ -14059,13 +14392,66 @@ function renderUsersSecurityTable() {
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="5" class="empty-row">${esc(t('users.securityEmpty'))}</td></tr>`}</tbody>
     </table>`;
+  renderUsersSecurityMobileCards(isUsersMobileLayout() ? items : []);
   renderTableInfo('#users-security-info', usersSecurityPageResult, usersSecurityPageResult.maxTotal);
   renderPagination('#users-security-pagination', usersSecurityPageResult, 'usersSecurity', () => {
     USERS_SECURITY_STATE.page = tableState.usersSecurity.page;
     loadUsersSecurityActivity({ silent: true });
   });
-  // Sync pagination into local state via custom handler below
+  syncUsersSecurityFiltersBtn();
   scheduleEnhanceResponsiveTables();
+}
+
+function closeUsersSecurityFilterSheet() {
+  const sheet = $('#users-security-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('users-filter-open');
+}
+
+function openUsersSecurityFilterSheet() {
+  const sheet = $('#users-security-filter-sheet');
+  const body = $('#users-security-filter-sheet-body');
+  if (!sheet || !body) return;
+  const eventSelect = $('#users-security-event-filter');
+  const statusSelect = $('#users-security-status-filter');
+  body.innerHTML = `
+    <div class="users-security-filter-group">
+      <h4>${esc(t('users.securityFilterEvent'))}</h4>
+      ${[...eventSelect.options].map((opt) => `
+        <button type="button" class="users-filter-option${opt.value === eventSelect.value ? ' is-selected' : ''}" data-security-filter-kind="event" data-security-filter-value="${esc(opt.value)}">
+          ${esc(opt.textContent || opt.value)}
+        </button>
+      `).join('')}
+    </div>
+    <div class="users-security-filter-group">
+      <h4>${esc(t('users.securityFilterStatus'))}</h4>
+      ${[...statusSelect.options].map((opt) => `
+        <button type="button" class="users-filter-option${opt.value === statusSelect.value ? ' is-selected' : ''}" data-security-filter-kind="status" data-security-filter-value="${esc(opt.value)}">
+          ${esc(opt.textContent || opt.value)}
+        </button>
+      `).join('')}
+    </div>
+  `;
+  body.querySelectorAll('[data-security-filter-value]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.securityFilterKind;
+      const value = btn.dataset.securityFilterValue;
+      if (kind === 'event' && eventSelect) {
+        eventSelect.value = value;
+        eventSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (kind === 'status' && statusSelect) {
+        statusSelect.value = value;
+        statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      closeUsersSecurityFilterSheet();
+    });
+  });
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('users-filter-open');
 }
 
 function ensureUsersSecurityPageSizeControl() {
@@ -14091,6 +14477,7 @@ function ensureUsersSecurityPageSizeControl() {
     tableState.usersSecurity.page = 1;
     USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize;
     USERS_SECURITY_STATE.page = 1;
+    usersSecurityMobileItems = [];
     loadUsersSecurityActivity({ silent: true });
   });
 }
@@ -14105,6 +14492,8 @@ function bindUsersSecurityUi() {
     USERS_SECURITY_STATE.dateRange = $('#users-security-date-filter')?.value || '7';
     USERS_SECURITY_STATE.page = 1;
     tableState.usersSecurity.page = 1;
+    usersSecurityMobileItems = [];
+    syncUsersSecurityFiltersBtn();
     loadUsersSecurityActivity({ silent: true });
   };
   $('#users-security-search')?.addEventListener('input', () => {
@@ -14114,7 +14503,31 @@ function bindUsersSecurityUi() {
   $('#users-security-event-filter')?.addEventListener('change', sync);
   $('#users-security-status-filter')?.addEventListener('change', sync);
   $('#users-security-date-filter')?.addEventListener('change', sync);
-  $('#users-security-refresh-btn')?.addEventListener('click', () => loadUsersSecurityActivity());
+  $('#users-security-refresh-btn')?.addEventListener('click', () => {
+    usersSecurityMobileItems = [];
+    USERS_SECURITY_STATE.page = 1;
+    tableState.usersSecurity.page = 1;
+    loadUsersSecurityActivity();
+  });
+  $('#users-security-filters-btn')?.addEventListener('click', openUsersSecurityFilterSheet);
+  document.querySelectorAll('[data-security-filter-close]').forEach((el) => {
+    el.addEventListener('click', closeUsersSecurityFilterSheet);
+  });
+  $('#users-security-load-more')?.addEventListener('click', async () => {
+    if (usersSecurityMobileLoading) return;
+    if (USERS_SECURITY_STATE.page >= (usersSecurityPageResult.totalPages || 1)) return;
+    usersSecurityMobileLoading = true;
+    syncUsersSecurityLoadMore();
+    USERS_SECURITY_STATE.page += 1;
+    tableState.usersSecurity.page = USERS_SECURITY_STATE.page;
+    await loadUsersSecurityActivity({ silent: true, append: true });
+  });
+  window.addEventListener('resize', () => {
+    if (usersActiveView === 'security') {
+      renderUsersSecurityKpiCards(usersSecurityKpiCache.length ? usersSecurityKpiCache : usersSecurityCache);
+      renderUsersSecurityTable();
+    }
+  });
 }
 
 // Patch renderPagination callback path: keep usersSecurity page in USERS_SECURITY_STATE

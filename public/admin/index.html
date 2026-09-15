@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260916g" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260916h" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1857,8 +1857,20 @@
 
         <div id="users-view-perms" class="users-view hidden">
           <div class="users-perms-panel" id="role-permissions-card">
+            <div class="users-perms-mobile-summary" id="perm-mobile-summary" aria-live="polite">
+              <div class="users-perms-mobile-summary-main">
+                <span class="users-perms-mobile-summary-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <div class="users-perms-mobile-summary-copy">
+                  <strong id="perm-mobile-role-name">Back Office</strong>
+                  <span id="perm-mobile-access-label" data-i18n="perms.customAccess">Custom access</span>
+                </div>
+              </div>
+              <span id="perm-mobile-enabled" class="users-perms-mobile-enabled">0 enabled</span>
+            </div>
             <header class="users-perms-panel-head">
-              <div class="users-perms-heading">
+              <div class="users-perms-heading users-perms-heading-desktop">
                 <h3 data-i18n="perms.title">Role permissions</h3>
                 <p class="field-hint" data-i18n="perms.hint">Choose which pages and features each role can access. Super Admin always has full access.</p>
               </div>
@@ -1888,10 +1900,20 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
               <span data-i18n="perms.superBanner">Super Admin always has full access and cannot be restricted.</span>
             </div>
+            <div class="users-perms-mobile-toolbar">
+              <div class="fonio-activity-search users-perms-mobile-search">
+                <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="search" id="perm-search" data-i18n-placeholder="perms.searchPlaceholder" placeholder="Search permissions..." autocomplete="off" aria-label="Search permissions" />
+              </div>
+              <button type="button" id="perm-filter-btn" class="users-perms-filter-btn" aria-haspopup="dialog">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                <span data-i18n="perms.filter">Filter</span>
+              </button>
+            </div>
             <div id="perm-checkboxes" class="users-perms-columns"></div>
             <footer class="users-perms-footer">
               <div class="users-perms-footer-meta">
-                <span id="perm-enabled-count">0 permissions enabled</span>
+                <span id="perm-enabled-count" class="users-perms-footer-count">0 permissions enabled</span>
                 <span class="users-perms-footer-sep" aria-hidden="true"></span>
                 <span id="perm-dirty-status" class="users-perms-dirty is-clean">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -1899,10 +1921,21 @@
                 </span>
               </div>
               <div class="users-perms-footer-actions">
-                <button type="button" id="perm-discard-btn" class="btn ghost" data-i18n="perms.discard" disabled>Discard</button>
+                <button type="button" id="perm-discard-btn" class="btn ghost users-perms-discard-btn" data-i18n="perms.discard" disabled>Discard</button>
                 <button type="button" id="perm-save-btn" class="btn primary" data-i18n="perms.save" disabled>Save permissions</button>
               </div>
             </footer>
+          </div>
+          <div id="perms-filter-sheet" class="users-filter-sheet hidden" hidden>
+            <button type="button" class="users-filter-sheet-backdrop" data-perms-filter-close aria-label="Close"></button>
+            <div class="users-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="perms-filter-sheet-title">
+              <div class="users-filter-sheet-handle" aria-hidden="true"></div>
+              <div class="users-filter-sheet-head">
+                <h3 id="perms-filter-sheet-title" class="users-filter-sheet-title" data-i18n="perms.filter">Filter</h3>
+                <button type="button" class="users-filter-sheet-close" data-perms-filter-close aria-label="Close">&times;</button>
+              </div>
+              <div id="perms-filter-sheet-body" class="users-filter-sheet-body"></div>
+            </div>
           </div>
         </div>
 
@@ -1920,7 +1953,11 @@
                 <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <input type="search" id="users-security-search" data-i18n-placeholder="users.securitySearchPlaceholder" placeholder="Search action, user, or path" autocomplete="off" aria-label="Search security events" />
               </div>
-              <label class="users-security-filter">
+              <button type="button" id="users-security-filters-btn" class="users-security-filters-btn" aria-haspopup="dialog">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                <span data-i18n="users.securityFilters">Filters</span>
+              </button>
+              <label class="users-security-filter users-security-filter-event">
                 <span class="sr-only" data-i18n="users.securityFilterEvent">Events</span>
                 <select id="users-security-event-filter">
                   <option value="all" data-i18n="users.securityAllEvents">All events</option>
@@ -1929,7 +1966,7 @@
                   <option value="mutations" data-i18n="users.securityEventMutations">Admin changes</option>
                 </select>
               </label>
-              <label class="users-security-filter">
+              <label class="users-security-filter users-security-filter-status">
                 <span class="sr-only" data-i18n="users.securityFilterStatus">Status</span>
                 <select id="users-security-status-filter">
                   <option value="all" data-i18n="users.securityAllStatuses">All statuses</option>
@@ -1938,8 +1975,11 @@
                   <option value="5xx">5xx</option>
                 </select>
               </label>
-              <label class="users-security-filter">
+              <label class="users-security-filter users-security-filter-date">
                 <span class="sr-only" data-i18n="users.securityFilterDate">Date range</span>
+                <span class="users-security-date-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </span>
                 <select id="users-security-date-filter">
                   <option value="7" data-i18n="users.securityLast7Days">Last 7 days</option>
                   <option value="1" data-i18n="users.securityToday">Today</option>
@@ -1952,6 +1992,10 @@
               </button>
             </div>
             <div class="table-wrap users-table-wrap users-security-table-wrap" id="users-security-table"></div>
+            <div id="users-security-mobile-list" class="users-security-mobile-list" aria-live="polite"></div>
+            <div class="users-security-mobile-more-wrap">
+              <button type="button" id="users-security-load-more" class="btn primary users-security-load-more" hidden data-i18n="users.securityLoadMore">Load more</button>
+            </div>
             <div class="users-security-footer">
               <div id="users-security-info" class="table-info"></div>
               <p class="users-security-privacy">
@@ -1970,6 +2014,17 @@
                 </label>
                 <div id="users-security-pagination" class="table-pagination"></div>
               </div>
+            </div>
+          </div>
+          <div id="users-security-filter-sheet" class="users-filter-sheet hidden" hidden>
+            <button type="button" class="users-filter-sheet-backdrop" data-security-filter-close aria-label="Close"></button>
+            <div class="users-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="users-security-filter-sheet-title">
+              <div class="users-filter-sheet-handle" aria-hidden="true"></div>
+              <div class="users-filter-sheet-head">
+                <h3 id="users-security-filter-sheet-title" class="users-filter-sheet-title" data-i18n="users.securityFilters">Filters</h3>
+                <button type="button" class="users-filter-sheet-close" data-security-filter-close aria-label="Close">&times;</button>
+              </div>
+              <div id="users-security-filter-sheet-body" class="users-filter-sheet-body"></div>
             </div>
           </div>
         </div>
@@ -2138,10 +2193,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260916g"></script>
+  <script src="/admin/i18n.js?v=20260916h"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260916g"></script>
+  <script src="/admin/app.js?v=20260916h"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
