@@ -13403,7 +13403,7 @@ function renderUsersMobile(items) {
     const tone = userRoleTone(u.role);
     const selected = editingUserId === u.id;
     return `
-      <article class="users-mobile-card${selected ? ' is-selected' : ''}${u.isActive ? '' : ' is-inactive'}" data-user-id="${esc(u.id)}" tabindex="0">
+      <article class="users-mobile-card${selected ? ' is-selected' : ''}${u.isActive ? '' : ' is-inactive'}" data-user-id="${esc(u.id)}">
         <div class="users-mobile-card-top">
           <span class="users-avatar is-${esc(tone)}" aria-hidden="true">${esc(userInitials(u))}</span>
           <div class="users-mobile-card-identity">
@@ -13418,10 +13418,7 @@ function renderUsersMobile(items) {
             </div>
           </div>
           <div class="users-actions-wrap users-mobile-actions">
-            <button type="button" class="users-menu-btn" data-user-menu="${esc(u.id)}" aria-label="${esc(t('users.actions'))}">⋯</button>
-            <div id="users-mobile-menu-${esc(u.id)}" class="users-row-menu hidden">
-              <button type="button" data-user-edit="${esc(u.id)}">${esc(t('users.editUser'))}</button>
-            </div>
+            <button type="button" class="users-menu-btn" data-user-edit="${esc(u.id)}" aria-label="${esc(t('users.editUser'))}">⋯</button>
           </div>
         </div>
         <div class="users-mobile-card-meta">
@@ -13430,22 +13427,6 @@ function renderUsersMobile(items) {
         </div>
       </article>`;
   }).join('');
-  root.querySelectorAll('.users-mobile-card').forEach((card) => {
-    const open = () => {
-      const user = cachedUsers.find((u) => u.id === card.dataset.userId);
-      if (user) loadUserIntoForm(user);
-    };
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.users-actions-wrap')) return;
-      open();
-    });
-    card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        open();
-      }
-    });
-  });
   bindUserRowClicks(root);
 }
 

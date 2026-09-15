@@ -21955,11 +21955,17 @@ body.users-filter-open {
     border: 1px solid rgba(148, 163, 184, 0.15);
     border-radius: 12px;
     background: #172238;
-    cursor: pointer;
   }
 
   #tab-users .users-mobile-card.is-selected {
     border-color: #3b82f6;
+  }
+
+  #tab-users .users-mobile-actions .users-menu-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1.25rem;
+    color: #cbd5e1;
   }
 
   #tab-users .users-mobile-card-top {
