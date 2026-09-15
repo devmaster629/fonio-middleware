@@ -131,6 +131,7 @@ export class AuditLogService {
     dateFrom?: string;
     dateTo?: string;
     retention?: string;
+    status?: string;
     sortBy?: string;
     sortDir?: string;
   }) {
@@ -150,6 +151,13 @@ export class AuditLogService {
     const where: Prisma.ApiLogWhereInput = {};
     if (source && source !== 'all') where.source = source;
     if (action && action !== 'all') where.action = action;
+    const status = String(opts.status || '').trim();
+    if (status && status !== 'all') {
+      if (status === '2xx' || status === 'ok') where.statusCode = { gte: 200, lt: 300 };
+      else if (status === '4xx' || status === 'warn') where.statusCode = { gte: 400, lt: 500 };
+      else if (status === '5xx' || status === 'err') where.statusCode = { gte: 500 };
+      else if (/^\d{3}$/.test(status)) where.statusCode = Number(status);
+    }
     if (opts.dateFrom || opts.dateTo) {
       where.createdAt = {};
       if (opts.dateFrom) {

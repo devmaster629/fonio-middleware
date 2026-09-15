@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915r" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915t" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1090,15 +1090,25 @@
         </nav>
 
         <div id="logs-view-entries" class="logs-view">
+          <p class="logs-mobile-intro field-hint" data-i18n="logs.mobileHint">Track and review all API activity across your integrations.</p>
           <div id="logs-kpis" class="logs-kpis" aria-live="polite"></div>
+          <div class="logs-privacy-banner" role="status">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            <span class="logs-privacy-desktop" data-i18n="logs.privacyBanner">Personal data is masked in all log entries. IP addresses are hashed and cannot be reversed.</span>
+            <span class="logs-privacy-mobile" data-i18n="logs.privacyBannerMobile">Some request and response data is masked for security reasons. Sensitive information such as tokens, personal data and credentials is hidden.</span>
+          </div>
 
           <div class="logs-board">
             <div id="logs-filters" class="logs-filters fonio-activity-toolbar">
               <div class="fonio-activity-toolbar-row">
-                <div class="fonio-activity-search">
-                  <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  <input type="search" id="logs-search" data-i18n-placeholder="logs.searchPlaceholder" placeholder="Search logs..." autocomplete="off" aria-label="Search logs" />
-                </div>
+                <label class="logs-search-field">
+                  <span data-i18n="logs.filterSearch">Search</span>
+                  <span class="fonio-activity-search">
+                    <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="search" id="logs-search" data-i18n-placeholder="logs.searchPlaceholder" placeholder="Search logs..." autocomplete="off" aria-label="Search logs" />
+                  </span>
+                </label>
+                <div class="logs-filters-desktop">
                 <label>
                   <span data-i18n="logs.filterDateFrom">From</span>
                   <input type="date" id="logs-date-from" />
@@ -1120,6 +1130,15 @@
                   </select>
                 </label>
                 <label>
+                  <span data-i18n="logs.status">Status</span>
+                  <select id="logs-filter-status">
+                    <option value="all" data-i18n="logs.filterStatusAll">All statuses</option>
+                    <option value="2xx" data-i18n="logs.filterStatusOk">2xx Success</option>
+                    <option value="4xx" data-i18n="logs.filterStatusWarn">4xx Client error</option>
+                    <option value="5xx" data-i18n="logs.filterStatusErr">5xx Server error</option>
+                  </select>
+                </label>
+                <label>
                   <span data-i18n="logs.retentionCol">Retention</span>
                   <select id="logs-filter-retention">
                     <option value="all" data-i18n="logs.filterRetentionAll">All rules</option>
@@ -1129,10 +1148,21 @@
                     <option value="max_cap" data-i18n="logs.rule.max_cap">Maximum cap</option>
                   </select>
                 </label>
-                <button type="button" id="logs-clear-filters-btn" class="btn ghost btn-sm" data-i18n="logs.clearFilters">Reset</button>
+                <label class="logs-clear-field">
+                  <span>&nbsp;</span>
+                  <button type="button" id="logs-clear-filters-btn" class="btn ghost btn-sm" data-i18n="logs.clearFilters">Reset</button>
+                </label>
+                </div>
+                <div class="logs-mobile-chips" aria-label="Filters">
+                  <button type="button" class="logs-filter-chip" data-logs-chip="source"><span class="logs-filter-chip-text">Source</span><svg class="logs-filter-chip-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button type="button" class="logs-filter-chip" data-logs-chip="action"><span class="logs-filter-chip-text">Action</span><svg class="logs-filter-chip-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button type="button" class="logs-filter-chip" data-logs-chip="status"><span class="logs-filter-chip-text">Status</span><svg class="logs-filter-chip-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button type="button" class="logs-filter-chip" data-logs-chip="date"><span class="logs-filter-chip-text">Date</span><svg class="logs-filter-chip-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                </div>
               </div>
             </div>
             <div class="fonio-activity-board-divider" aria-hidden="true"></div>
+            <div id="logs-mobile-list" class="logs-mobile-list" aria-live="polite"></div>
             <div class="table-wrap logs-table-wrap" id="logs-table"></div>
             <div class="logs-table-footer fonio-activity-table-footer">
               <div id="logs-info" class="table-info"></div>
@@ -1271,14 +1301,43 @@
           </section>
         </div>
 
+        <div id="logs-filter-sheet" class="logs-filter-sheet hidden" hidden>
+          <button type="button" class="logs-filter-sheet-backdrop" data-logs-filter-close aria-label="Close"></button>
+          <div class="logs-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="logs-filter-sheet-title">
+            <div class="logs-filter-sheet-handle" aria-hidden="true"></div>
+            <div class="logs-filter-sheet-head">
+              <h3 id="logs-filter-sheet-title" class="logs-filter-sheet-title">Filter</h3>
+              <button type="button" class="logs-filter-sheet-close" data-logs-filter-close aria-label="Close">&times;</button>
+            </div>
+            <div id="logs-filter-sheet-body" class="logs-filter-sheet-body"></div>
+          </div>
+        </div>
+
         <div id="logs-drawer" class="logs-drawer hidden" aria-hidden="true">
           <div class="logs-drawer-backdrop" data-logs-drawer-close></div>
           <aside class="logs-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="logs-drawer-title">
+            <div class="logs-drawer-handle" aria-hidden="true"></div>
             <header class="logs-drawer-header">
-              <h3 id="logs-drawer-title" data-i18n="logs.eventDetails">Event details</h3>
+              <div class="logs-drawer-heading">
+                <span id="logs-drawer-icon" class="logs-source-icon" aria-hidden="true">H</span>
+                <div>
+                  <h3 id="logs-drawer-title" data-i18n="logs.eventDetails">Event details</h3>
+                  <div id="logs-drawer-sub" class="logs-drawer-sub"></div>
+                </div>
+              </div>
+              <span id="logs-drawer-status" class="logs-http-pill"></span>
               <button type="button" class="logs-drawer-close" data-logs-drawer-close aria-label="Close">&times;</button>
             </header>
+            <div class="logs-drawer-tabs" role="tablist" aria-label="Log detail">
+              <button type="button" class="logs-drawer-tab is-active" data-logs-drawer-tab="details" role="tab" aria-selected="true" data-i18n="logs.tabDetails">Details</button>
+              <button type="button" class="logs-drawer-tab" data-logs-drawer-tab="request" role="tab" aria-selected="false" data-i18n="logs.requestBlock">Request</button>
+              <button type="button" class="logs-drawer-tab" data-logs-drawer-tab="response" role="tab" aria-selected="false" data-i18n="logs.responseBlock">Response</button>
+              <button type="button" class="logs-drawer-tab" data-logs-drawer-tab="metadata" role="tab" aria-selected="false" data-i18n="logs.tabMetadata">Metadata</button>
+            </div>
             <div id="logs-drawer-body" class="logs-drawer-body"></div>
+            <div id="logs-drawer-footer" class="logs-drawer-footer">
+              <button type="button" class="btn primary" id="logs-drawer-full-btn" data-i18n="logs.viewFullDetails">View full details</button>
+            </div>
           </aside>
         </div>
       </section>
@@ -1897,10 +1956,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915r"></script>
+  <script src="/admin/i18n.js?v=20260915t"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915r"></script>
+  <script src="/admin/app.js?v=20260915t"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

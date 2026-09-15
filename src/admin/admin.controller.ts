@@ -921,6 +921,7 @@ export class AdminController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('retention') retention?: string,
+    @Query('status') status?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
   ) {
@@ -933,6 +934,7 @@ export class AdminController {
       dateFrom,
       dateTo,
       retention,
+      status,
       sortBy,
       sortDir,
     });

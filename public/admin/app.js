@@ -111,6 +111,9 @@ let logsCache = [];
 let logsRetentionStatus = null;
 let logsUiBound = false;
 let logsActiveView = 'entries';
+let logsDrawerLog = null;
+let logsDrawerTab = 'details';
+let logsDrawerFull = false;
 let logsFacets = { sources: [], actions: [] };
 let logsPageResult = {
   items: [],
@@ -10569,10 +10572,15 @@ function httpStatusTone(code) {
 function logSourceMeta(source) {
   const s = String(source || '').toLowerCase();
   if (s.includes('hostaway')) return { label: source, tone: 'hostaway', mark: 'H' };
+  if (s.includes('airbnb')) return { label: source, tone: 'airbnb', mark: 'A' };
+  if (s.includes('stripe')) return { label: source, tone: 'stripe', mark: 'S' };
+  if (s.includes('paypal')) return { label: source, tone: 'paypal', mark: 'P' };
+  if (s.includes('qonto')) return { label: source, tone: 'qonto', mark: 'Q' };
   if (s.includes('fonio')) return { label: source, tone: 'fonio', mark: 'f' };
   if (s.includes('check24')) return { label: source, tone: 'check24', mark: '24' };
   if (s.includes('admin') || s.includes('brainions')) return { label: source, tone: 'admin', mark: 'b' };
-  return { label: source || '–', tone: 'default', mark: 'API' };
+  const mark = String(source || 'API').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'API';
+  return { label: source || '–', tone: 'default', mark };
 }
 
 function logRetentionLabel(log) {
@@ -10598,6 +10606,7 @@ function renderLogsKpis(status) {
       tone: 'blue',
       icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/>',
       label: t('logs.kpiStored'),
+      labelHtml: `<span class="logs-kpi-label-full">${esc(t('logs.kpiStored'))}</span><span class="logs-kpi-label-short">${esc(t('logs.kpiStoredShort'))}</span>`,
       value: Number(status?.totalLogs ?? 0).toLocaleString(),
       sub: t('logs.kpiStoredSub'),
     },
@@ -10632,7 +10641,7 @@ function renderLogsKpis(status) {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
       </span>
       <div class="logs-kpi-body">
-        <div class="logs-kpi-label">${esc(c.label)}</div>
+        <div class="logs-kpi-label">${c.labelHtml || esc(c.label)}</div>
         <div class="logs-kpi-value">${esc(String(c.value))}</div>
         <div class="logs-kpi-sub">${esc(c.sub)}</div>
       </div>
@@ -10677,6 +10686,215 @@ function ensureLogsPageSizeControl() {
   });
 }
 
+function isLogsMobileLayout() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function closeLogsFilterSheet() {
+  const sheet = $('#logs-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('logs-filter-sheet-open');
+}
+
+function openLogsFilterSheet(kind) {
+  const sheet = $('#logs-filter-sheet');
+  const body = $('#logs-filter-sheet-body');
+  const titleEl = $('#logs-filter-sheet-title');
+  if (!sheet || !body) return;
+  const titles = {
+    source: t('logs.source'),
+    action: t('logs.action'),
+    status: t('logs.status'),
+    date: t('logs.filterDate'),
+  };
+  if (titleEl) titleEl.textContent = titles[kind] || 'Filter';
+  const s = tableState.logs;
+
+  if (kind === 'date') {
+    body.innerHTML = `
+      <div class="logs-filter-date-sheet">
+        <label><span>${esc(t('logs.filterDateFrom'))}</span><input type="date" data-sheet-date="dateFrom" value="${esc(s.dateFrom || '')}" /></label>
+        <label><span>${esc(t('logs.filterDateTo'))}</span><input type="date" data-sheet-date="dateTo" value="${esc(s.dateTo || '')}" /></label>
+        <div class="logs-filter-date-actions">
+          <button type="button" class="btn ghost" data-sheet-clear-dates>${esc(t('logs.filterClearDates'))}</button>
+          <button type="button" class="btn primary" data-sheet-apply-dates>${esc(t('logs.filterApplyDates'))}</button>
+        </div>
+      </div>`;
+    body.querySelector('[data-sheet-clear-dates]')?.addEventListener('click', () => {
+      if ($('#logs-date-from')) $('#logs-date-from').value = '';
+      if ($('#logs-date-to')) $('#logs-date-to').value = '';
+      tableState.logs.dateFrom = '';
+      tableState.logs.dateTo = '';
+      tableState.logs.page = 1;
+      closeLogsFilterSheet();
+      loadLogs({ silent: true });
+    });
+    body.querySelector('[data-sheet-apply-dates]')?.addEventListener('click', () => {
+      const from = body.querySelector('[data-sheet-date="dateFrom"]')?.value || '';
+      const to = body.querySelector('[data-sheet-date="dateTo"]')?.value || '';
+      if ($('#logs-date-from')) $('#logs-date-from').value = from;
+      if ($('#logs-date-to')) $('#logs-date-to').value = to;
+      tableState.logs.dateFrom = from;
+      tableState.logs.dateTo = to;
+      tableState.logs.page = 1;
+      closeLogsFilterSheet();
+      loadLogs({ silent: true });
+    });
+  } else {
+    const selId =
+      kind === 'source' ? '#logs-filter-source' : kind === 'action' ? '#logs-filter-action' : '#logs-filter-status';
+    const sel = $(selId);
+    if (!sel) return;
+    const current = String(sel.value || 'all');
+    body.innerHTML = `<div class="logs-filter-sheet-options">${[...sel.options]
+      .map((opt) => {
+        const value = String(opt.value ?? '');
+        const label = String(opt.textContent || '').trim() || value;
+        return `<button type="button" class="logs-filter-sheet-option${value === current ? ' is-selected' : ''}" data-value="${esc(value)}">${esc(label)}</button>`;
+      })
+      .join('')}</div>`;
+    body.querySelectorAll('[data-value]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sel.value = btn.getAttribute('data-value') ?? 'all';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        closeLogsFilterSheet();
+      });
+    });
+  }
+
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('logs-filter-sheet-open');
+}
+
+function syncLogsFilterChips() {
+  const s = tableState.logs;
+  const setChip = (key, active, text) => {
+    const chip = $(`[data-logs-chip="${key}"]`);
+    if (!chip) return;
+    chip.classList.toggle('is-active', !!active);
+    const textEl = chip.querySelector('.logs-filter-chip-text');
+    if (textEl && text) textEl.textContent = text;
+  };
+  const sourceSel = $('#logs-filter-source');
+  setChip('source', s.source !== 'all', sourceSel?.selectedOptions?.[0]?.textContent?.trim() || t('logs.source'));
+  const actionSel = $('#logs-filter-action');
+  setChip('action', s.action !== 'all', actionSel?.selectedOptions?.[0]?.textContent?.trim() || t('logs.action'));
+  const statusSel = $('#logs-filter-status');
+  setChip('status', s.status !== 'all', statusSel?.selectedOptions?.[0]?.textContent?.trim() || t('logs.status'));
+  let dateText = t('logs.filterDate');
+  const dateActive = !!(s.dateFrom || s.dateTo);
+  if (s.dateFrom && s.dateTo) dateText = `${s.dateFrom} → ${s.dateTo}`;
+  else if (s.dateFrom) dateText = s.dateFrom;
+  else if (s.dateTo) dateText = s.dateTo;
+  setChip('date', dateActive, dateText);
+}
+
+function renderLogsMobile(items) {
+  const root = $('#logs-mobile-list');
+  if (!root) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    root.innerHTML = `<div class="logs-m-empty">${esc(t('logs.empty'))}</div>`;
+    return;
+  }
+  root.innerHTML = list
+    .map((l) => {
+      const src = logSourceMeta(l.source);
+      const tone = httpStatusTone(l.statusCode);
+      const retain = t('logs.retainUntil', { date: formatAuditShortDate(l.expiresAt) });
+      const selected = logsDrawerLog && String(logsDrawerLog.id) === String(l.id);
+      return `
+      <article class="logs-m-card${selected ? ' is-selected' : ''}" data-log-detail="${esc(l.id)}">
+        <span class="logs-source-icon is-${esc(src.tone)}" aria-hidden="true">${esc(src.mark)}</span>
+        <div class="logs-m-card-body">
+          <div class="logs-m-card-top">
+            <div>
+              <div class="logs-m-time">${esc(formatPaymentImportTime(l.createdAt))}</div>
+              <div class="logs-m-action">${esc(l.action || '–')}</div>
+            </div>
+            <span class="logs-http-pill is-${tone}">${esc(httpStatusLabel(l.statusCode))}</span>
+          </div>
+          <div class="logs-m-summary">${esc(formatLogSummary(l))}</div>
+          <div class="logs-m-retain">${esc(retain)}</div>
+        </div>
+      </article>`;
+    })
+    .join('');
+  root.querySelectorAll('[data-log-detail]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const log = logsCache.find((x) => String(x.id) === String(card.dataset.logDetail));
+      if (log) showLogDetail(log);
+    });
+  });
+}
+
+function logsDrawerMetaHtml(log) {
+  const meta = log.metadata ?? {};
+  const src = logSourceMeta(log.source);
+  const sample = (logsRetentionStatus?.samples || []).find((s) => s.id === log.id);
+  const ruleKey = sample?.retentionRule;
+  return `
+    <dl class="logs-meta-list">
+      <div><dt>${t('logs.summary')}</dt><dd>${esc(formatLogSummary(log))}</dd></div>
+      <div><dt>${t('logs.source')}</dt><dd><span class="logs-source"><span class="logs-source-icon is-${esc(src.tone)}">${esc(src.mark)}</span>${esc(src.label)}</span></dd></div>
+      <div><dt>${t('logs.action')}</dt><dd><code>${esc(log.action || '–')}</code></dd></div>
+      <div><dt>${t('logs.httpStatus')}</dt><dd><span class="logs-http-pill is-${httpStatusTone(log.statusCode)}">${esc(httpStatusLabel(log.statusCode))}</span></dd></div>
+      <div><dt>${t('logs.time')}</dt><dd>${esc(formatAuditDateTime(log.createdAt))}</dd></div>
+      ${meta.callId || meta.requestId ? `<div><dt>${t('logs.requestId')}</dt><dd><code>${esc(meta.callId || meta.requestId)}</code></dd></div>` : ''}
+      ${log.ipHash ? `<div><dt>${t('logs.ipHash')}</dt><dd><code>${esc(log.ipHash)}</code></dd></div>` : ''}
+      ${meta.userAgent ? `<div><dt>${t('logs.userAgent')}</dt><dd>${esc(meta.userAgent)}</dd></div>` : ''}
+      <div><dt>${t('logs.environment')}</dt><dd><span class="logs-env-pill">${esc(t('logs.envProduction'))}</span></dd></div>
+    </dl>
+    <section class="logs-retention-card">
+      <h4>${t('logs.retentionInfo')}</h4>
+      <dl class="logs-meta-list compact">
+        <div><dt>${t('logs.retentionRule')}</dt><dd>${esc(ruleKey ? t(`logs.rule.${ruleKey}`) : t('logs.rule.operational'))}</dd></div>
+        <div><dt>${t('logs.retentionCol')}</dt><dd>${esc(logRetentionLabel(log))}</dd></div>
+        <div><dt>${t('logs.deletesOn')}</dt><dd>${esc(formatAuditDateTime(log.expiresAt))}</dd></div>
+      </dl>
+      <button type="button" class="btn ghost btn-sm" id="logs-drawer-to-retention">${t('logs.goRetentionSettings')}</button>
+    </section>`;
+}
+
+function logsDrawerFullHtml(log) {
+  const meta = log.metadata ?? {};
+  const req = meta.requestReceived ?? meta.request ?? null;
+  const res = meta.responseRecorded ?? meta.response ?? null;
+  return `
+    ${logsDrawerMetaHtml(log)}
+    ${renderLogsJsonBlock(t('logs.requestBlock'), req, t('logs.noRequestBody'))}
+    ${renderLogsJsonBlock(t('logs.responseBlock'), res || meta, t('logs.noResponseBody'))}
+  `;
+}
+
+function renderLogsDrawerBody() {
+  const log = logsDrawerLog;
+  const body = $('#logs-drawer-body');
+  if (!log || !body) return;
+  const meta = log.metadata ?? {};
+  const req = meta.requestReceived ?? meta.request ?? null;
+  const res = meta.responseRecorded ?? meta.response ?? null;
+  const mobile = isLogsMobileLayout() && !logsDrawerFull;
+  if (!mobile) {
+    body.innerHTML = logsDrawerFullHtml(log);
+  } else if (logsDrawerTab === 'request') {
+    body.innerHTML = renderLogsJsonBlock(t('logs.requestBlock'), req, t('logs.noRequestBody'));
+  } else if (logsDrawerTab === 'response') {
+    body.innerHTML = renderLogsJsonBlock(t('logs.responseBlock'), res || meta, t('logs.noResponseBody'));
+  } else if (logsDrawerTab === 'metadata') {
+    body.innerHTML = renderLogsJsonBlock(t('logs.tabMetadata'), meta, t('logs.noResponseBody'));
+  } else {
+    body.innerHTML = logsDrawerMetaHtml(log);
+  }
+  body.querySelector('#logs-drawer-to-retention')?.addEventListener('click', () => {
+    closeLogsDrawer();
+    setLogsView('retention');
+  });
+}
+
 function bindLogsUi() {
   if (logsUiBound) return;
   logsUiBound = true;
@@ -10693,10 +10911,11 @@ function bindLogsUi() {
     s.dateTo = $('#logs-date-to')?.value || '';
     s.source = $('#logs-filter-source')?.value || 'all';
     s.action = $('#logs-filter-action')?.value || 'all';
+    s.status = $('#logs-filter-status')?.value || 'all';
     s.retention = $('#logs-filter-retention')?.value || 'all';
-    s.status = 'all';
     s.method = 'all';
     s.page = 1;
+    syncLogsFilterChips();
     loadLogs({ silent: true });
   };
 
@@ -10705,7 +10924,7 @@ function bindLogsUi() {
     clearTimeout(searchTimers.logs);
     searchTimers.logs = setTimeout(syncFiltersFromDom, 280);
   });
-  ['#logs-date-from', '#logs-date-to', '#logs-filter-source', '#logs-filter-action', '#logs-filter-retention']
+  ['#logs-date-from', '#logs-date-to', '#logs-filter-source', '#logs-filter-action', '#logs-filter-status', '#logs-filter-retention']
     .forEach((sel) => $(sel)?.addEventListener('change', syncFiltersFromDom));
 
   $('#logs-clear-filters-btn')?.addEventListener('click', () => {
@@ -10723,12 +10942,39 @@ function bindLogsUi() {
     if ($('#logs-date-to')) $('#logs-date-to').value = '';
     if ($('#logs-filter-source')) $('#logs-filter-source').value = 'all';
     if ($('#logs-filter-action')) $('#logs-filter-action').value = 'all';
+    if ($('#logs-filter-status')) $('#logs-filter-status').value = 'all';
     if ($('#logs-filter-retention')) $('#logs-filter-retention').value = 'all';
+    syncLogsFilterChips();
     loadLogs({ silent: true });
+  });
+
+  $$('[data-logs-chip]').forEach((btn) => {
+    btn.addEventListener('click', () => openLogsFilterSheet(btn.getAttribute('data-logs-chip')));
+  });
+  document.querySelectorAll('[data-logs-filter-close]').forEach((el) => {
+    el.addEventListener('click', closeLogsFilterSheet);
   });
 
   document.querySelectorAll('[data-logs-drawer-close]').forEach((el) => {
     el.addEventListener('click', closeLogsDrawer);
+  });
+  $$('[data-logs-drawer-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      logsDrawerTab = btn.dataset.logsDrawerTab || 'details';
+      logsDrawerFull = false;
+      $$('[data-logs-drawer-tab]').forEach((tab) => {
+        const on = tab.dataset.logsDrawerTab === logsDrawerTab;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      renderLogsDrawerBody();
+    });
+  });
+  $('#logs-drawer-full-btn')?.addEventListener('click', () => {
+    logsDrawerFull = true;
+    renderLogsDrawerBody();
+    const body = $('#logs-drawer-body');
+    body?.scrollTo?.({ top: 0, behavior: 'smooth' });
   });
 }
 
@@ -10798,6 +11044,11 @@ function populateLogsFilterOptions(facets = logsFacets) {
   if (retentionSel && document.activeElement !== retentionSel) {
     retentionSel.value = tableState.logs.retention || 'all';
   }
+  const statusSel = $('#logs-filter-status');
+  if (statusSel && document.activeElement !== statusSel) {
+    statusSel.value = tableState.logs.status || 'all';
+  }
+  syncLogsFilterChips();
 }
 
 function renderLogsTable() {
@@ -10861,6 +11112,7 @@ function renderLogsTable() {
   renderTableInfo('#logs-info', pageData, pageData.maxTotal);
   renderPagination('#logs-pagination', pageData, 'logs', () => loadLogs({ silent: true }));
   scheduleEnhanceResponsiveTables();
+  renderLogsMobile(items);
 }
 
 async function loadLogs({ silent = false } = {}) {
@@ -10877,6 +11129,7 @@ async function loadLogs({ silent = false } = {}) {
   if (s.search?.trim()) params.set('search', s.search.trim());
   if (s.source && s.source !== 'all') params.set('source', s.source);
   if (s.action && s.action !== 'all') params.set('action', s.action);
+  if (s.status && s.status !== 'all') params.set('status', s.status);
   if (s.retention && s.retention !== 'all') params.set('retention', s.retention);
   if (s.dateFrom) params.set('dateFrom', s.dateFrom);
   if (s.dateTo) params.set('dateTo', s.dateTo);
@@ -11039,6 +11292,9 @@ function closeLogsDrawer() {
   drawer.classList.add('hidden');
   drawer.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('logs-drawer-open');
+  logsDrawerLog = null;
+  logsDrawerFull = false;
+  renderLogsMobile(logsCache);
 }
 
 function showLogDetail(log) {
@@ -11046,7 +11302,6 @@ function showLogDetail(log) {
   const drawer = $('#logs-drawer');
   const body = $('#logs-drawer-body');
   if (!drawer || !body) {
-    // fallback modal
     const modal = $('#log-detail-modal');
     const modalBody = $('#log-detail-modal-body');
     if (modal && modalBody) {
@@ -11062,42 +11317,34 @@ function showLogDetail(log) {
     return;
   }
 
+  logsDrawerLog = log;
+  logsDrawerTab = 'details';
+  logsDrawerFull = false;
   const src = logSourceMeta(log.source);
-  const req = meta.requestReceived ?? meta.request ?? null;
-  const res = meta.responseRecorded ?? meta.response ?? null;
-  const sample = (logsRetentionStatus?.samples || []).find((s) => s.id === log.id);
-  const ruleKey = sample?.retentionRule;
-
-  body.innerHTML = `
-    <dl class="logs-meta-list">
-      <div><dt>${t('logs.time')}</dt><dd>${esc(formatAuditDateTime(log.createdAt))}</dd></div>
-      <div><dt>${t('logs.source')}</dt><dd><span class="logs-source"><span class="logs-source-icon is-${esc(src.tone)}">${esc(src.mark)}</span>${esc(src.label)}</span></dd></div>
-      <div><dt>${t('logs.action')}</dt><dd><code>${esc(log.action || '–')}</code></dd></div>
-      <div><dt>${t('logs.httpStatus')}</dt><dd><span class="logs-http-pill is-${httpStatusTone(log.statusCode)}">${esc(httpStatusLabel(log.statusCode))}</span></dd></div>
-      ${meta.callId || meta.requestId ? `<div><dt>${t('logs.requestId')}</dt><dd><code>${esc(meta.callId || meta.requestId)}</code></dd></div>` : ''}
-      ${log.ipHash ? `<div><dt>${t('logs.ipHash')}</dt><dd><code>${esc(log.ipHash)}</code></dd></div>` : ''}
-      ${meta.userAgent ? `<div><dt>${t('logs.userAgent')}</dt><dd>${esc(meta.userAgent)}</dd></div>` : ''}
-      <div><dt>${t('logs.environment')}</dt><dd><span class="logs-env-pill">${esc(t('logs.envProduction'))}</span></dd></div>
-    </dl>
-    ${renderLogsJsonBlock(t('logs.requestBlock'), req, t('logs.noRequestBody'))}
-    ${renderLogsJsonBlock(t('logs.responseBlock'), res || meta, t('logs.noResponseBody'))}
-    <section class="logs-retention-card">
-      <h4>${t('logs.retentionInfo')}</h4>
-      <dl class="logs-meta-list compact">
-        <div><dt>${t('logs.retentionRule')}</dt><dd>${esc(ruleKey ? t(`logs.rule.${ruleKey}`) : t('logs.rule.operational'))}</dd></div>
-        <div><dt>${t('logs.retentionCol')}</dt><dd>${esc(logRetentionLabel(log))}</dd></div>
-        <div><dt>${t('logs.deletesOn')}</dt><dd>${esc(formatAuditDateTime(log.expiresAt))}</dd></div>
-      </dl>
-      <button type="button" class="btn ghost btn-sm" id="logs-drawer-to-retention">${t('logs.goRetentionSettings')}</button>
-    </section>
-  `;
-  body.querySelector('#logs-drawer-to-retention')?.addEventListener('click', () => {
-    closeLogsDrawer();
-    setLogsView('retention');
+  const icon = $('#logs-drawer-icon');
+  if (icon) {
+    icon.className = `logs-source-icon is-${src.tone}`;
+    icon.textContent = src.mark;
+  }
+  const titleEl = $('#logs-drawer-title');
+  if (titleEl) titleEl.textContent = log.action || t('logs.eventDetails');
+  const sub = $('#logs-drawer-sub');
+  if (sub) sub.textContent = `${src.label} · ${formatPaymentImportTime(log.createdAt)}`;
+  const statusEl = $('#logs-drawer-status');
+  if (statusEl) {
+    statusEl.className = `logs-http-pill is-${httpStatusTone(log.statusCode)}`;
+    statusEl.textContent = httpStatusLabel(log.statusCode);
+  }
+  $$('[data-logs-drawer-tab]').forEach((tab) => {
+    const on = tab.dataset.logsDrawerTab === 'details';
+    tab.classList.toggle('is-active', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
   });
+  renderLogsDrawerBody();
   drawer.classList.remove('hidden');
   drawer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('logs-drawer-open');
+  renderLogsMobile(logsCache);
 }
 
 $('#log-detail-modal-close')?.addEventListener('click', () => {
