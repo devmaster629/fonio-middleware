@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260914h" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915a" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -381,6 +381,7 @@
             <p class="page-subtitle" data-i18n="conversations.hint">Guest requests are forwarded to your Hostaway inbox. All conversations are synchronized for admin visibility.</p>
           </div>
           <div class="conversations-page-actions">
+            <span id="conversations-global-sync" class="conversations-global-sync" hidden></span>
             <label class="conversations-auto-refresh">
               <span data-i18n="conversations.autoRefresh">Auto-refresh: 60s</span>
               <input type="checkbox" id="conversations-auto-refresh" />
@@ -391,34 +392,24 @@
 
         <div class="conversations-inbox" id="conversations-inbox">
           <aside class="conversations-list-pane" aria-label="Conversation list">
+            <div class="conversations-mobile-list-head">
+              <h2 data-i18n="nav.conversations">Conversations</h2>
+              <span id="conversations-mobile-sync" class="conversations-global-sync"></span>
+            </div>
             <div class="conversations-list-toolbar">
               <label class="conversations-search">
                 <span class="sr-only" data-i18n="table.search">Search</span>
                 <input type="search" id="conversations-search" placeholder="Search guest, property, or conversation ID..." autocomplete="off" />
                 <svg class="conversations-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               </label>
-              <div class="conversations-list-filters">
-                <select id="conversations-channel" aria-label="Channel">
-                  <option value="all">All channels</option>
-                </select>
-                <select id="conversations-status" aria-label="Status">
-                  <option value="all">All statuses</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="payment_due">Payment due</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="inquiry">Inquiry</option>
-                  <option value="new">New</option>
-                  <option value="modified">Modified</option>
+              <div class="conversations-list-meta">
+                <span id="conversations-count-label">0 conversations</span>
+                <select id="conversations-sort" aria-label="Sort">
+                  <option value="updatedAt:desc">Sort: Last updated</option>
+                  <option value="arrivalDate:desc">Sort: Arrival</option>
+                  <option value="guestName:asc">Sort: Guest A-Z</option>
                 </select>
               </div>
-            </div>
-            <div class="conversations-list-meta">
-              <span id="conversations-count-label">0 conversations</span>
-              <select id="conversations-sort" aria-label="Sort">
-                <option value="updatedAt:desc">Sort: Last updated</option>
-                <option value="arrivalDate:desc">Sort: Arrival</option>
-                <option value="guestName:asc">Sort: Guest A-Z</option>
-              </select>
             </div>
             <div id="conversations-list" class="conversations-list"></div>
             <div class="conversations-list-footer">
@@ -435,6 +426,7 @@
                 </label>
               </div>
             </div>
+            <p id="conversations-mobile-footer-note" class="conversations-mobile-footer-note" hidden></p>
           </aside>
 
           <section class="conversations-chat-pane" aria-label="Chat">
@@ -443,38 +435,57 @@
             </div>
             <div id="conversations-chat" class="conversations-chat hidden">
               <header class="conversations-chat-header">
+                <button type="button" class="conversations-icon-btn conversations-back-btn" id="conversations-back-btn" aria-label="Back" hidden>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
                 <div class="conversations-chat-identity">
                   <div id="conversations-chat-avatar" class="conversations-avatar is-lg" aria-hidden="true"></div>
-                  <div>
+                  <div class="conversations-chat-identity-text">
                     <div id="conversations-chat-guest" class="conversations-chat-guest">-</div>
                     <div class="conversations-chat-sub">
                       <span id="conversations-chat-listing">-</span>
-                      <span class="conversations-dot" aria-hidden="true">Ã‚Â·</span>
-                      <span id="conversations-chat-convid">-</span>
-                      <button type="button" class="conversations-icon-btn" id="conversations-copy-convid" title="Copy" hidden>
+                      <span class="conversations-dot conversations-dot-desktop" aria-hidden="true">·</span>
+                      <span id="conversations-chat-convid" class="conversations-convid-desktop">-</span>
+                      <button type="button" class="conversations-icon-btn conversations-convid-desktop" id="conversations-copy-convid" title="Copy" hidden>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                       </button>
                     </div>
+                    <span id="conversations-chat-sync-mobile" class="conversations-sync-badge conversations-sync-mobile" hidden></span>
                   </div>
                 </div>
                 <div class="conversations-chat-header-right">
-                  <span id="conversations-chat-sync" class="conversations-sync-badge"></span>
-                  <span id="conversations-chat-channel" class="conversations-channel-label"></span>
+                  <span id="conversations-chat-sync" class="conversations-sync-badge conversations-sync-desktop"></span>
+                  <span id="conversations-chat-channel" class="conversations-channel-label conversations-channel-desktop"></span>
+                  <button type="button" class="conversations-icon-btn conversations-more-btn" id="conversations-more-btn" aria-label="Details" hidden>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                  </button>
                 </div>
               </header>
               <div id="conversations-reservation-bar" class="conversations-reservation-bar"></div>
               <div id="conversations-messages" class="conversations-messages-pane"></div>
               <footer class="conversations-chat-footer">
                 <div class="conversations-chat-actions">
-                  <a id="conversations-open-hostaway" class="btn primary" href="#" target="_blank" rel="noopener noreferrer" hidden>Open in Hostaway</a>
-                  <button type="button" class="btn ghost" id="conversations-refresh-btn" hidden>Refresh conversation</button>
+                  <a id="conversations-open-hostaway" class="btn primary conversations-open-hostaway-btn" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                    <span data-i18n="payments.openInHostaway">Open in Hostaway</span>
+                    <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+                  </a>
+                  <button type="button" class="btn ghost conversations-refresh-btn" id="conversations-refresh-btn" hidden>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                    <span class="conversations-refresh-label" data-i18n="conversations.refreshConversation">Refresh conversation</span>
+                  </button>
                 </div>
                 <p class="conversations-readonly-note" data-i18n="conversations.readOnly">Read-only admin view</p>
               </footer>
             </div>
           </section>
 
-          <aside class="conversations-details-pane" aria-label="Details">
+          <aside class="conversations-details-pane" aria-label="Details" id="conversations-details-pane">
+            <div class="conversations-details-mobile-head">
+              <h3 data-i18n="conversations.detailsTitle">Details</h3>
+              <button type="button" class="conversations-icon-btn" id="conversations-details-close-btn" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
             <div id="conversations-details-empty" class="conversations-empty-state is-compact">
               <p data-i18n="conversations.detailsEmpty">Guest and sync details appear here.</p>
             </div>
@@ -1751,10 +1762,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260914h"></script>
+  <script src="/admin/i18n.js?v=20260915a"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260914h"></script>
+  <script src="/admin/app.js?v=20260915a"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
