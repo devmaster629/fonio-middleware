@@ -82,6 +82,7 @@ const tableState = {
   },
   webhooks: { page: 1, pageSize: 10, search: '' },
   users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc', role: 'all', status: 'all' },
+  usersSecurity: { page: 1, pageSize: 10 },
   fonioActivity: {
     page: 1,
     pageSize: 25,
@@ -13084,6 +13085,8 @@ function setUsersView(view) {
   $('#users-view-list')?.classList.toggle('hidden', usersActiveView !== 'list');
   $('#users-view-perms')?.classList.toggle('hidden', usersActiveView !== 'perms');
   $('#users-view-security')?.classList.toggle('hidden', usersActiveView !== 'security');
+  $('#tab-users .users-page-header')?.classList.toggle('hidden', usersActiveView !== 'list');
+  $('#users-kpis')?.classList.toggle('hidden', usersActiveView !== 'list');
   if (usersActiveView === 'security') loadUsersSecurityActivity();
   if (usersActiveView === 'perms') loadRolePermissionsMatrix();
 }
@@ -13612,40 +13615,517 @@ function bindUsersUi() {
   });
 }
 
-async function loadUsersSecurityActivity() {
+const USERS_SECURITY_STATE = {
+  page: 1,
+  pageSize: 10,
+  search: '',
+  event: 'all',
+  status: 'all',
+  dateRange: '7',
+};
+let usersSecurityUiBound = false;
+let usersSecurityPageResult = { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 };
+let permDraft = new Set();
+let permSavedSnapshot = new Set();
+let permUiBound = false;
+
+const PERM_SENSITIVE_KEYS = new Set([
+  'LOG_SETTINGS_EDIT',
+  'SYNC_RUN',
+  'SYNC_SETTINGS_EDIT',
+  'WEBHOOKS_MANAGE',
+  'ROLE_PERMISSIONS_MANAGE',
+]);
+
+const PERM_ROLE_DEFAULTS = {
+  BACK_OFFICE: [
+    'DASHBOARD_VIEW',
+    'RESERVATIONS_VIEW',
+    'RESERVATIONS_VIEW_PII',
+    'CONVERSATIONS_VIEW',
+    'CONVERSATIONS_MANAGE',
+    'PAYMENTS_VIEW',
+    'PAYMENTS_REVIEW',
+  ],
+  ADMIN: null, // filled from catalog minus USERS_MANAGE / ROLE_PERMISSIONS_MANAGE
+};
+
+function setsEqual(a, b) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+
+function defaultPermsForRole(role) {
+  if (role === 'BACK_OFFICE') return [...PERM_ROLE_DEFAULTS.BACK_OFFICE];
+  const catalog = cachedPermMatrix?.catalog || [];
+  return catalog
+    .map((item) => item.key)
+    .filter((key) => key !== 'USERS_MANAGE' && key !== 'ROLE_PERMISSIONS_MANAGE');
+}
+
+function permDesc(key) {
+  const descKey = `perm.desc.${key}`;
+  const text = t(descKey);
+  return text === descKey ? '' : text;
+}
+
+function formatSecurityEventTitle(log) {
+  const action = String(log?.action || '');
+  if (action === 'login_success') return t('users.securityEventLoginSuccess');
+  if (action === 'login_failed') return t('users.securityEventLoginFailed');
+  if (action.startsWith('GET ') || action.startsWith('POST ') || action.startsWith('PUT ') || action.startsWith('PATCH ') || action.startsWith('DELETE ')) {
+    const method = action.split(' ')[0];
+    const path = action.slice(method.length).trim();
+    if (path.includes('/sync/conversations')) return t('users.securityEventSyncConversations');
+    if (path.includes('/sync/settings')) return t('users.securityEventUpdateSyncSettings');
+    if (path.includes('/role-permissions')) return t('users.securityEventUpdatePermissions');
+    if (path.includes('/users')) return t('users.securityEventUpdateUser');
+    return action.replace(/^([A-Z]+)\s+\/api\/v1\/admin\//, '$1 ');
+  }
+  return action || '–';
+}
+
+function formatSecurityActor(log) {
+  const meta = log?.metadata || {};
+  const adminId = meta.adminId ? String(meta.adminId) : '';
+  if (adminId) {
+    const user = cachedUsers.find((u) => u.id === adminId);
+    if (user) {
+      return {
+        name: formatRoleLabel(user.role) || userDisplayName(user),
+        sub: `${adminId.slice(0, 8)}…`,
+        initials: userInitials(user),
+        tone: userRoleTone(user.role),
+      };
+    }
+    const role = meta.role ? formatRoleLabel(meta.role) : t('role.SUPER_ADMIN');
+    return {
+      name: role,
+      sub: `${adminId.slice(0, 8)}…`,
+      initials: (role || 'AD').slice(0, 2).toUpperCase(),
+      tone: userRoleTone(meta.role) || 'super',
+    };
+  }
+  if (meta.emailHash) {
+    return {
+      name: t('users.securityUnknownActor'),
+      sub: String(meta.emailHash),
+      initials: '?',
+      tone: 'default',
+    };
+  }
+  return {
+    name: '–',
+    sub: '',
+    initials: '?',
+    tone: 'default',
+  };
+}
+
+function formatSecurityEndpoint(log) {
+  if (log?.method && log?.path) return `${log.method} ${log.path}`;
+  const action = String(log?.action || '');
+  if (/^(GET|POST|PUT|PATCH|DELETE)\s+\//.test(action)) return action;
+  return '—';
+}
+
+function formatSecurityStatus(log) {
+  const action = String(log?.action || '');
+  if (action === 'login_success') {
+    return { label: t('users.securityStatusSuccessful'), tone: 'ok' };
+  }
+  if (action === 'login_failed') {
+    return { label: t('users.securityStatusFailed'), tone: 'err' };
+  }
+  return {
+    label: httpStatusLabel(log?.statusCode),
+    tone: httpStatusTone(log?.statusCode),
+  };
+}
+
+function securityDateFrom() {
+  const range = USERS_SECURITY_STATE.dateRange;
+  if (range === 'all') return '';
+  const days = Number(range) || 7;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (days > 1) d.setDate(d.getDate() - (days - 1));
+  return d.toISOString().slice(0, 10);
+}
+
+function syncPermFooter() {
+  const enabled = permDraft.size;
+  const dirty = !setsEqual(permDraft, permSavedSnapshot);
+  const countEl = $('#perm-enabled-count');
+  if (countEl) countEl.textContent = t('perms.enabledCount', { count: enabled });
+  const dirtyEl = $('#perm-dirty-status');
+  if (dirtyEl) {
+    dirtyEl.classList.toggle('is-clean', !dirty);
+    dirtyEl.classList.toggle('is-dirty', dirty);
+    dirtyEl.innerHTML = dirty
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><span>${esc(t('perms.unsaved'))}</span>`
+      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>${esc(t('perms.noUnsaved'))}</span>`;
+  }
+  const discardBtn = $('#perm-discard-btn');
+  const saveBtn = $('#perm-save-btn');
+  if (discardBtn) discardBtn.disabled = !dirty;
+  if (saveBtn) saveBtn.disabled = !dirty;
+  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+  const defaults = new Set(defaultPermsForRole(role));
+  const badge = $('#perm-access-badge');
+  if (badge) badge.hidden = setsEqual(permDraft, defaults);
+}
+
+function renderPermToggleRow(item) {
+  const on = permDraft.has(item.key);
+  const desc = permDesc(item.key);
+  return `
+    <label class="users-perm-row">
+      <span class="users-perm-row-copy">
+        <strong>${esc(t(item.labelKey) || item.key)}</strong>
+        ${desc ? `<span>${esc(desc)}</span>` : ''}
+      </span>
+      <span class="users-switch">
+        <input type="checkbox" data-perm-key="${esc(item.key)}" ${on ? 'checked' : ''} />
+        <span class="users-switch-ui" aria-hidden="true"></span>
+      </span>
+    </label>
+  `;
+}
+
+function renderRolePermissionCheckboxes() {
+  const wrap = $('#perm-checkboxes');
+  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+  if (!wrap || !cachedPermMatrix) return;
+  const catalog = cachedPermMatrix.catalog || [];
+  const pages = catalog.filter((item) => item.group === 'pages');
+  const actions = catalog.filter((item) => item.group === 'actions');
+  const general = actions.filter((item) => !PERM_SENSITIVE_KEYS.has(item.key));
+  const sensitive = actions.filter((item) => PERM_SENSITIVE_KEYS.has(item.key));
+  const pagesOn = pages.filter((item) => permDraft.has(item.key)).length;
+  const actionsOn = actions.filter((item) => permDraft.has(item.key)).length;
+
+  wrap.innerHTML = `
+    <section class="users-perms-column">
+      <header class="users-perms-column-head">
+        <div>
+          <div class="users-perms-column-title">
+            <span class="users-perms-column-icon is-pages" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            </span>
+            <h4 data-i18n="perms.pages">${esc(t('perms.pages'))}</h4>
+          </div>
+          <p>${esc(t('perms.pagesHint'))}</p>
+        </div>
+        <span class="users-perms-column-count">${pagesOn} ${esc(t('perms.of'))} ${pages.length} ${esc(t('perms.enabled'))}</span>
+      </header>
+      <div class="users-perms-rows">${pages.map(renderPermToggleRow).join('')}</div>
+    </section>
+    <section class="users-perms-column">
+      <header class="users-perms-column-head">
+        <div>
+          <div class="users-perms-column-title">
+            <span class="users-perms-column-icon is-features" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+            </span>
+            <h4>${esc(t('perms.actions'))}</h4>
+          </div>
+          <p>${esc(t('perms.actionsHint'))}</p>
+        </div>
+        <span class="users-perms-column-count">${actionsOn} ${esc(t('perms.of'))} ${actions.length} ${esc(t('perms.enabled'))}</span>
+      </header>
+      <div class="users-perms-rows">
+        <div class="users-perms-subhead">${esc(t('perms.generalFeatures'))}</div>
+        ${general.map(renderPermToggleRow).join('')}
+        <div class="users-perms-subhead is-sensitive">
+          <span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            ${esc(t('perms.sensitiveAccess'))}
+          </span>
+          <em>${esc(t('perms.sensitiveHint'))}</em>
+        </div>
+        ${sensitive.map(renderPermToggleRow).join('')}
+      </div>
+    </section>
+  `;
+
+  wrap.querySelectorAll('input[data-perm-key]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const key = input.dataset.permKey;
+      if (input.checked) permDraft.add(key);
+      else permDraft.delete(key);
+      renderRolePermissionCheckboxes();
+      syncPermFooter();
+    });
+  });
+  syncPermFooter();
+}
+
+function loadPermDraftFromRole(role, { resetToDefaults = false } = {}) {
+  const source = resetToDefaults
+    ? defaultPermsForRole(role)
+    : (cachedPermMatrix?.matrix?.[role] || []);
+  permDraft = new Set(source);
+  if (!resetToDefaults) permSavedSnapshot = new Set(source);
+}
+
+function bindPermUi() {
+  if (permUiBound) return;
+  permUiBound = true;
+  $('#perm-role-select')?.addEventListener('change', () => {
+    const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+    loadPermDraftFromRole(role);
+    renderRolePermissionCheckboxes();
+  });
+  $('#perm-discard-btn')?.addEventListener('click', () => {
+    permDraft = new Set(permSavedSnapshot);
+    renderRolePermissionCheckboxes();
+  });
+  $('#perm-reset-btn')?.addEventListener('click', async () => {
+    const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+    const ok = await notify.confirm(t('perms.resetConfirm'), {
+      title: t('perms.reset'),
+      okLabel: t('perms.reset'),
+    });
+    if (!ok) return;
+    loadPermDraftFromRole(role, { resetToDefaults: true });
+    renderRolePermissionCheckboxes();
+  });
+  $('#perm-copy-btn')?.addEventListener('click', async () => {
+    const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+    const other = role === 'ADMIN' ? 'BACK_OFFICE' : 'ADMIN';
+    const ok = await notify.confirm(t('perms.copyConfirm', { role: formatRoleLabel(other) }), {
+      title: t('perms.copyRole'),
+      okLabel: t('perms.copyRole'),
+    });
+    if (!ok) return;
+    permDraft = new Set(cachedPermMatrix?.matrix?.[other] || []);
+    renderRolePermissionCheckboxes();
+  });
+  $('#perm-save-btn')?.addEventListener('click', async () => {
+    const role = $('#perm-role-select')?.value;
+    if (!role) return;
+    try {
+      await api('/role-permissions', {
+        method: 'PUT',
+        body: JSON.stringify({ role, permissions: [...permDraft] }),
+      });
+      notify.success(t('perms.saved'));
+      await loadRolePermissionsMatrix();
+    } catch (ex) {
+      notify.error(ex.message);
+    }
+  });
+}
+
+async function loadUsersSecurityActivity({ silent = false } = {}) {
   const tableEl = $('#users-security-table');
   if (!tableEl) return;
+  bindUsersSecurityUi();
+  ensureUsersSecurityPageSizeControl();
+  USERS_SECURITY_STATE.page = tableState.usersSecurity.page || USERS_SECURITY_STATE.page;
+  USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize || USERS_SECURITY_STATE.pageSize;
+  const s = USERS_SECURITY_STATE;
+  const params = new URLSearchParams();
+  params.set('page', String(s.page));
+  params.set('pageSize', String(s.pageSize));
+  params.set('source', 'admin');
+  params.set('sortBy', 'createdAt');
+  params.set('sortDir', 'desc');
+  if (s.search) params.set('search', s.search);
+  if (s.status !== 'all') params.set('status', s.status);
+  if (s.event === 'login_success' || s.event === 'login_failed') params.set('action', s.event);
+  const dateFrom = securityDateFrom();
+  if (dateFrom) params.set('dateFrom', dateFrom);
   try {
-    const data = await api('/logs?page=1&pageSize=25&source=admin&sortBy=createdAt&sortDir=desc');
-    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+    const data = await api(`/logs?${params.toString()}`);
+    let items = Array.isArray(data?.items) ? data.items : [];
+    const total = Number(data?.total || items.length);
+    if (s.event === 'mutations') {
+      items = items.filter((l) => !['login_success', 'login_failed'].includes(l.action));
+    }
     usersSecurityCache = items;
-    const rows = items.map((l) => `
-      <tr>
-        <td>${esc(formatAuditDateTime(l.createdAt))}</td>
-        <td><code>${esc(l.action || '–')}</code></td>
-        <td>${esc(formatLogSummary(l))}</td>
-        <td><span class="logs-http-pill is-${httpStatusTone(l.statusCode)}">${esc(httpStatusLabel(l.statusCode))}</span></td>
-      </tr>
-    `).join('');
-    tableEl.innerHTML = `
-      <table class="users-data-table">
-        <thead><tr>
-          <th>${t('logs.time')}</th>
-          <th>${t('logs.action')}</th>
-          <th>${t('logs.summary')}</th>
-          <th>${t('logs.httpStatus')}</th>
-        </tr></thead>
-        <tbody>${rows || `<tr><td colspan="4" class="empty-row">${esc(t('users.securityEmpty'))}</td></tr>`}</tbody>
-      </table>`;
-    scheduleEnhanceResponsiveTables();
+    usersSecurityPageResult = {
+      items,
+      total,
+      page: Number(data?.page || s.page),
+      pageSize: Number(data?.pageSize || s.pageSize),
+      totalPages: Number(data?.totalPages || Math.max(1, Math.ceil(total / s.pageSize))),
+      maxTotal: total,
+    };
+    tableState.usersSecurity.page = usersSecurityPageResult.page;
+    tableState.usersSecurity.pageSize = usersSecurityPageResult.pageSize;
+    renderUsersSecurityTable();
+    refreshUsersSecurityKpiCache();
   } catch (ex) {
+    if (!silent) notify.error(ex.message);
     tableEl.innerHTML = `<p class="field-hint">${esc(ex.message)}</p>`;
   }
+}
+
+function renderUsersSecurityKpiCards(pool) {
+  const el = $('#users-security-kpis');
+  if (!el) return;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todays = (pool || []).filter((l) => new Date(l.createdAt) >= today);
+  const successful = todays.filter((l) => {
+    const code = Number(l.statusCode);
+    return l.action === 'login_success' || (code >= 200 && code < 300);
+  }).length;
+  const failed = todays.filter((l) => l.action === 'login_failed' || Number(l.statusCode) >= 400).length;
+  const last = todays[0]?.createdAt
+    ? new Date(todays[0].createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : '–';
+  el.innerHTML = [
+    { tone: 'blue', value: String(todays.length), label: t('users.securityKpiToday'), icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>' },
+    { tone: 'green', value: String(successful), label: t('users.securityKpiSuccessful'), icon: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' },
+    { tone: 'red', value: String(failed), label: t('users.securityKpiFailed'), icon: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>' },
+    { tone: 'blue', value: last, label: t('users.securityKpiLast'), icon: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>' },
+  ].map((c) => `
+    <article class="users-security-kpi">
+      <span class="users-security-kpi-icon is-${esc(c.tone)}" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.icon}</svg>
+      </span>
+      <div>
+        <div class="users-security-kpi-value">${esc(c.value)}</div>
+        <div class="users-security-kpi-label">${esc(c.label)}</div>
+      </div>
+    </article>
+  `).join('');
+}
+
+let usersSecurityKpiCache = [];
+let usersSecurityKpiLoading = false;
+
+async function refreshUsersSecurityKpiCache() {
+  if (usersSecurityKpiLoading) return;
+  usersSecurityKpiLoading = true;
+  try {
+    const dateFrom = new Date().toISOString().slice(0, 10);
+    const data = await api(`/logs?page=1&pageSize=100&source=admin&dateFrom=${dateFrom}&sortBy=createdAt&sortDir=desc`);
+    usersSecurityKpiCache = Array.isArray(data?.items) ? data.items : [];
+    if (usersActiveView === 'security') renderUsersSecurityKpiCards(usersSecurityKpiCache);
+  } catch {
+    renderUsersSecurityKpiCards(usersSecurityCache);
+  } finally {
+    usersSecurityKpiLoading = false;
+  }
+}
+
+function renderUsersSecurityTable() {
+  const tableEl = $('#users-security-table');
+  if (!tableEl) return;
+  const items = usersSecurityPageResult.items || [];
+  const rows = items.map((l) => {
+    const actor = formatSecurityActor(l);
+    const status = formatSecurityStatus(l);
+    const eventTone = l.action === 'login_success' || l.action === 'login_failed' ? 'login' : 'system';
+    return `
+      <tr data-security-id="${esc(String(l.id))}">
+        <td class="users-security-col-time">${esc(formatAuditDateTime(l.createdAt).replace(',', ' ·'))}</td>
+        <td class="users-security-col-event">
+          <span class="users-security-event">
+            <span class="users-security-event-icon is-${eventTone}" aria-hidden="true">
+              ${eventTone === 'login'
+                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>'}
+            </span>
+            <span>${esc(formatSecurityEventTitle(l))}</span>
+          </span>
+        </td>
+        <td class="users-security-col-actor">
+          <div class="users-security-actor">
+            <span class="users-avatar is-${esc(actor.tone)}" aria-hidden="true">${esc(actor.initials)}</span>
+            <span class="users-security-actor-meta">
+              <strong>${esc(actor.name)}</strong>
+              ${actor.sub ? `<small>${esc(actor.sub)}</small>` : ''}
+            </span>
+          </div>
+        </td>
+        <td class="users-security-col-endpoint"><code>${esc(formatSecurityEndpoint(l))}</code></td>
+        <td><span class="users-security-status-pill is-${esc(status.tone)}">${esc(status.label)}</span></td>
+      </tr>`;
+  }).join('');
+  tableEl.innerHTML = `
+    <table class="users-data-table users-security-data-table">
+      <thead><tr>
+        <th>${t('logs.time')}</th>
+        <th>${t('users.securityColEvent')}</th>
+        <th>${t('users.securityColActor')}</th>
+        <th>${t('users.securityColEndpoint')}</th>
+        <th>${t('users.col.status')}</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="5" class="empty-row">${esc(t('users.securityEmpty'))}</td></tr>`}</tbody>
+    </table>`;
+  renderTableInfo('#users-security-info', usersSecurityPageResult, usersSecurityPageResult.maxTotal);
+  renderPagination('#users-security-pagination', usersSecurityPageResult, 'usersSecurity', () => {
+    USERS_SECURITY_STATE.page = tableState.usersSecurity.page;
+    loadUsersSecurityActivity({ silent: true });
+  });
+  // Sync pagination into local state via custom handler below
+  scheduleEnhanceResponsiveTables();
+}
+
+function ensureUsersSecurityPageSizeControl() {
+  const lengthSel = $('#users-security-page-size');
+  if (!lengthSel) return;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(tableState.usersSecurity.pageSize || 10);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.usersSecurity.pageSize = Number(lengthSel.value) || 10;
+    tableState.usersSecurity.page = 1;
+    USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize;
+    USERS_SECURITY_STATE.page = 1;
+    loadUsersSecurityActivity({ silent: true });
+  });
+}
+
+function bindUsersSecurityUi() {
+  if (usersSecurityUiBound) return;
+  usersSecurityUiBound = true;
+  const sync = () => {
+    USERS_SECURITY_STATE.search = $('#users-security-search')?.value || '';
+    USERS_SECURITY_STATE.event = $('#users-security-event-filter')?.value || 'all';
+    USERS_SECURITY_STATE.status = $('#users-security-status-filter')?.value || 'all';
+    USERS_SECURITY_STATE.dateRange = $('#users-security-date-filter')?.value || '7';
+    USERS_SECURITY_STATE.page = 1;
+    tableState.usersSecurity.page = 1;
+    loadUsersSecurityActivity({ silent: true });
+  };
+  $('#users-security-search')?.addEventListener('input', () => {
+    clearTimeout(searchTimers.usersSecurity);
+    searchTimers.usersSecurity = setTimeout(sync, 220);
+  });
+  $('#users-security-event-filter')?.addEventListener('change', sync);
+  $('#users-security-status-filter')?.addEventListener('change', sync);
+  $('#users-security-date-filter')?.addEventListener('change', sync);
+  $('#users-security-refresh-btn')?.addEventListener('click', () => loadUsersSecurityActivity());
+}
+
+// Patch renderPagination callback path: keep usersSecurity page in USERS_SECURITY_STATE
+if (!tableState.usersSecurity) {
+  tableState.usersSecurity = { page: 1, pageSize: 10 };
 }
 
 async function loadUsers() {
   if (!canSuperAdmin()) return;
   bindUsersUi();
+  bindPermUi();
   setUsersView(usersActiveView);
   const users = await api('/users');
   cachedUsers = Array.isArray(users) ? users : [];
@@ -13671,8 +14151,11 @@ async function loadRolePermissionsMatrix() {
   }
   $('#role-permissions-card')?.classList.remove('hidden');
   $$('[data-users-tab="perms"]').forEach((btn) => btn.classList.remove('hidden'));
+  bindPermUi();
   try {
     cachedPermMatrix = await api('/role-permissions');
+    const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
+    loadPermDraftFromRole(role);
     renderRolePermissionCheckboxes();
     renderPermPreviewCards('#users-perm-preview-cards', $('#users-preview-role')?.value || 'ADMIN');
     renderUsersDrawerPermPreview();
@@ -13680,53 +14163,6 @@ async function loadRolePermissionsMatrix() {
     notify.error(ex.message);
   }
 }
-
-function renderRolePermissionCheckboxes() {
-  const wrap = $('#perm-checkboxes');
-  const role = $('#perm-role-select')?.value || 'BACK_OFFICE';
-  if (!wrap || !cachedPermMatrix) return;
-  const selected = new Set(cachedPermMatrix.matrix?.[role] || []);
-  const catalog = cachedPermMatrix.catalog || [];
-  const renderGroup = (group, titleKey) => {
-    const items = catalog.filter((item) => item.group === group);
-    return `
-      <section class="perm-section">
-        <h4 class="perm-section-title">${esc(t(titleKey))}</h4>
-        <div class="perm-options">
-          ${items.map((item) => `
-            <label class="perm-option">
-              <input type="checkbox" data-perm-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''} />
-              <span>${esc(t(item.labelKey) || item.key)}</span>
-            </label>
-          `).join('')}
-        </div>
-      </section>
-    `;
-  };
-  wrap.innerHTML =
-    renderGroup('pages', 'perms.pages') +
-    renderGroup('actions', 'perms.actions');
-}
-
-$('#perm-role-select')?.addEventListener('change', () => renderRolePermissionCheckboxes());
-
-$('#perm-save-btn')?.addEventListener('click', async () => {
-  const role = $('#perm-role-select')?.value;
-  if (!role) return;
-  const permissions = [...$$('#perm-checkboxes input[data-perm-key]:checked')].map(
-    (el) => el.dataset.permKey,
-  );
-  try {
-    await api('/role-permissions', {
-      method: 'PUT',
-      body: JSON.stringify({ role, permissions }),
-    });
-    notify.success(t('perms.saved'));
-    await loadRolePermissionsMatrix();
-  } catch (ex) {
-    notify.error(ex.message);
-  }
-});
 
 $('#user-new-btn')?.addEventListener('click', () => {
   resetUserForm({ keepDrawerClosed: true });

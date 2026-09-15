@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260916c" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260916g" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1856,34 +1856,121 @@
         </div>
 
         <div id="users-view-perms" class="users-view hidden">
-          <div class="users-perms-panel card" id="role-permissions-card">
+          <div class="users-perms-panel" id="role-permissions-card">
             <header class="users-perms-panel-head">
-              <div>
+              <div class="users-perms-heading">
                 <h3 data-i18n="perms.title">Role permissions</h3>
                 <p class="field-hint" data-i18n="perms.hint">Choose which pages and features each role can access. Super Admin always has full access.</p>
               </div>
-              <label>
-                <span data-i18n="perms.selectRole">Role to configure</span>
-                <select id="perm-role-select">
-                  <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
-                  <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
-                </select>
-              </label>
+              <div class="users-perms-toolbar">
+                <label class="users-perms-role-field">
+                  <span data-i18n="perms.selectRole">Role to configure</span>
+                  <select id="perm-role-select">
+                    <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
+                    <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
+                  </select>
+                </label>
+                <span id="perm-access-badge" class="users-perms-badge is-custom" hidden>
+                  <span class="users-perms-badge-dot" aria-hidden="true"></span>
+                  <span data-i18n="perms.customAccess">Custom access</span>
+                </span>
+                <button type="button" id="perm-copy-btn" class="btn ghost users-perms-action-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span data-i18n="perms.copyRole">Copy role</span>
+                </button>
+                <button type="button" id="perm-reset-btn" class="btn ghost users-perms-action-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                  <span data-i18n="perms.reset">Reset</span>
+                </button>
+              </div>
             </header>
-            <div id="perm-checkboxes" class="perm-grid"></div>
-            <div class="form-action-btns users-perms-save-row">
-              <button type="button" id="perm-save-btn" class="btn primary" data-i18n="perms.save">Save permissions</button>
+            <div class="users-perms-banner" role="note">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span data-i18n="perms.superBanner">Super Admin always has full access and cannot be restricted.</span>
             </div>
+            <div id="perm-checkboxes" class="users-perms-columns"></div>
+            <footer class="users-perms-footer">
+              <div class="users-perms-footer-meta">
+                <span id="perm-enabled-count">0 permissions enabled</span>
+                <span class="users-perms-footer-sep" aria-hidden="true"></span>
+                <span id="perm-dirty-status" class="users-perms-dirty is-clean">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span data-i18n="perms.noUnsaved">No unsaved changes</span>
+                </span>
+              </div>
+              <div class="users-perms-footer-actions">
+                <button type="button" id="perm-discard-btn" class="btn ghost" data-i18n="perms.discard" disabled>Discard</button>
+                <button type="button" id="perm-save-btn" class="btn primary" data-i18n="perms.save" disabled>Save permissions</button>
+              </div>
+            </footer>
           </div>
         </div>
 
         <div id="users-view-security" class="users-view hidden">
-          <div class="users-board">
-            <div class="users-security-head">
+          <header class="users-security-page-header">
+            <div class="users-security-heading">
               <h3 data-i18n="users.securityTitle">Security activity</h3>
               <p class="field-hint" data-i18n="users.securityHint">Recent admin authentication and account events from the audit log.</p>
             </div>
-            <div class="table-wrap users-table-wrap" id="users-security-table"></div>
+            <div id="users-security-kpis" class="users-security-kpis" aria-live="polite"></div>
+          </header>
+          <div class="users-board users-security-board">
+            <div class="users-security-toolbar">
+              <div class="fonio-activity-search">
+                <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="search" id="users-security-search" data-i18n-placeholder="users.securitySearchPlaceholder" placeholder="Search action, user, or path" autocomplete="off" aria-label="Search security events" />
+              </div>
+              <label class="users-security-filter">
+                <span class="sr-only" data-i18n="users.securityFilterEvent">Events</span>
+                <select id="users-security-event-filter">
+                  <option value="all" data-i18n="users.securityAllEvents">All events</option>
+                  <option value="login_success" data-i18n="users.securityEventLoginSuccess">Login success</option>
+                  <option value="login_failed" data-i18n="users.securityEventLoginFailed">Login failed</option>
+                  <option value="mutations" data-i18n="users.securityEventMutations">Admin changes</option>
+                </select>
+              </label>
+              <label class="users-security-filter">
+                <span class="sr-only" data-i18n="users.securityFilterStatus">Status</span>
+                <select id="users-security-status-filter">
+                  <option value="all" data-i18n="users.securityAllStatuses">All statuses</option>
+                  <option value="2xx">2xx</option>
+                  <option value="4xx">4xx</option>
+                  <option value="5xx">5xx</option>
+                </select>
+              </label>
+              <label class="users-security-filter">
+                <span class="sr-only" data-i18n="users.securityFilterDate">Date range</span>
+                <select id="users-security-date-filter">
+                  <option value="7" data-i18n="users.securityLast7Days">Last 7 days</option>
+                  <option value="1" data-i18n="users.securityToday">Today</option>
+                  <option value="30" data-i18n="users.securityLast30Days">Last 30 days</option>
+                  <option value="all" data-i18n="users.securityAllTime">All time</option>
+                </select>
+              </label>
+              <button type="button" id="users-security-refresh-btn" class="btn ghost users-security-refresh" aria-label="Refresh">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              </button>
+            </div>
+            <div class="table-wrap users-table-wrap users-security-table-wrap" id="users-security-table"></div>
+            <div class="users-security-footer">
+              <div id="users-security-info" class="table-info"></div>
+              <p class="users-security-privacy">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span data-i18n="users.securityPrivacy">Sensitive fields are masked and IP addresses are hashed.</span>
+              </p>
+              <div class="users-security-footer-right">
+                <label class="table-page-size" for="users-security-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="users-security-page-size" aria-label="Per page">
+                    <option value="10" selected>10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </select>
+                </label>
+                <div id="users-security-pagination" class="table-pagination"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2051,10 +2138,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260916c"></script>
+  <script src="/admin/i18n.js?v=20260916g"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260916c"></script>
+  <script src="/admin/app.js?v=20260916g"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
