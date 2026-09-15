@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260916h" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260916n" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1495,10 +1495,17 @@
               <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <span data-i18n="check24.syncBtnShort">Send apartments</span>
             </button>
-            <button type="button" id="check24-refresh-btn" class="btn ghost">
+            <button type="button" id="check24-refresh-btn" class="btn ghost check24-refresh-btn" aria-label="Refresh">
               <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-              <span data-i18n="check24.refresh">Refresh</span>
+              <span class="check24-refresh-label" data-i18n="check24.refresh">Refresh</span>
             </button>
+            <button type="button" id="check24-mobile-more-btn" class="check24-mobile-more-btn" aria-label="More" aria-haspopup="true" aria-expanded="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+            </button>
+            <div id="check24-mobile-more-menu" class="check24-mobile-more-menu hidden" hidden>
+              <button type="button" data-check24-more="refresh" data-i18n="check24.refresh">Refresh</button>
+              <button type="button" data-check24-more="settings" data-i18n="check24.tab.settings">Settings</button>
+            </div>
           </div>
         </header>
         <p id="check24-action-result" class="check24-action-result"></p>
@@ -1521,18 +1528,20 @@
                 <h3 data-i18n="check24.recentBookings">Recent imported bookings</h3>
                 <button type="button" class="check24-link-btn" data-check24-tab="bookings" data-i18n="check24.viewAll">View all</button>
               </div>
-              <div id="check24-recent-bookings" class="check24-recent-bookings"></div>
-            </div>
+            <div id="check24-recent-bookings" class="check24-recent-bookings check24-desktop-list"></div>
+            <div id="check24-recent-bookings-mobile" class="check24-mobile-list check24-recent-mobile" aria-live="polite"></div>
           </div>
+        </div>
           <div class="card check24-apartments-preview-card">
             <div class="check24-card-head">
               <div>
                 <h3 data-i18n="check24.apartmentsStatus">Apartments status</h3>
                 <p class="check24-settings-sub" data-i18n="check24.apartmentsStatusHint">Data = photos &amp; description. Needs attention usually means Data was never sent.</p>
               </div>
-              <button type="button" class="check24-link-btn" data-check24-tab="apartments" data-i18n="check24.viewAll">View all</button>
+              <button type="button" class="check24-link-btn" data-check24-tab="apartments" data-i18n="check24.viewApartments">View apartments</button>
             </div>
-            <div id="check24-apartments-preview"></div>
+            <div id="check24-apartments-overview-summary" class="check24-apartments-summary check24-overview-summary" aria-live="polite"></div>
+            <div id="check24-apartments-preview" class="check24-desktop-list"></div>
           </div>
         </div>
 
@@ -1544,12 +1553,32 @@
                 <span id="check24-bookings-badge" class="check24-count-badge">0</span>
               </div>
               <div class="check24-search">
+                <svg class="check24-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <input type="search" id="check24-bookings-search" placeholder="Search bookings..." data-i18n-placeholder="check24.searchBookings" autocomplete="off" />
               </div>
+              <div class="check24-mobile-select-row">
+                <label class="check24-mobile-select">
+                  <select id="check24-bookings-status-filter" aria-label="Status">
+                    <option value="all" data-i18n="check24.filterAllStatus">All status</option>
+                    <option value="booked" data-i18n="check24.bookingStatus.booked">BOOKED</option>
+                    <option value="cancelled" data-i18n="check24.bookingStatus.cancelled">CANCELLED</option>
+                  </select>
+                </label>
+                <label class="check24-mobile-select">
+                  <select id="check24-bookings-sort" aria-label="Sort">
+                    <option value="newest" data-i18n="check24.sortNewest">Newest first</option>
+                    <option value="oldest" data-i18n="check24.sortOldest">Oldest first</option>
+                    <option value="amount_desc" data-i18n="check24.sortAmountDesc">Highest amount</option>
+                    <option value="amount_asc" data-i18n="check24.sortAmountAsc">Lowest amount</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <div id="check24-bookings-table" class="check24-bookings-wrap"></div>
+            <div id="check24-bookings-table" class="check24-bookings-wrap check24-desktop-list"></div>
+            <div id="check24-bookings-mobile-list" class="check24-mobile-list" aria-live="polite"></div>
             <div class="check24-table-footer">
               <div id="check24-bookings-info" class="table-info"></div>
+              <p id="check24-bookings-mobile-count" class="check24-mobile-count" hidden></p>
               <div class="check24-footer-right">
                 <div id="check24-bookings-pagination" class="table-pagination"></div>
                 <label class="table-page-size" for="check24-bookings-page-size">
@@ -1568,12 +1597,39 @@
         <div id="check24-panel-apartments" class="check24-panel hidden" data-check24-panel="apartments">
           <div class="card check24-list-card">
             <div class="check24-apartments-toolbar">
-              <div class="check24-search">
+              <div class="check24-list-head check24-mobile-only-flex" style="margin:0">
+                <h3 data-i18n="check24.tab.apartments">Apartments</h3>
+                <span id="check24-apartments-mobile-badge" class="check24-count-badge">0</span>
+              </div>
+              <div class="check24-search check24-apartments-search-wrap">
+                <svg class="check24-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <input type="search" id="check24-apartments-search" placeholder="Search property..." data-i18n-placeholder="check24.searchProperty" autocomplete="off" />
+              </div>
+              <div class="check24-mobile-select-row">
+                <label class="check24-mobile-select">
+                  <select id="check24-apartments-status-filter" aria-label="Status">
+                    <option value="all" data-i18n="check24.filterAllApartments">All apartments</option>
+                    <option value="ready" data-i18n="check24.statusReady">Ready</option>
+                    <option value="outdated" data-i18n="check24.chip.outdated">Outdated</option>
+                    <option value="archived" data-i18n="check24.statusArchived">Archived</option>
+                  </select>
+                </label>
+                <label class="check24-mobile-select">
+                  <select id="check24-apartments-sort" aria-label="Sort">
+                    <option value="name" data-i18n="check24.sortName">Name A–Z</option>
+                    <option value="recent" data-i18n="check24.sortRecent">Recently sent</option>
+                    <option value="attention" data-i18n="check24.sortAttention">Needs attention first</option>
+                  </select>
+                </label>
               </div>
               <div id="check24-count-badge" class="check24-count-chip" title="">0 apartments</div>
             </div>
-            <div id="check24-mappings-table" class="check24-apartments-wrap"></div>
+            <div id="check24-apartments-summary" class="check24-apartments-summary" aria-live="polite"></div>
+            <div id="check24-mappings-table" class="check24-apartments-wrap check24-desktop-list"></div>
+            <div id="check24-apartments-mobile-list" class="check24-mobile-list" aria-live="polite"></div>
+            <div class="check24-mobile-more-wrap">
+              <button type="button" id="check24-apartments-load-more" class="btn ghost check24-load-more" hidden data-i18n="check24.loadMoreApartments">+ Load more apartments</button>
+            </div>
             <div class="check24-table-footer">
               <div id="check24-apartments-info" class="table-info"></div>
               <div class="check24-footer-right">
@@ -1613,19 +1669,21 @@
 
               <form id="check24-sync-settings-form" class="check24-settings-form">
                 <div class="check24-settings-box">
-                  <label class="check24-check-row">
-                    <input type="checkbox" id="check24-auto-sync-enabled" />
+                  <label class="check24-switch check24-settings-toggle-row">
                     <span>
                       <strong data-i18n="check24.autoSyncEnable">Auto-update availability &amp; prices</strong>
                       <small data-i18n="check24.autoSyncEnableHelp">Same as the switch above: periodically push calendar availability and prices to CHECK24.</small>
                     </span>
+                    <input type="checkbox" id="check24-auto-sync-enabled" />
+                    <span class="check24-switch-ui" aria-hidden="true"></span>
                   </label>
-                  <label class="check24-check-row" id="check24-auto-sync-content-row">
-                    <input type="checkbox" id="check24-auto-sync-content" />
+                  <label class="check24-switch check24-settings-toggle-row" id="check24-auto-sync-content-row">
                     <span>
                       <strong data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</strong>
                       <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier ? leave off unless details changed.</small>
                     </span>
+                    <input type="checkbox" id="check24-auto-sync-content" />
+                    <span class="check24-switch-ui" aria-hidden="true"></span>
                   </label>
                   <div class="check24-interval-row">
                     <label class="check24-interval-field">
@@ -1723,6 +1781,37 @@
         </div>
 
         <div id="check24-hero" class="hidden" aria-hidden="true"></div>
+
+        <nav id="check24-mobile-bottom-nav" class="check24-mobile-bottom-nav" aria-label="CHECK24 sections">
+          <button type="button" class="check24-mobile-nav-btn is-active" data-check24-tab="overview">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span data-i18n="check24.tab.overview">Overview</span>
+          </button>
+          <button type="button" class="check24-mobile-nav-btn" data-check24-tab="bookings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span data-i18n="check24.nav.bookings">Bookings</span>
+          </button>
+          <button type="button" class="check24-mobile-nav-btn" data-check24-tab="apartments">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+            <span data-i18n="check24.tab.apartments">Apartments</span>
+          </button>
+          <button type="button" class="check24-mobile-nav-btn" data-check24-tab="settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span data-i18n="check24.tab.settings">Settings</span>
+          </button>
+        </nav>
+
+        <div id="check24-filter-sheet" class="users-filter-sheet hidden" hidden>
+          <button type="button" class="users-filter-sheet-backdrop" data-check24-filter-close aria-label="Close"></button>
+          <div class="users-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="check24-filter-sheet-title">
+            <div class="users-filter-sheet-handle" aria-hidden="true"></div>
+            <div class="users-filter-sheet-head">
+              <h3 id="check24-filter-sheet-title" class="users-filter-sheet-title">Filter</h3>
+              <button type="button" class="users-filter-sheet-close" data-check24-filter-close aria-label="Close">&times;</button>
+            </div>
+            <div id="check24-filter-sheet-body" class="users-filter-sheet-body"></div>
+          </div>
+        </div>
       </section>
 
       <section id="tab-users" class="tab hidden">
@@ -2193,10 +2282,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260916h"></script>
+  <script src="/admin/i18n.js?v=20260916n"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260916h"></script>
+  <script src="/admin/app.js?v=20260916n"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
