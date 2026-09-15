@@ -205,9 +205,9 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-height: 3.35rem;
+  min-height: calc(3.35rem + env(safe-area-inset-top, 0px));
   padding: 0.55rem 1rem;
-  padding-top: max(0.55rem, env(safe-area-inset-top, 0px));
+  padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -4525,11 +4525,14 @@ body.modal-open {
 
   .conversations-details-pane {
     position: fixed;
-    inset: 0;
+    top: calc(3.35rem + env(safe-area-inset-top, 0px));
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 80;
     background: var(--bg);
     border: none;
-    padding: calc(3.35rem + env(safe-area-inset-top, 0px)) 1rem 1rem;
+    padding: 0.85rem 1rem max(1rem, env(safe-area-inset-bottom, 0px));
     overflow: auto !important;
   }
 
@@ -4538,7 +4541,7 @@ body.modal-open {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.35rem 0 0.85rem;
+    padding: 0.15rem 0 0.85rem;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -4546,6 +4549,16 @@ body.modal-open {
   .conversations-details-mobile-head h3 {
     margin: 0;
     font-size: 1.05rem;
+  }
+
+  .conversations-details-mobile-head .conversations-icon-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+  }
+
+  .conversations-details-header {
+    display: none !important;
   }
 
   .conversations-details,
