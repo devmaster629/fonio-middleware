@@ -13548,6 +13548,25 @@ function ensureFonioSetupUi() {
   });
 
   $('#fonio-setup')?.addEventListener('click', async (e) => {
+    const docs = e.target.closest?.('[data-fonio-open-docs]');
+    if (docs) {
+      const url = docs.getAttribute('data-fonio-open-docs');
+      if (url) window.open(url, '_blank', 'noopener');
+      return;
+    }
+    const testBtn = e.target.closest?.('[data-fonio-test-connection]');
+    if (testBtn) {
+      await testFonioConnection();
+      return;
+    }
+    const checklistToggle = e.target.closest?.('[data-fonio-checklist-toggle]');
+    if (checklistToggle) {
+      const card = checklistToggle.closest('.fonio-setup-checklist-card');
+      const expanded = !card?.classList.contains('is-open');
+      card?.classList.toggle('is-open', expanded);
+      checklistToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      return;
+    }
     const toggle = e.target.closest?.('[data-fonio-group-toggle]');
     if (toggle) {
       const id = toggle.getAttribute('data-fonio-group-toggle');
@@ -13683,7 +13702,7 @@ function renderFonioSetup(data) {
           <div class="fonio-setup-endpoint">
             <span class="fonio-setup-method ${methodCls}">${esc(ep.meta.method)}</span>
             <div class="fonio-setup-endpoint-main">
-              <div class="fonio-setup-endpoint-title">${esc(ep.key)}</div>
+              <div class="fonio-setup-endpoint-title"><span class="fonio-endpoint-title-desktop">${esc(ep.key)}</span><span class="fonio-endpoint-title-mobile">${esc(desc && desc !== ep.meta.descKey ? desc : ep.key)}</span></div>
               ${desc && desc !== ep.meta.descKey ? `<div class="fonio-setup-endpoint-desc">${esc(desc)}</div>` : ''}
               <code class="fonio-setup-endpoint-url">${esc(ep.url)}</code>
             </div>
@@ -13702,7 +13721,7 @@ function renderFonioSetup(data) {
         <button type="button" class="fonio-setup-accordion-head" data-fonio-group-toggle="${esc(group.id)}" aria-expanded="${open ? 'true' : 'false'}">
           <span class="fonio-setup-accordion-icon">${fonioSvgIcon(group.icon, 16)}</span>
           <span class="fonio-setup-accordion-title">${esc(t(group.titleKey))}</span>
-          <span class="fonio-setup-accordion-count">${entries.length}</span>
+          <span class="fonio-setup-accordion-count"><span class="fonio-count-desktop">${entries.length}</span><span class="fonio-count-mobile">${esc(t('fonio.endpointsCount', { count: entries.length }))}</span></span>
           <span class="fonio-setup-accordion-chevron" aria-hidden="true"></span>
         </button>
         <div class="fonio-setup-accordion-body">${rows}</div>
@@ -13756,33 +13775,50 @@ function renderFonioSetup(data) {
         </li>`;
     })
     .join('');
+  const checklistDone = checklist.filter((item) => item.ok === true).length;
 
   $('#fonio-setup').innerHTML = `
     <div class="fonio-setup-stats">
-      <article class="fonio-setup-stat">
+      <article class="fonio-setup-stat is-endpoints">
         <span class="fonio-setup-stat-icon">${fonioSvgIcon('<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>', 18)}</span>
         <div class="fonio-setup-stat-value">${endpointCount}</div>
-        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.endpoints'))}</div>
+        <div class="fonio-setup-stat-label"><span class="fonio-stat-label-desktop">${esc(t('fonio.stat.endpoints'))}</span><span class="fonio-stat-label-mobile">${esc(t('fonio.stat.endpointsShort'))}</span></div>
         <div class="fonio-setup-stat-sub">${esc(t('fonio.stat.endpointsSub'))}</div>
       </article>
-      <article class="fonio-setup-stat">
+      <article class="fonio-setup-stat is-auth">
         <span class="fonio-setup-stat-icon">${fonioSvgIcon('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>', 18)}</span>
-        <div class="fonio-setup-stat-label">${esc(t('fonio.stat.auth'))}</div>
+        <div class="fonio-setup-stat-label"><span class="fonio-stat-label-desktop">${esc(t('fonio.stat.auth'))}</span><span class="fonio-stat-label-mobile">${esc(t('fonio.stat.authShort'))}</span></div>
         <div class="fonio-setup-stat-value ${keyOk ? 'is-ok' : 'is-fail'}">${esc(keyOk ? t('fonio.stat.authConfigured') : t('fonio.stat.authMissing'))}</div>
         <div class="fonio-setup-stat-sub">${esc(t('fonio.stat.authSub'))}</div>
       </article>
-      <article class="fonio-setup-stat">
+      <article class="fonio-setup-stat is-last-call">
         <span class="fonio-setup-stat-icon">${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', 18)}</span>
         <div class="fonio-setup-stat-label">${esc(t('fonio.stat.lastCall'))}</div>
         <div class="fonio-setup-stat-value is-sm">${esc(lastAt)}</div>
         <div class="fonio-setup-stat-sub ${last ? 'is-ok' : ''}">${esc(lastMs)}</div>
       </article>
-      <article class="fonio-setup-stat">
+      <article class="fonio-setup-stat is-environment">
         <span class="fonio-setup-stat-icon">${fonioSvgIcon('<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/>', 18)}</span>
         <div class="fonio-setup-stat-label">${esc(t('fonio.stat.env'))}</div>
         <div class="fonio-setup-stat-value is-ok">${esc(t('fonio.stat.envProd'))}</div>
         <div class="fonio-setup-stat-sub"><a class="fonio-setup-link" href="${esc(base)}" target="_blank" rel="noopener">${esc(base || '—')}</a></div>
       </article>
+    </div>
+
+    <div class="fonio-setup-mobile-actions">
+      <button type="button" class="btn primary" data-fonio-test-connection>
+        ${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4Z"/>', 15)}
+        ${esc(t('fonio.testConnection'))}
+      </button>
+      <button type="button" class="btn ghost" data-fonio-open-docs="${esc(docsUrl)}" ${docsUrl ? '' : 'disabled'}>
+        ${fonioSvgIcon('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>', 15)}
+        ${esc(t('fonio.openDocs'))}
+      </button>
+    </div>
+    <div class="fonio-setup-mobile-last-call">
+      <span>${esc(t('fonio.stat.lastCall'))}</span>
+      <strong>${esc(lastAt)}</strong>
+      <small>${esc(lastMs)}</small>
     </div>
 
     <div class="fonio-setup-layout">
@@ -13795,17 +13831,24 @@ function renderFonioSetup(data) {
       </div>
 
       <aside class="fonio-setup-side">
-        <div class="card fonio-setup-side-card">
-          <h3>${esc(t('fonio.checklistTitle'))}</h3>
-          <ul class="fonio-setup-checklist">${checklistHtml}</ul>
+        <div class="card fonio-setup-side-card fonio-setup-checklist-card">
+          <button type="button" class="fonio-setup-checklist-mobile-head" data-fonio-checklist-toggle aria-expanded="false">
+            <span class="fonio-setup-accordion-icon">${fonioSvgIcon('<path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', 16)}</span>
+            <span><strong>${esc(t('fonio.checklistTitle'))}</strong><small>${esc(t('fonio.checklistProgress', { done: checklistDone, total: checklist.length }))}</small></span>
+            <span class="fonio-setup-accordion-chevron" aria-hidden="true"></span>
+          </button>
+          <h3 class="fonio-setup-checklist-desktop-title">${esc(t('fonio.checklistTitle'))}</h3>
+          <div class="fonio-setup-checklist-body">
+            <ul class="fonio-setup-checklist">${checklistHtml}</ul>
           ${
             docsUrl
               ? `<a class="fonio-setup-side-link" href="${esc(docsUrl)}" target="_blank" rel="noopener">${esc(t('fonio.viewChecklist'))} ${fonioSvgIcon('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>', 13)}</a>`
               : ''
           }
+          </div>
         </div>
 
-        <div class="card fonio-setup-side-card">
+        <div class="card fonio-setup-side-card fonio-setup-key-card">
           <h3>${esc(t('fonio.apiKeyTitle'))}</h3>
           <p class="fonio-setup-side-hint">${esc(t('fonio.apiKeyHint'))}</p>
           <div class="fonio-setup-key-box">
@@ -13818,7 +13861,7 @@ function renderFonioSetup(data) {
           </div>
           <button type="button" class="btn ghost fonio-setup-copy-header" data-fonio-copy-header ${apiKey ? '' : 'disabled'}>
             ${fonioSvgIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', 14)}
-            ${esc(t('fonio.copyHeader'))}
+            <span class="fonio-copy-label-desktop">${esc(t('fonio.copyHeader'))}</span><span class="fonio-copy-label-mobile">${esc(t('common.copy'))}</span>
           </button>
           <p class="fonio-setup-key-note">${esc(apiKey ? t('fonio.apiKeyReadyNote') : t('fonio.check.keyMissing'))}</p>
         </div>

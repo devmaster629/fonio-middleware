@@ -16192,6 +16192,21 @@ body.fonio-activity-drawer-open {
   margin: 0;
 }
 
+.fonio-setup-title-mobile,
+.fonio-setup-mobile-hint,
+.fonio-setup-mobile-actions,
+.fonio-setup-mobile-last-call,
+.fonio-setup-checklist-mobile-head,
+.fonio-stat-label-mobile,
+.fonio-count-mobile,
+.fonio-copy-label-mobile {
+  display: none;
+}
+
+.fonio-endpoint-title-mobile {
+  display: none;
+}
+
 .fonio-setup-status {
   display: inline-flex;
   flex-wrap: wrap;
@@ -16629,6 +16644,422 @@ body.fonio-activity-drawer-open {
   .fonio-setup-endpoint-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1023px) {
+  #tab-fonio .fonio-setup-page-header {
+    display: block;
+    margin-bottom: 0.65rem;
+  }
+
+  #tab-fonio .fonio-setup-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.2rem 0.6rem;
+    align-items: center;
+  }
+
+  #tab-fonio .fonio-setup-heading h2 {
+    font-size: 1.15rem;
+  }
+
+  #tab-fonio .fonio-setup-title-desktop,
+  #tab-fonio .fonio-setup-pill.subtle,
+  #tab-fonio .fonio-setup-actions,
+  #tab-fonio .fonio-stat-label-desktop,
+  #tab-fonio .fonio-count-desktop,
+  #tab-fonio .fonio-copy-label-desktop {
+    display: none;
+  }
+
+  #tab-fonio .fonio-setup-title-mobile,
+  #tab-fonio .fonio-stat-label-mobile,
+  #tab-fonio .fonio-count-mobile,
+  #tab-fonio .fonio-copy-label-mobile {
+    display: inline;
+  }
+
+  #tab-fonio .fonio-endpoint-title-desktop,
+  #tab-fonio .fonio-setup-endpoint-desc {
+    display: none;
+  }
+
+  #tab-fonio .fonio-endpoint-title-mobile {
+    display: inline;
+  }
+
+  #tab-fonio .fonio-setup-mobile-hint {
+    display: block;
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.76rem;
+  }
+
+  #tab-fonio .fonio-setup-status {
+    justify-self: end;
+  }
+
+  #tab-fonio .fonio-setup-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 0.55rem;
+  }
+
+  #tab-fonio .fonio-setup-stat {
+    display: flex;
+    flex-direction: column;
+    min-height: 5.75rem;
+    padding: 0.6rem;
+    border-radius: 8px;
+    background: #172238;
+  }
+
+  #tab-fonio .fonio-setup-stat.is-last-call {
+    display: none;
+  }
+
+  #tab-fonio .fonio-setup-stat-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+    margin-bottom: 0.35rem;
+    border-radius: 7px;
+  }
+
+  #tab-fonio .fonio-setup-stat-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  #tab-fonio .fonio-setup-stat-value {
+    font-size: 0.9rem;
+    line-height: 1.15;
+  }
+
+  #tab-fonio .fonio-setup-stat.is-endpoints .fonio-setup-stat-value {
+    font-size: 1rem;
+  }
+
+  #tab-fonio .fonio-setup-stat-label {
+    margin-top: 0.08rem;
+    font-size: 0.68rem;
+    line-height: 1.2;
+  }
+
+  #tab-fonio .fonio-setup-stat-sub {
+    margin-top: 0.18rem;
+    font-size: 0.6rem;
+    line-height: 1.25;
+  }
+
+  #tab-fonio .fonio-setup-stat.is-environment .fonio-setup-link {
+    position: relative;
+    display: block;
+    max-width: 100%;
+    padding-left: 0.65rem;
+    overflow: hidden;
+    color: #94a3b8;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #tab-fonio .fonio-setup-stat.is-environment .fonio-setup-link::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 50%;
+    background: #4ade80;
+    transform: translateY(-50%);
+  }
+
+  #tab-fonio .fonio-setup-mobile-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-bottom: 0.45rem;
+  }
+
+  #tab-fonio .fonio-setup-mobile-actions .btn {
+    justify-content: center;
+    min-width: 0;
+    min-height: 2.45rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 7px;
+    font-size: 0.72rem;
+  }
+
+  #tab-fonio .fonio-setup-mobile-last-call {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+    color: #94a3b8;
+    font-size: 0.65rem;
+  }
+
+  #tab-fonio .fonio-setup-mobile-last-call strong {
+    color: #cbd5e1;
+    font-weight: 650;
+  }
+
+  #tab-fonio .fonio-setup-mobile-last-call small {
+    margin-left: auto;
+    font-size: 0.62rem;
+    color: #4ade80;
+  }
+
+  #tab-fonio .fonio-setup-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  #tab-fonio .fonio-setup-side {
+    display: contents;
+  }
+
+  #tab-fonio .fonio-setup-key-card {
+    order: 1;
+  }
+
+  #tab-fonio .fonio-setup-main {
+    order: 2;
+    gap: 0.4rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist-card {
+    order: 3;
+  }
+
+  #tab-fonio .fonio-setup-side-card {
+    padding: 0.7rem;
+    border-radius: 8px;
+    background: #172238;
+  }
+
+  #tab-fonio .fonio-setup-key-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem 0.4rem;
+    align-items: end;
+  }
+
+  #tab-fonio .fonio-setup-key-card h3,
+  #tab-fonio .fonio-setup-key-card .fonio-setup-side-hint,
+  #tab-fonio .fonio-setup-key-card .fonio-setup-key-note {
+    grid-column: 1 / -1;
+  }
+
+  #tab-fonio .fonio-setup-key-card h3 {
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  #tab-fonio .fonio-setup-key-card .fonio-setup-side-hint {
+    margin: -0.15rem 0 0.15rem;
+    font-size: 0.62rem;
+  }
+
+  #tab-fonio .fonio-setup-key-box {
+    flex-wrap: nowrap;
+    min-width: 0;
+    margin: 0;
+    padding: 0.35rem 0.45rem;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  #tab-fonio .fonio-setup-key-box code {
+    display: none;
+  }
+
+  #tab-fonio #fonio-setup-key-value {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.68rem;
+    color: #94a3b8;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #tab-fonio .fonio-setup-key-box .btn,
+  #tab-fonio .fonio-setup-copy-header {
+    min-height: 1.9rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.62rem;
+    white-space: nowrap;
+  }
+
+  #tab-fonio .fonio-setup-copy-header {
+    width: auto;
+    margin: 0;
+  }
+
+  #tab-fonio .fonio-setup-key-note {
+    display: none;
+  }
+
+  #tab-fonio .fonio-setup-accordion {
+    border-radius: 8px;
+    background: #172238;
+  }
+
+  #tab-fonio .fonio-setup-accordion-head {
+    gap: 0.55rem;
+    min-height: 2.65rem;
+    padding: 0.5rem 0.65rem;
+  }
+
+  #tab-fonio .fonio-setup-accordion-icon {
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 6px;
+  }
+
+  #tab-fonio .fonio-setup-accordion-title {
+    font-size: 0.75rem;
+  }
+
+  #tab-fonio .fonio-setup-accordion-count {
+    width: auto;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.62rem;
+    font-weight: 500;
+  }
+
+  #tab-fonio .fonio-setup-accordion-body {
+    padding: 0.15rem 0.45rem 0.4rem;
+  }
+
+  #tab-fonio .fonio-setup-endpoint {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.4rem;
+    padding: 0.45rem 0.1rem;
+  }
+
+  #tab-fonio .fonio-setup-method {
+    margin-top: 0.1rem;
+    padding: 0.18rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.56rem;
+  }
+
+  #tab-fonio .fonio-setup-endpoint-title {
+    font-size: 0.68rem;
+  }
+
+  #tab-fonio .fonio-setup-endpoint-desc {
+    font-size: 0.58rem;
+    line-height: 1.3;
+  }
+
+  #tab-fonio .fonio-setup-endpoint-url {
+    margin-top: 0.18rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: hidden;
+    font-size: 0.52rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #tab-fonio .fonio-setup-endpoint-actions {
+    grid-column: auto;
+    justify-content: flex-end;
+  }
+
+  #tab-fonio .fonio-setup-endpoint-actions .btn {
+    min-height: 1.8rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.6rem;
+  }
+
+  #tab-fonio .fonio-setup-https-note {
+    margin-top: 0.1rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.62rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist-card {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  #tab-fonio .fonio-setup-checklist-desktop-title {
+    display: none;
+  }
+
+  #tab-fonio .fonio-setup-checklist-mobile-head {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 0;
+    background: transparent;
+    color: #e2e8f0;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  #tab-fonio .fonio-setup-checklist-mobile-head > span:nth-child(2) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist-mobile-head strong {
+    font-size: 0.72rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist-mobile-head small {
+    color: #94a3b8;
+    font-size: 0.6rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist-body {
+    display: none;
+    padding: 0.4rem 0.7rem 0.7rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  #tab-fonio .fonio-setup-checklist-card.is-open .fonio-setup-checklist-body {
+    display: block;
+  }
+
+  #tab-fonio .fonio-setup-checklist-card.is-open .fonio-setup-accordion-chevron {
+    transform: rotate(-135deg);
+  }
+
+  #tab-fonio .fonio-setup-check {
+    grid-template-columns: 1rem minmax(0, 1fr);
+    gap: 0.4rem;
+  }
+
+  #tab-fonio .fonio-setup-checklist {
+    gap: 0.5rem;
+  }
+
+  #tab-fonio .fonio-setup-check-title {
+    font-size: 0.7rem;
+  }
+
+  #tab-fonio .fonio-setup-check-detail,
+  #tab-fonio .fonio-setup-side-link {
+    font-size: 0.62rem;
   }
 }
 
