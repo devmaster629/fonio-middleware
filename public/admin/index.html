@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915m" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915o" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -339,6 +339,7 @@
         <div class="reservations-board">
           <div id="reservations-toolbar" class="reservations-toolbar"></div>
           <div class="reservations-board-divider" aria-hidden="true"></div>
+          <div id="reservations-mobile-list" class="reservations-mobile-list" aria-live="polite"></div>
           <div class="table-wrap reservations-table-wrap" id="reservations-table"></div>
           <div class="reservations-table-footer">
             <div id="reservations-info" class="table-info"></div>
@@ -354,6 +355,17 @@
                 </select>
               </label>
             </div>
+          </div>
+        </div>
+        <div id="reservations-filter-sheet" class="reservations-filter-sheet hidden" hidden>
+          <button type="button" class="reservations-filter-sheet-backdrop" data-reservations-filter-close aria-label="Close"></button>
+          <div class="reservations-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="reservations-filter-sheet-title">
+            <div class="reservations-filter-sheet-handle" aria-hidden="true"></div>
+            <div class="reservations-filter-sheet-head">
+              <h3 id="reservations-filter-sheet-title" class="reservations-filter-sheet-title">Filter</h3>
+              <button type="button" class="reservations-filter-sheet-close" data-reservations-filter-close aria-label="Close">&times;</button>
+            </div>
+            <div id="reservations-filter-sheet-body" class="reservations-filter-sheet-body"></div>
           </div>
         </div>
         <div id="reservation-drawer" class="reservation-drawer hidden" aria-hidden="true">
@@ -1855,10 +1867,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915m"></script>
+  <script src="/admin/i18n.js?v=20260915o"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915m"></script>
+  <script src="/admin/app.js?v=20260915o"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

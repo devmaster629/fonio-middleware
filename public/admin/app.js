@@ -3403,7 +3403,8 @@ async function loadReservations() {
     ensureReservationsToolbar(),
   ]);
   const data = await api(`/reservations?${tableQuery('reservations')}`);
-  const rows = data.items.map((r) => {
+  cachedReservations = Array.isArray(data.items) ? data.items : [];
+  const rows = cachedReservations.map((r) => {
     const paid = reservationPaidAmount(r);
     const total = r.totalPrice;
     const guests = reservationGuestsLabel(r);
@@ -3466,9 +3467,375 @@ async function loadReservations() {
     </tr></thead><tbody>${rows || `<tr><td colspan="9">${t('table.infoEmpty')}</td></tr>`}</tbody></table>`;
   bindSortableHeaders('#reservations-table', 'reservations', loadReservations);
   bindReservationsTable();
+  renderReservationsMobile(cachedReservations);
   renderTableInfo('#reservations-info', data);
   renderPagination('#reservations-pagination', data, 'reservations', loadReservations);
   scheduleEnhanceResponsiveTables();
+}
+
+let cachedReservations = [];
+let expandedReservationId = null;
+let reservationsMobileDetailCache = new Map();
+
+function isReservationsMobile() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function reservationChipIcon(kind) {
+  const icons = {
+    date: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    property: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    status: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+    payment: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+    channel: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    pin: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    mail: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 7L2 7"/></svg>',
+    phone: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg>',
+    clock: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    chevron: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    more: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function reservationGuestCountShort(r) {
+  const total = r.numberOfGuests != null ? Number(r.numberOfGuests) : null;
+  if (total != null && Number.isFinite(total)) {
+    return total === 1 ? t('reservations.guestOne') : t('reservations.guests', { n: total });
+  }
+  const adults = r.adults != null ? Number(r.adults) : 0;
+  const children = r.children != null ? Number(r.children) : 0;
+  const sum = (Number.isFinite(adults) ? adults : 0) + (Number.isFinite(children) ? children : 0);
+  if (sum > 0) {
+    return sum === 1 ? t('reservations.guestOne') : t('reservations.guests', { n: sum });
+  }
+  return reservationGuestsLabel(r);
+}
+
+function closeReservationsFilterSheet() {
+  const sheet = $('#reservations-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('reservations-filter-sheet-open');
+}
+
+function openReservationsFilterSheet(kind) {
+  const sheet = $('#reservations-filter-sheet');
+  const body = $('#reservations-filter-sheet-body');
+  const titleEl = $('#reservations-filter-sheet-title');
+  const toolbar = $('#reservations-toolbar');
+  if (!sheet || !body || !toolbar) return;
+
+  const titles = {
+    date: t('reservations.filterDate'),
+    groupId: t('reservations.filterProperty'),
+    status: t('listings.status'),
+    paymentStatus: t('reservations.filterPayment'),
+    channel: t('reservations.filterChannel'),
+  };
+  if (titleEl) titleEl.textContent = titles[kind] || 'Filter';
+
+  if (kind === 'date') {
+    const s = tableState.reservations;
+    body.innerHTML = `
+      <div class="reservations-filter-date-sheet">
+        <label>
+          <span>${esc(t('reservations.filterDateFrom'))}</span>
+          <input type="date" data-sheet-date="dateFrom" value="${esc(s.dateFrom || '')}" />
+        </label>
+        <label>
+          <span>${esc(t('reservations.filterDateTo'))}</span>
+          <input type="date" data-sheet-date="dateTo" value="${esc(s.dateTo || '')}" />
+        </label>
+        <div class="reservations-filter-date-actions">
+          <button type="button" class="btn ghost" data-sheet-clear-dates>${esc(t('reservations.filterClearDates'))}</button>
+          <button type="button" class="btn primary" data-sheet-apply-dates>${esc(t('reservations.filterApplyDates'))}</button>
+        </div>
+      </div>`;
+    body.querySelector('[data-sheet-clear-dates]')?.addEventListener('click', () => {
+      tableState.reservations.dateFrom = '';
+      tableState.reservations.dateTo = '';
+      tableState.reservations.page = 1;
+      tableState.reservations.cancelledRecordedToday = false;
+      syncReservationsToolbarControls(toolbar);
+      syncReservationsFilterChips(toolbar);
+      closeReservationsFilterSheet();
+      loadReservations().catch((ex) => notify.error(ex.message));
+    });
+    body.querySelector('[data-sheet-apply-dates]')?.addEventListener('click', () => {
+      const from = body.querySelector('[data-sheet-date="dateFrom"]')?.value || '';
+      const to = body.querySelector('[data-sheet-date="dateTo"]')?.value || '';
+      tableState.reservations.dateFrom = from;
+      tableState.reservations.dateTo = to;
+      tableState.reservations.page = 1;
+      tableState.reservations.cancelledRecordedToday = false;
+      syncReservationsToolbarControls(toolbar);
+      syncReservationsFilterChips(toolbar);
+      closeReservationsFilterSheet();
+      loadReservations().catch((ex) => notify.error(ex.message));
+    });
+  } else {
+    const sel = toolbar.querySelector(`[data-reservation-filter="${kind}"]`);
+    if (!sel) return;
+    const current = String(sel.value || '');
+    body.innerHTML = `<div class="reservations-filter-sheet-options">${[...sel.options]
+      .map((opt) => {
+        const value = String(opt.value ?? '');
+        const label = String(opt.textContent || '').trim() || value || 'All';
+        const selected = value === current;
+        return `<button type="button" class="reservations-filter-sheet-option${selected ? ' is-selected' : ''}" data-value="${esc(value)}">${esc(label)}</button>`;
+      })
+      .join('')}</div>`;
+    body.querySelectorAll('[data-value]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sel.value = btn.getAttribute('data-value') ?? '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        closeReservationsFilterSheet();
+      });
+    });
+  }
+
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('reservations-filter-sheet-open');
+}
+
+function syncReservationsFilterChips(root = document) {
+  const s = tableState.reservations;
+  const toolbar = root.querySelector?.('#reservations-toolbar') || root;
+  if (!toolbar?.querySelector) return;
+  const setChip = (key, active, text) => {
+    const chip = toolbar.querySelector(`[data-reservations-chip="${key}"]`);
+    if (!chip) return;
+    chip.classList.toggle('is-active', !!active);
+    const textEl = chip.querySelector('.reservations-filter-chip-text');
+    if (textEl && text) textEl.textContent = text;
+  };
+
+  const dateActive = !!(s.dateFrom || s.dateTo);
+  let dateText = t('reservations.filterDate');
+  if (s.dateFrom && s.dateTo) dateText = `${s.dateFrom} → ${s.dateTo}`;
+  else if (s.dateFrom) dateText = `${t('reservations.filterDateFrom')} ${s.dateFrom}`;
+  else if (s.dateTo) dateText = `${t('reservations.filterDateTo')} ${s.dateTo}`;
+  setChip('date', dateActive, dateText);
+
+  const groupSel = toolbar.querySelector('[data-reservation-filter="groupId"]');
+  const groupOpt = groupSel?.selectedOptions?.[0];
+  setChip(
+    'groupId',
+    s.groupId && s.groupId !== 'all',
+    groupOpt?.textContent?.trim() || t('reservations.filterProperty'),
+  );
+
+  const statusSel = toolbar.querySelector('[data-reservation-filter="status"]');
+  const statusOpt = statusSel?.selectedOptions?.[0];
+  setChip(
+    'status',
+    s.status && s.status !== 'all',
+    statusOpt?.textContent?.trim() || t('listings.status'),
+  );
+
+  const paySel = toolbar.querySelector('[data-reservation-filter="paymentStatus"]');
+  const payOpt = paySel?.selectedOptions?.[0];
+  setChip(
+    'paymentStatus',
+    s.paymentStatus && s.paymentStatus !== 'all',
+    payOpt?.textContent?.trim() || t('reservations.filterPayment'),
+  );
+
+  const channelSel = toolbar.querySelector('[data-reservation-filter="channel"]');
+  const channelOpt = channelSel?.selectedOptions?.[0];
+  setChip(
+    'channel',
+    s.channel && s.channel !== 'all',
+    channelOpt?.textContent?.trim() || t('reservations.filterChannel'),
+  );
+}
+
+function renderReservationsMobile(items) {
+  const root = $('#reservations-mobile-list');
+  if (!root) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    root.innerHTML = `<div class="reservations-m-empty">${esc(t('table.infoEmpty'))}</div>`;
+    return;
+  }
+
+  root.innerHTML = list
+    .map((r) => {
+      const statusMeta = reservationStatusMeta(r);
+      const progress = reservationPaymentProgress(r);
+      const nights = reservationNights(r.arrivalDate, r.departureDate);
+      const guests = reservationGuestCountShort(r);
+      const guestsDetail = reservationGuestsLabel(r);
+      const city = r.listing?.city || r.listing?.listingGroup?.name || '';
+      const channel = r.channelName || '–';
+      const expanded = Number(expandedReservationId) === Number(r.hostawayId);
+      const detail = reservationsMobileDetailCache.get(Number(r.hostawayId));
+      const email = r.guestEmail ? softMaskEmail(r.guestEmail) : '–';
+      const phone = r.guestPhone ? softMaskPhone(r.guestPhone) : '–';
+      const activity = Array.isArray(detail?.activity) ? detail.activity.slice(0, 1) : [];
+      const barCls = progress.pct >= 100 ? 'is-ok' : progress.pct > 0 ? 'is-partial' : 'is-due';
+
+      return `
+      <article class="reservations-m-card${expanded ? ' is-expanded' : ''}" data-hostaway-id="${esc(String(r.hostawayId))}">
+        <div class="reservations-m-card-summary">
+          <div class="reservations-m-card-top">
+            <div class="reservations-m-id-row">
+              <button type="button" class="reservations-m-id" data-open-reservation="${esc(String(r.hostawayId))}">#${esc(String(r.hostawayId))}</button>
+              <span class="reservation-status-pill ${statusMeta.cls}">${esc(statusMeta.label)}</span>
+            </div>
+            <div class="reservations-m-top-actions">
+              <div class="reservation-actions-menu">
+                <button type="button" class="reservations-m-more reservation-actions-toggle" aria-expanded="false" data-hostaway-id="${esc(String(r.hostawayId))}" title="${esc(t('listings.actions'))}">${reservationChipIcon('more')}</button>
+                <div class="reservation-actions-dropdown hidden" role="menu">
+                  <button type="button" class="reservation-action-item" data-action="open" data-hostaway-id="${esc(String(r.hostawayId))}">${esc(t('reservations.openDetails'))}</button>
+                  <a class="reservation-action-item" href="${esc(hostawayReservationUrl(r.hostawayId))}" target="_blank" rel="noopener noreferrer">${esc(t('payments.openInHostaway'))}</a>
+                </div>
+              </div>
+              <button type="button" class="reservations-m-expand" data-expand-reservation="${esc(String(r.hostawayId))}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${esc(expanded ? t('reservations.collapseCard') : t('reservations.expandCard'))}">${reservationChipIcon('chevron')}</button>
+            </div>
+          </div>
+          <div class="reservations-m-guest-row">
+            <div class="reservations-m-guest">
+              <strong>${esc(r.guestName || r.guestNameMasked || '–')}</strong>
+              ${guests ? `<span class="muted">${esc(guests)}</span>` : ''}
+            </div>
+            <div class="reservations-m-dates">
+              <span>${esc(formatReservationLongDate(r.arrivalDate))} → ${esc(formatReservationLongDate(r.departureDate))}</span>
+              ${nights != null ? `<span class="muted">${esc(t('reservations.nights', { n: nights }))}</span>` : ''}
+            </div>
+          </div>
+          <div class="reservations-m-property-row">
+            ${listingThumbHtml(r.listing || {})}
+            <div class="reservations-m-property-meta">
+              <div class="reservations-m-property-name">${esc(r.listing?.name || '–')}</div>
+              <div class="reservations-m-property-sub">
+                ${city ? `<span>${reservationChipIcon('pin')}${esc(city)}</span>` : ''}
+                <span>${esc(channel)}</span>
+              </div>
+            </div>
+            <div class="reservations-m-money">
+              <strong>${esc(formatMoney(progress.total ?? r.totalPrice))}</strong>
+              <span class="muted">${esc(t('reservations.paidLabel', { amount: formatMoney(progress.paid) }))}</span>
+              <div class="reservations-m-progress ${barCls}" aria-hidden="true"><span style="width:${progress.pct}%"></span></div>
+              <span class="reservations-m-pct">${progress.pct}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="reservations-m-card-details"${expanded ? '' : ' hidden'}>
+          <section class="reservations-m-detail-section">
+            <h4>${esc(t('reservations.guestContact'))}</h4>
+            <div class="reservations-m-detail-line">${reservationChipIcon('mail')}<span>${esc(email)}</span></div>
+            <div class="reservations-m-detail-line">${reservationChipIcon('phone')}<span>${esc(phone)}</span></div>
+          </section>
+          <section class="reservations-m-detail-section">
+            <h4>${esc(t('reservations.stayDetails'))}</h4>
+            <div class="reservations-m-detail-line">${reservationChipIcon('date')}<span>${esc(formatReservationLongDate(r.arrivalDate))} → ${esc(formatReservationLongDate(r.departureDate))}${nights != null ? ` · ${esc(t('reservations.nights', { n: nights }))}` : ''}</span></div>
+            ${guestsDetail ? `<div class="reservations-m-detail-line muted">${esc(guestsDetail)}</div>` : ''}
+          </section>
+          <section class="reservations-m-detail-section">
+            <h4>${esc(t('reservations.sectionProperty'))}</h4>
+            <div class="reservations-m-detail-line">${reservationChipIcon('property')}<span>${esc(r.listing?.name || '–')}</span></div>
+            ${city ? `<div class="reservations-m-detail-line">${reservationChipIcon('pin')}<span>${esc(city)}</span></div>` : ''}
+            <div class="reservations-m-detail-line">${reservationChipIcon('channel')}<span>${esc(channel)}</span></div>
+          </section>
+          <section class="reservations-m-detail-section">
+            <h4>${esc(t('reservations.sectionPayment'))}</h4>
+            <div class="reservations-m-detail-payment">
+              <span>${esc(formatMoney(progress.total ?? r.totalPrice))} ${esc(t('reservations.totalSuffix'))}</span>
+              <span>${esc(formatMoney(progress.paid))} ${esc(t('reservations.paymentPaid').toLowerCase())}</span>
+              <span class="reservations-m-pay-status ${barCls}">${progress.pct >= 100 ? reservationDrawerIcon('check') : ''}${esc(progress.label)}</span>
+            </div>
+          </section>
+          <section class="reservations-m-detail-section">
+            <h4>${esc(t('reservations.recentActivity'))}</h4>
+            ${
+              activity.length
+                ? activity
+                    .map(
+                      (ev) => `<div class="reservations-m-activity-line">${reservationChipIcon('clock')}<div><div class="muted">${esc(formatDateTime(ev.at))}</div><div>${esc(ev.title || '')}</div></div></div>`,
+                    )
+                    .join('')
+                : `<div class="muted reservations-m-activity-loading">${esc(detail ? t('reservations.activityEmpty') : '…')}</div>`
+            }
+            <button type="button" class="reservations-m-view-all" data-open-reservation="${esc(String(r.hostawayId))}">${esc(t('reservations.viewAllActivity'))} →</button>
+          </section>
+        </div>
+      </article>`;
+    })
+    .join('');
+
+  bindReservationsMobileList(root);
+}
+
+async function toggleReservationMobileExpand(hostawayId) {
+  const id = Number(hostawayId);
+  if (!Number.isFinite(id)) return;
+  if (Number(expandedReservationId) === id) {
+    expandedReservationId = null;
+    renderReservationsMobile(cachedReservations);
+    return;
+  }
+  expandedReservationId = id;
+  renderReservationsMobile(cachedReservations);
+  if (!reservationsMobileDetailCache.has(id)) {
+    try {
+      const detail = await api(`/reservations/${id}`);
+      reservationsMobileDetailCache.set(id, detail);
+      if (Number(expandedReservationId) === id) {
+        renderReservationsMobile(cachedReservations);
+      }
+    } catch {
+      /* keep summary expand */
+    }
+  }
+}
+
+function bindReservationsMobileList(root) {
+  root.querySelectorAll('[data-expand-reservation]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleReservationMobileExpand(btn.getAttribute('data-expand-reservation'));
+    });
+  });
+  root.querySelectorAll('[data-open-reservation]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openReservationDrawer(Number(btn.getAttribute('data-open-reservation')));
+    });
+  });
+  root.querySelectorAll('.reservations-m-card-summary').forEach((summary) => {
+    summary.addEventListener('click', (e) => {
+      if (e.target.closest('.reservation-actions-menu, [data-open-reservation], [data-expand-reservation]')) return;
+      const card = summary.closest('[data-hostaway-id]');
+      const id = card?.getAttribute('data-hostaway-id');
+      if (id) toggleReservationMobileExpand(id);
+    });
+  });
+  root.querySelectorAll('.reservation-actions-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = btn.closest('.reservation-actions-menu');
+      const drop = menu?.querySelector('.reservation-actions-dropdown');
+      const open = drop && !drop.classList.contains('hidden');
+      $$('.reservation-actions-dropdown').forEach((d) => d.classList.add('hidden'));
+      $$('.reservation-actions-toggle').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+      if (!open && drop) {
+        drop.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+  root.querySelectorAll('.reservation-action-item[data-action="open"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openReservationDrawer(Number(btn.dataset.hostawayId));
+    });
+  });
 }
 
 let reservationsFacets = { groups: [], channels: [] };
@@ -3582,15 +3949,16 @@ async function ensureReservationsToolbar() {
     }
   }
 
-  if (el.dataset.toolbarInit === 'reservations-v5') {
+  if (el.dataset.toolbarInit === 'reservations-v8') {
     const search = el.querySelector('[data-table-search="reservations"]');
     if (search && document.activeElement !== search) search.value = s.search;
     syncReservationsToolbarControls(el);
+    syncReservationsFilterChips(el);
     const note = el.querySelector('[data-cancelled-today-note]');
     if (note) note.hidden = !s.cancelledRecordedToday;
     return;
   }
-  el.dataset.toolbarInit = 'reservations-v5';
+  el.dataset.toolbarInit = 'reservations-v8';
   const groupOpts = [
     `<option value="all">${esc(t('reservations.filterAllGroups'))}</option>`,
     ...reservationsFacets.groups.map(
@@ -3611,7 +3979,7 @@ async function ensureReservationsToolbar() {
         <svg class="reservations-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </label>
       <div class="reservations-filters">
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('reservations.filterDateFrom')}</span>
           <span class="reservations-date-field">
             <input type="date" data-reservation-filter="dateFrom" value="${esc(s.dateFrom || '')}" />
@@ -3620,7 +3988,7 @@ async function ensureReservationsToolbar() {
             </button>
           </span>
         </label>
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('reservations.filterDateTo')}</span>
           <span class="reservations-date-field">
             <input type="date" data-reservation-filter="dateTo" value="${esc(s.dateTo || '')}" />
@@ -3629,11 +3997,11 @@ async function ensureReservationsToolbar() {
             </button>
           </span>
         </label>
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('listings.group')}</span>
           <select data-reservation-filter="groupId">${groupOpts}</select>
         </label>
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('listings.status')}</span>
           <select data-reservation-filter="status">
             <option value="all">${esc(t('reservations.filterAllStatuses'))}</option>
@@ -3645,7 +4013,7 @@ async function ensureReservationsToolbar() {
             <option value="inquiry">${esc(t('reservations.statusInquiry'))}</option>
           </select>
         </label>
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('reservations.filterPayment')}</span>
           <select data-reservation-filter="paymentStatus">
             <option value="all">${esc(t('reservations.filterAllPayment'))}</option>
@@ -3654,18 +4022,45 @@ async function ensureReservationsToolbar() {
             <option value="due">${esc(t('reservations.paymentDue'))}</option>
           </select>
         </label>
-        <label>
+        <label class="reservations-filter-desktop">
           <span>${t('reservations.filterChannel')}</span>
           <select data-reservation-filter="channel">${channelOpts}</select>
         </label>
       </div>
-      <button type="button" class="btn primary" id="reservations-export-btn">${esc(t('reservations.export'))}</button>
+      <div class="reservations-mobile-chips" aria-label="Filters">
+        <button type="button" class="reservations-filter-chip" data-reservations-chip="date">
+          ${reservationChipIcon('date')}
+          <span class="reservations-filter-chip-text">${esc(t('reservations.filterDate'))}</span>
+          ${reservationChipIcon('chevron')}
+        </button>
+        <button type="button" class="reservations-filter-chip" data-reservations-chip="groupId">
+          ${reservationChipIcon('property')}
+          <span class="reservations-filter-chip-text">${esc(t('reservations.filterProperty'))}</span>
+          ${reservationChipIcon('chevron')}
+        </button>
+        <button type="button" class="reservations-filter-chip" data-reservations-chip="status">
+          ${reservationChipIcon('status')}
+          <span class="reservations-filter-chip-text">${esc(t('listings.status'))}</span>
+          ${reservationChipIcon('chevron')}
+        </button>
+        <button type="button" class="reservations-filter-chip" data-reservations-chip="paymentStatus">
+          ${reservationChipIcon('payment')}
+          <span class="reservations-filter-chip-text">${esc(t('reservations.filterPayment'))}</span>
+          ${reservationChipIcon('chevron')}
+        </button>
+        <button type="button" class="reservations-filter-chip" data-reservations-chip="channel">
+          ${reservationChipIcon('channel')}
+          <span class="reservations-filter-chip-text">${esc(t('reservations.filterChannel'))}</span>
+          ${reservationChipIcon('chevron')}
+        </button>
+      </div>
     </div>
     <div class="reservations-filter-note" data-cancelled-today-note ${s.cancelledRecordedToday ? '' : 'hidden'}>
       ${esc(t('reservations.filterCancelledTodayNote'))}
       <button type="button" class="btn link" data-clear-cancelled-today>${esc(t('reservations.clearSpecialFilter'))}</button>
     </div>`;
   syncReservationsToolbarControls(el);
+  syncReservationsFilterChips(el);
 
   const searchInput = el.querySelector('[data-table-search="reservations"]');
   searchInput?.addEventListener('input', () => {
@@ -3687,12 +4082,18 @@ async function ensureReservationsToolbar() {
       tableState.reservations.cancelledRecordedToday = false;
       const note = el.querySelector('[data-cancelled-today-note]');
       if (note) note.hidden = true;
+      syncReservationsFilterChips(el);
       loadReservations().catch((ex) => notify.error(ex.message));
     };
     control.addEventListener('change', apply);
     if (control.matches('input[type="date"]')) {
       control.addEventListener('input', apply);
     }
+  });
+  el.querySelectorAll('[data-reservations-chip]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openReservationsFilterSheet(btn.getAttribute('data-reservations-chip'));
+    });
   });
   el.querySelector('[data-clear-cancelled-today]')?.addEventListener('click', () => {
     tableState.reservations.cancelledRecordedToday = false;
@@ -3719,9 +4120,6 @@ async function ensureReservationsToolbar() {
         input.focus();
       }
     });
-  });
-  $('#reservations-export-btn')?.addEventListener('click', () => {
-    exportReservationsCsv().catch((ex) => notify.error(ex.message));
   });
   ensureReservationsPageSizeControl();
 }
@@ -3760,20 +4158,6 @@ function syncReservationsToolbarControls(el) {
     control.value = s[key] ?? (control.tagName === 'SELECT' ? 'all' : '');
   });
   ensureReservationsPageSizeControl();
-}
-
-async function exportReservationsCsv() {
-  const result = await api(`/reservations/export?${tableQuery('reservations')}`);
-  const blob = new Blob([result.csv || ''], { type: result.contentType || 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = result.filename || 'reservations.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  notify.success(t('reservations.exportOk', { n: result.count ?? 0 }));
 }
 
 function reservationGuestsLabel(r) {
@@ -3837,6 +4221,9 @@ function reservationStatusMeta(r) {
   }
   if (raw === 'confirmed') {
     return { key: 'confirmed', cls: 'is-ok', label: t('reservations.statusConfirmed') };
+  }
+  if (raw.includes('check') && raw.includes('in')) {
+    return { key: 'checked_in', cls: 'is-checked-in', label: t('reservations.statusCheckedIn') };
   }
   return {
     key: raw || 'unknown',
@@ -4253,6 +4640,12 @@ function initReservationDrawer() {
     if (e.key === 'Escape' && !$('#reservation-drawer')?.classList.contains('hidden')) {
       closeReservationDrawer();
     }
+    if (e.key === 'Escape' && !$('#reservations-filter-sheet')?.classList.contains('hidden')) {
+      closeReservationsFilterSheet();
+    }
+  });
+  $$('[data-reservations-filter-close]').forEach((el) => {
+    el.addEventListener('click', () => closeReservationsFilterSheet());
   });
 }
 
