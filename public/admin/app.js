@@ -2104,11 +2104,86 @@ async function loadListings() {
   $$('.listing-aliases-edit').forEach((btn) => {
     btn.addEventListener('click', () => openListingAliasesModal(btn.dataset.id));
   });
+  renderListingsMobile(cachedListings);
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
   ensureListingsPageSizeControl();
   applyRoleUi();
   scheduleEnhanceResponsiveTables();
+}
+
+function listingStatusMeta(listing) {
+  const status = String(listing?.status || '').toUpperCase();
+  if (status === 'LIVE') return { cls: 'is-live', label: 'LIVE' };
+  if (status === 'HIDDEN') return { cls: 'is-hidden', label: 'HIDDEN' };
+  if (status === 'DRAFT') return { cls: 'is-draft', label: 'DRAFT' };
+  return { cls: 'is-neutral', label: status || '–' };
+}
+
+function listingAliasTagsHtml(listing, maxVisible = 2) {
+  const aliases = Array.isArray(listing?.aliases) ? listing.aliases.filter(Boolean) : [];
+  if (!aliases.length) return '';
+  const shown = aliases.slice(0, maxVisible);
+  const rest = aliases.length - shown.length;
+  return `
+    <div class="listings-m-tags">
+      ${shown.map((a) => `<span class="listings-m-tag">${esc(a)}</span>`).join('')}
+      ${rest > 0 ? `<span class="listings-m-tag is-more">+${rest}</span>` : ''}
+    </div>`;
+}
+
+function renderListingsMobile(items) {
+  const root = $('#listings-mobile-list');
+  if (!root) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    root.innerHTML = `<div class="listings-m-empty">${esc(t('table.infoEmpty'))}</div>`;
+    return;
+  }
+  const guestIcon =
+    '<svg class="guest-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+  const moreIcon =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+  const canEdit = hasPermission('LISTINGS_EDIT');
+  root.innerHTML = list
+    .map((l) => {
+      const status = listingStatusMeta(l);
+      const city = l.city || '–';
+      const group = l.listingGroup?.name || '';
+      const sub = [city, group].filter(Boolean).join(' · ');
+      const guestsLabel = `${l.personCapacity ?? '–'} ${t('listings.guests').toLowerCase()}`;
+      return `
+      <article class="listings-m-card" data-listing-id="${esc(l.id)}">
+        <div class="listings-m-card-main">
+          ${listingThumbHtml(l)}
+          <div class="listings-m-card-body">
+            <div class="listings-m-card-top">
+              <div class="listings-m-card-title" title="${esc(l.name)}">${esc(l.name)}</div>
+              ${
+                canEdit
+                  ? `<button type="button" class="listings-m-more" data-edit-aliases="${esc(l.id)}" aria-label="${esc(t('listings.aliasesEdit'))}">${moreIcon}</button>`
+                  : ''
+              }
+            </div>
+            <div class="listings-m-card-meta">ID ${esc(String(l.hostawayId))} · ${esc(sub)}</div>
+            <div class="listings-m-card-row">
+              <span class="listings-m-guests">${guestIcon}<span>${esc(guestsLabel)}</span></span>
+              <span class="listings-m-status ${status.cls}"><span class="listings-m-status-dot" aria-hidden="true"></span>${esc(status.label)}</span>
+              <span class="listings-m-bookable ${l.isBookable ? 'is-yes' : 'is-no'}">${esc(l.isBookable ? t('listings.bookable') : t('common.no'))}</span>
+            </div>
+            ${listingAliasTagsHtml(l)}
+          </div>
+        </div>
+      </article>`;
+    })
+    .join('');
+  root.querySelectorAll('[data-edit-aliases]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openListingAliasesModal(btn.getAttribute('data-edit-aliases'));
+    });
+  });
 }
 
 function listingThumbPlaceholderHtml() {
@@ -2190,16 +2265,94 @@ function groupThumbHtml(group) {
   return `<span class="group-thumb-frame is-group group-thumb-placeholder" aria-hidden="true">${groupBuildingIcon()}</span>`;
 }
 
+function isListingsMobile() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function ensureListingsFilterSheet() {
+  let sheet = $('#listings-filter-sheet');
+  if (sheet) return sheet;
+  sheet = document.createElement('div');
+  sheet.id = 'listings-filter-sheet';
+  sheet.className = 'listings-filter-sheet hidden';
+  sheet.innerHTML = `
+    <button type="button" class="listings-filter-sheet-backdrop" aria-label="Close"></button>
+    <div class="listings-filter-sheet-panel" role="dialog" aria-modal="true">
+      <div class="listings-filter-sheet-handle" aria-hidden="true"></div>
+      <div class="listings-filter-sheet-head">
+        <h4 class="listings-filter-sheet-title"></h4>
+        <button type="button" class="listings-filter-sheet-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="listings-filter-sheet-options"></div>
+    </div>
+  `;
+  document.body.appendChild(sheet);
+  sheet.querySelector('.listings-filter-sheet-backdrop')?.addEventListener('click', closeListingsFilterSheet);
+  sheet.querySelector('.listings-filter-sheet-close')?.addEventListener('click', closeListingsFilterSheet);
+  return sheet;
+}
+
+function closeListingsFilterSheet() {
+  const sheet = $('#listings-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  document.body.classList.remove('listings-filter-sheet-open');
+}
+
+function openListingsFilterSheet(chip) {
+  if (!chip) return;
+  const sel = chip.querySelector('select');
+  if (!sel) return;
+  const sheet = ensureListingsFilterSheet();
+  const title = chip.getAttribute('data-empty-label') || sel.getAttribute('aria-label') || 'Filter';
+  const titleEl = sheet.querySelector('.listings-filter-sheet-title');
+  const optionsEl = sheet.querySelector('.listings-filter-sheet-options');
+  if (titleEl) titleEl.textContent = title;
+  if (optionsEl) {
+    const current = String(sel.value || '');
+    optionsEl.innerHTML = [...sel.options]
+      .map((opt) => {
+        const value = String(opt.value ?? '');
+        const label = String(opt.textContent || '').trim() || value || 'All';
+        const selected = value === current;
+        return `<button type="button" class="listings-filter-sheet-option${selected ? ' is-selected' : ''}" data-value="${esc(value)}">${esc(label)}</button>`;
+      })
+      .join('');
+    optionsEl.querySelectorAll('[data-value]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const value = btn.getAttribute('data-value') ?? '';
+        sel.value = value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        closeListingsFilterSheet();
+      });
+    });
+  }
+  sheet.classList.remove('hidden');
+  document.body.classList.add('listings-filter-sheet-open');
+}
+
 function ensureListingsToolbar() {
   const el = $('#listings-toolbar');
   if (!el) return;
   const s = tableState.listings;
-  if (el.dataset.toolbarInit === 'listings-v4') {
+  if (el.dataset.toolbarInit === 'listings-v7') {
     const search = el.querySelector('[data-table-search="listings"]');
     if (search && document.activeElement !== search) search.value = s.search;
+    const sort = el.querySelector('[data-listing-sort]');
+    if (sort && document.activeElement !== sort) {
+      sort.value = `${s.sortBy || 'name'}:${s.sortDir || 'asc'}`;
+    }
+    refreshListingsFilterOptions();
+    syncListingsFilterChips(el);
     return;
   }
-  el.dataset.toolbarInit = 'listings-v4';
+  el.dataset.toolbarInit = 'listings-v7';
+  const sortValue = `${s.sortBy || 'name'}:${s.sortDir || 'asc'}`;
+  const cityLabel = t('listings.city');
+  const groupLabel = t('listings.group');
+  const statusLabel = t('listings.visibility');
+  const bookableLabel = t('listings.bookable');
+  const sortLabel = 'Sort';
   el.innerHTML = `
     <div class="listings-toolbar-row">
       <label class="listings-search">
@@ -2208,36 +2361,66 @@ function ensureListingsToolbar() {
         <svg class="listings-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </label>
       <div class="listings-filters">
-        <label>
-          <span>${t('listings.city')}</span>
-          <select data-listing-filter="city"></select>
-        </label>
-        <label>
-          <span>${t('listings.group')}</span>
-          <select data-listing-filter="groupId"></select>
-        </label>
-        <label>
-          <span>${t('listings.visibility')}</span>
-          <select data-listing-filter="status">
+        <div class="listings-filter-chip" data-empty-label="${esc(cityLabel)}">
+          <span class="listings-filter-chip-caption">${esc(cityLabel)}</span>
+          <button type="button" class="listings-filter-chip-btn" aria-haspopup="listbox">
+            <span class="listings-filter-chip-text">${esc(cityLabel)}</span>
+          </button>
+          <select data-listing-filter="city" aria-label="${esc(cityLabel)}"></select>
+        </div>
+        <div class="listings-filter-chip" data-empty-label="${esc(groupLabel)}">
+          <span class="listings-filter-chip-caption">${esc(groupLabel)}</span>
+          <button type="button" class="listings-filter-chip-btn" aria-haspopup="listbox">
+            <span class="listings-filter-chip-text">${esc(groupLabel)}</span>
+          </button>
+          <select data-listing-filter="groupId" aria-label="${esc(groupLabel)}"></select>
+        </div>
+        <div class="listings-filter-chip" data-empty-label="${esc(statusLabel)}">
+          <span class="listings-filter-chip-caption">${esc(statusLabel)}</span>
+          <button type="button" class="listings-filter-chip-btn" aria-haspopup="listbox">
+            <span class="listings-filter-chip-text">${esc(statusLabel)}</span>
+          </button>
+          <select data-listing-filter="status" aria-label="${esc(statusLabel)}">
             <option value="">${t('listings.filterAll')}</option>
             <option value="LIVE">LIVE</option>
             <option value="HIDDEN">HIDDEN</option>
             <option value="DRAFT">DRAFT</option>
             <option value="UNKNOWN">UNKNOWN</option>
           </select>
-        </label>
-        <label>
-          <span>${t('listings.bookable')}</span>
-          <select data-listing-filter="bookable">
+        </div>
+        <div class="listings-filter-chip" data-empty-label="${esc(bookableLabel)}">
+          <span class="listings-filter-chip-caption">${esc(bookableLabel)}</span>
+          <button type="button" class="listings-filter-chip-btn" aria-haspopup="listbox">
+            <span class="listings-filter-chip-text">${esc(bookableLabel)}</span>
+          </button>
+          <select data-listing-filter="bookable" aria-label="${esc(bookableLabel)}">
             <option value="">${t('listings.filterAll')}</option>
             <option value="yes">${t('common.yes')}</option>
             <option value="no">${t('common.no')}</option>
           </select>
-        </label>
+        </div>
+        <div class="listings-filter-chip listings-sort-filter" data-empty-label="${esc(sortLabel)}" data-default-value="name:asc">
+          <span class="listings-filter-chip-caption">${esc(sortLabel)}</span>
+          <button type="button" class="listings-filter-chip-btn" aria-haspopup="listbox">
+            <span class="listings-filter-chip-text">${esc(sortLabel)}</span>
+          </button>
+          <select data-listing-sort aria-label="${esc(sortLabel)}">
+            <option value="name:asc">${esc(t('listings.propertyName'))} A-Z</option>
+            <option value="name:desc">${esc(t('listings.propertyName'))} Z-A</option>
+            <option value="hostawayId:desc">${esc(t('listings.id'))} ↓</option>
+            <option value="hostawayId:asc">${esc(t('listings.id'))} ↑</option>
+            <option value="city:asc">${esc(t('listings.city'))} A-Z</option>
+            <option value="personCapacity:desc">${esc(t('listings.guests'))} ↓</option>
+            <option value="status:asc">${esc(t('listings.visibility'))}</option>
+          </select>
+        </div>
       </div>
     </div>
   `;
+  const sortSel = el.querySelector('[data-listing-sort]');
+  if (sortSel) sortSel.value = sortValue;
   refreshListingsFilterOptions();
+  syncListingsFilterChips(el);
   el.querySelector('[data-table-search="listings"]')?.addEventListener('input', (e) => {
     clearTimeout(searchTimers.listings);
     searchTimers.listings = setTimeout(() => {
@@ -2251,8 +2434,46 @@ function ensureListingsToolbar() {
       const key = sel.dataset.listingFilter;
       tableState.listings[key] = sel.value;
       tableState.listings.page = 1;
+      syncListingsFilterChips(el);
       loadListings();
     });
+  });
+  sortSel?.addEventListener('change', () => {
+    const [sortBy, sortDir] = String(sortSel.value || 'name:asc').split(':');
+    tableState.listings.sortBy = sortBy || 'name';
+    tableState.listings.sortDir = sortDir || 'asc';
+    tableState.listings.page = 1;
+    syncListingsFilterChips(el);
+    loadListings();
+  });
+  el.querySelectorAll('.listings-filter-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const chip = btn.closest('.listings-filter-chip');
+      if (!chip) return;
+      if (isListingsMobile()) openListingsFilterSheet(chip);
+      else chip.querySelector('select')?.focus();
+    });
+  });
+}
+
+function syncListingsFilterChips(root = document) {
+  (root.querySelectorAll?.('.listings-filter-chip') || []).forEach((chip) => {
+    const sel = chip.querySelector('select');
+    const textEl = chip.querySelector('.listings-filter-chip-text');
+    if (!sel || !textEl) return;
+    const emptyLabel = chip.getAttribute('data-empty-label') || '';
+    const defaultValue = chip.getAttribute('data-default-value');
+    const isDefault =
+      defaultValue != null ? String(sel.value) === String(defaultValue) : !String(sel.value || '');
+    if (isDefault) {
+      textEl.textContent = emptyLabel;
+      chip.classList.remove('is-active');
+      return;
+    }
+    const opt = sel.selectedOptions && sel.selectedOptions[0];
+    textEl.textContent = (opt?.textContent || '').trim() || emptyLabel;
+    chip.classList.add('is-active');
   });
 }
 
@@ -2292,6 +2513,7 @@ function refreshListingsFilterOptions() {
       listingsFacets.cities
         .map((c) => `<option value="${esc(c)}"${c === current ? ' selected' : ''}>${esc(c)}</option>`)
         .join('');
+    citySel.value = current;
   }
   if (groupSel) {
     const current = tableState.listings.groupId || '';
@@ -2300,11 +2522,13 @@ function refreshListingsFilterOptions() {
       listingsFacets.groups
         .map((g) => `<option value="${esc(g.id)}"${g.id === current ? ' selected' : ''}>${esc(g.name)}</option>`)
         .join('');
+    groupSel.value = current;
   }
   const statusSel = document.querySelector('[data-listing-filter="status"]');
   const bookableSel = document.querySelector('[data-listing-filter="bookable"]');
   if (statusSel) statusSel.value = tableState.listings.status || '';
   if (bookableSel) bookableSel.value = tableState.listings.bookable || '';
+  syncListingsFilterChips(document.getElementById('listings-toolbar') || document);
 }
 
 function parseAliasesInput(raw) {
@@ -2369,7 +2593,13 @@ function openListingAliasesModal(listingId) {
     aliases: [...(listing.aliases || [])],
   };
   $('#listing-aliases-modal-listing').textContent = listing.name;
-  $('#listing-aliases-modal-id').textContent = `ID: ${listing.hostawayId}`;
+  $('#listing-aliases-modal-id').textContent = `ID ${listing.hostawayId}`;
+  const subEl = $('#listing-aliases-modal-sub');
+  if (subEl) {
+    const parts = [listing.city, listing.listingGroup?.name].filter(Boolean);
+    subEl.textContent = parts.join(' · ');
+    subEl.hidden = !parts.length;
+  }
   const thumbEl = $('#listing-aliases-modal-thumb');
   if (thumbEl) thumbEl.innerHTML = listingThumbHtml(listing);
   const input = $('#listing-aliases-input');

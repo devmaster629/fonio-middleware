@@ -9516,6 +9516,7 @@ a.payment-suggestion-id:hover {
   background: var(--surface2);
   border: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
 
 .listing-thumb {
@@ -9526,6 +9527,10 @@ a.payment-suggestion-id:hover {
   display: block;
   transform: scale(1.18);
   transform-origin: center;
+}
+
+.listings-filter-chip-text {
+  display: none;
 }
 
 .listing-thumb-placeholder {
@@ -9542,6 +9547,24 @@ a.payment-suggestion-id:hover {
 
 .listings-page-size select {
   min-width: 4.5rem;
+}
+
+.listings-mobile-list {
+  display: none;
+}
+
+.listings-sort-filter {
+  display: none;
+}
+
+.aliases-modal-handle {
+  display: none;
+}
+
+.aliases-modal-listing-sub {
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .listing-aliases-lines {
@@ -9872,22 +9895,496 @@ a.payment-suggestion-id:hover {
 }
 
 @media (max-width: 1023px) {
-  .listings-search {
-    flex: 1 1 100%;
+  #tab-listings .listings-page-header {
+    display: none !important;
+  }
+
+  #tab-listings .listings-board {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  #tab-listings .listings-toolbar-inner {
+    padding: 0 0 0.75rem;
+  }
+
+  #tab-listings .listings-board-divider {
+    display: none;
+  }
+
+  #tab-listings .listings-toolbar-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.7rem;
+  }
+
+  #tab-listings .listings-search {
+    flex: 1 1 auto;
     width: 100%;
     max-width: none;
     min-width: 0;
   }
-  .listings-filters {
+
+  #tab-listings .listings-search input {
+    height: 2.65rem;
+    border-radius: 12px;
+    padding-left: 2.55rem;
+    padding-right: 0.9rem;
+    font-size: 16px;
+    background: var(--surface);
+  }
+
+  #tab-listings .listings-search-icon {
+    left: 0.85rem;
+    right: auto;
+  }
+
+  #tab-listings .listings-filters {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.45rem;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.2rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  #tab-listings .listings-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  #tab-listings .listings-filter-chip {
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin: 0;
+    height: 2.2rem;
+    padding: 0;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    max-width: none;
+  }
+
+  #tab-listings .listings-filter-chip.is-active {
+    border-color: rgba(59, 130, 246, 0.65);
+    background: rgba(59, 130, 246, 0.14);
+    color: #bfdbfe;
+  }
+
+  #tab-listings .listings-filter-chip-caption {
+    display: none !important;
+  }
+
+  #tab-listings .listings-filter-chip-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 100%;
+    padding: 0 1.85rem 0 0.85rem;
+    margin: 0;
+    max-width: 100%;
+    cursor: pointer;
+  }
+
+  #tab-listings .listings-filter-chip-text {
+    display: inline-block;
+    max-width: 8.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+
+  #tab-listings .listings-filter-chip-btn::after {
+    content: '';
+    position: absolute;
+    right: 0.65rem;
+    top: 50%;
+    width: 0.7rem;
+    height: 0.7rem;
+    transform: translateY(-50%);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    pointer-events: none;
+  }
+
+  /* Never use native mobile select UI here — it breaks when opacity-hidden */
+  #tab-listings .listings-filter-chip select {
+    display: none !important;
+  }
+
+  #tab-listings .listings-sort-filter {
+    display: inline-flex !important;
+  }
+
+  #tab-listings .listings-table-wrap {
+    display: none !important;
+  }
+
+  #tab-listings .listings-mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0 0 0.35rem;
+  }
+
+  #tab-listings .listings-m-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+
+  #tab-listings .listings-m-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.85rem;
+  }
+
+  #tab-listings .listings-m-card-main {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+  }
+
+  #tab-listings .listings-m-card .listing-thumb-frame {
+    width: 4.75rem !important;
+    height: 4.75rem !important;
+    min-width: 4.75rem;
+    max-width: 4.75rem;
+    border-radius: 12px;
+    flex: 0 0 4.75rem;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  #tab-listings .listings-m-card .listing-thumb,
+  #tab-listings .listings-m-card .listing-thumb-frame img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    transform: none !important;
+    display: block !important;
+  }
+
+  #tab-listings .listings-m-card .listing-thumb-frame.listing-thumb-placeholder,
+  #tab-listings .listings-m-card .listing-thumb-placeholder {
+    width: 4.75rem !important;
+    height: 4.75rem !important;
+    min-width: 4.75rem !important;
+    max-width: 4.75rem !important;
+    flex: 0 0 4.75rem !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-start;
+  }
+
+  #tab-listings .listings-m-card .listing-thumb-placeholder svg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+    max-width: 1.25rem !important;
+    max-height: 1.25rem !important;
+    flex-shrink: 0;
+  }
+
+  #tab-listings .listings-m-card-body {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  #tab-listings .listings-m-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  #tab-listings .listings-m-card-title {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  #tab-listings .listings-m-more {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    margin: -0.25rem -0.25rem 0 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  #tab-listings .listings-m-more:hover {
+    color: #fff;
+    background: rgba(148, 163, 184, 0.12);
+  }
+
+  #tab-listings .listings-m-card-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  #tab-listings .listings-m-card-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.1rem;
+  }
+
+  #tab-listings .listings-m-guests {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    color: #cbd5e1;
+  }
+
+  #tab-listings .listings-m-guests .guest-icon {
+    opacity: 0.85;
+  }
+
+  #tab-listings .listings-m-status,
+  #tab-listings .listings-m-bookable {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.55rem;
+    padding: 0 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  #tab-listings .listings-m-status {
+    background: rgba(148, 163, 184, 0.14);
+    color: #e2e8f0;
+  }
+
+  #tab-listings .listings-m-status.is-live {
+    background: rgba(34, 197, 94, 0.14);
+    color: #86efac;
+  }
+
+  #tab-listings .listings-m-status.is-hidden {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+  }
+
+  #tab-listings .listings-m-status.is-draft {
+    background: rgba(148, 163, 184, 0.16);
+    color: #cbd5e1;
+  }
+
+  #tab-listings .listings-m-status-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  #tab-listings .listings-m-bookable.is-yes {
+    background: rgba(59, 130, 246, 0.18);
+    color: #93c5fd;
+  }
+
+  #tab-listings .listings-m-bookable.is-no {
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+  }
+
+  #tab-listings .listings-m-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+  }
+
+  #tab-listings .listings-m-tag {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #tab-listings .listings-m-tag.is-more {
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.28);
+    background: rgba(59, 130, 246, 0.12);
+  }
+
+  #tab-listings .listings-table-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+    padding: 0.75rem 0 0.25rem;
+    border-top: none;
+    background: transparent;
+  }
+
+  #tab-listings .listings-footer-right {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  #tab-listings .listings-table-footer .table-info {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  #tab-listings .listings-page-size select,
+  #tab-listings #listings-page-size {
+    height: 2.15rem;
+    border-radius: 999px;
+    background: var(--surface);
+  }
+
+  /* Aliases editor as bottom sheet on mobile */
+  #listing-aliases-modal.modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  #listing-aliases-modal .aliases-modal-card {
+    width: 100%;
+    max-width: none;
+    border-radius: 18px 18px 0 0;
+    padding: 0.55rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    max-height: min(92vh, 44rem);
+    overflow: auto;
+  }
+
+  #listing-aliases-modal .aliases-modal-handle {
+    display: block;
+    width: 2.5rem;
+    height: 0.3rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.45);
+    margin: 0.15rem auto 0.75rem;
+  }
+
+  #listing-aliases-modal .aliases-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 0.65rem;
+  }
+
+  #listing-aliases-modal .aliases-modal-actions .btn {
     width: 100%;
   }
-  .listings-filters label {
-    flex: 1 1 45%;
+}
+
+@media (min-width: 1024px) {
+  #tab-listings .listings-mobile-list {
+    display: none !important;
   }
-  .listings-table thead th[data-sort="name"],
-  .listing-name-cell,
-  .listing-name {
-    max-width: 14rem;
+
+  #tab-listings .listings-sort-filter {
+    display: none !important;
+  }
+
+  #tab-listings .listings-filter-chip-text {
+    display: none !important;
+  }
+
+  #tab-listings .listings-filter-chip-btn {
+    display: none !important;
+  }
+
+  #tab-listings .listings-filter-chip-caption {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 650;
+    color: var(--muted);
+  }
+
+  #tab-listings .listings-filter-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    background: transparent;
+    border: none;
+    padding: 0;
+    height: auto;
+    border-radius: 0;
+    max-width: none;
+  }
+
+  #tab-listings .listings-filter-chip::after {
+    display: none;
+  }
+
+  #tab-listings .listings-filter-chip select {
+    display: block !important;
+    position: static;
+    opacity: 1;
+    color: inherit;
+    width: auto;
+    min-width: 7.5rem;
+    height: 2.45rem;
+    padding: 0 0.7rem;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    appearance: auto;
+    -webkit-appearance: auto;
   }
 }
 
@@ -17668,5 +18165,109 @@ body.users-drawer-open {
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 10px;
+  }
+}
+
+
+/* Listings mobile filter bottom sheet */
+.listings-filter-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.listings-filter-sheet.hidden {
+  display: none !important;
+}
+.listings-filter-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(2, 6, 23, 0.62);
+  cursor: pointer;
+}
+.listings-filter-sheet-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 32rem);
+  max-height: min(78vh, 34rem);
+  display: flex;
+  flex-direction: column;
+  background: #111827;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+  padding: 0.45rem 0.85rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+}
+.listings-filter-sheet-handle {
+  width: 2.4rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.45);
+  margin: 0.2rem auto 0.65rem;
+}
+.listings-filter-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.listings-filter-sheet-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: #fff;
+}
+.listings-filter-sheet-close {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.listings-filter-sheet-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 0.25rem;
+}
+.listings-filter-sheet-option {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.listings-filter-sheet-option.is-selected {
+  border-color: rgba(59, 130, 246, 0.7);
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe;
+}
+body.listings-filter-sheet-open {
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  #tab-listings .listings-filter-chip-btn {
+    display: none !important;
+  }
+  #tab-listings .listings-filter-chip select {
+    display: block !important;
   }
 }
