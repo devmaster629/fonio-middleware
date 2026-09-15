@@ -115,6 +115,7 @@ let logsDrawerLog = null;
 let logsDrawerTab = 'details';
 let logsDrawerFull = false;
 let logsFacets = { sources: [], actions: [] };
+let logsRetentionSamplesExpanded = false;
 let logsPageResult = {
   items: [],
   total: 0,
@@ -413,7 +414,9 @@ function applyRoleUi() {
     canSyncSettings,
   );
 
-  setControlsDisabled($('#log-settings-form'), !canLogSettings);
+  setControlsDisabled($('#log-settings-form'), !canLogSettings, {
+    exceptIds: ['log-debug-toggle', 'log-operational-toggle', 'log-pii-toggle', 'log-cleanup-toggle'],
+  });
   $('#log-purge-now-btn')?.toggleAttribute('disabled', !canLogSettings);
   $('#log-settings-readonly-hint')?.classList.toggle('hidden', canLogSettings);
 
@@ -10300,10 +10303,46 @@ function syncLogRetentionInputs() {
     if (!cb || !input) return;
     input.toggleAttribute('disabled', !cb.checked || !hasPermission('LOG_SETTINGS_EDIT'));
   });
+  syncLogRetentionRuleSummaries();
+}
+
+function syncLogRetentionRuleSummaries() {
+  const rules = {
+    debug: ['#log-debug-days', '#log-debug-enabled'],
+    operational: ['#log-operational-days', '#log-operational-enabled'],
+    pii: ['#log-pii-days', '#log-pii-enabled'],
+    cleanup: ['#log-max-days', '#log-auto-purge-enabled'],
+  };
+  Object.entries(rules).forEach(([rule, selectors]) => {
+    const input = $(selectors[0]);
+    const enabled = $(selectors[1]);
+    const summary = $(`[data-retention-summary="${rule}"]`);
+    if (!summary || !input) return;
+    summary.textContent = enabled?.checked === false
+      ? t('logs.disabled')
+      : t('logs.daysCount', { count: input.value || '–' });
+  });
 }
 
 ['#log-debug-enabled', '#log-operational-enabled', '#log-pii-enabled'].forEach((sel) => {
   $(sel)?.addEventListener('change', syncLogRetentionInputs);
+});
+
+['#log-debug-days', '#log-operational-days', '#log-pii-days', '#log-max-days',
+  '#log-debug-enabled', '#log-operational-enabled', '#log-pii-enabled', '#log-auto-purge-enabled']
+  .forEach((sel) => {
+    $(sel)?.addEventListener('input', syncLogRetentionRuleSummaries);
+    $(sel)?.addEventListener('change', syncLogRetentionRuleSummaries);
+  });
+
+$$('[data-retention-toggle]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const card = button.closest('[data-retention-rule-card]');
+    if (!card) return;
+    const expanded = !card.classList.contains('is-expanded');
+    card.classList.toggle('is-expanded', expanded);
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  });
 });
 
 const LOG_PURGE_TZ = 'Europe/Berlin';
@@ -10488,6 +10527,20 @@ async function loadLogRetentionStatus() {
           <td>${esc(formatAuditDateTime(s.expiresAt))}</td>
         </tr>
       `).join('');
+      const visibleSamples = logsRetentionSamplesExpanded ? status.samples : status.samples.slice(0, 4);
+      const mobileCards = visibleSamples.map((s) => `
+        <article class="logs-upcoming-card">
+          <div class="logs-upcoming-event">${esc(s.source)} / <code>${esc(s.action)}</code></div>
+          <div class="logs-upcoming-card-meta">
+            <span><small>${esc(t('logs.received'))}</small>${esc(formatAuditDateTime(s.createdAt))}</span>
+            <span class="logs-upcoming-rule">${esc(t(`logs.rule.${s.retentionRule}`))}</span>
+            <span><small>${esc(t('logs.deletesOn'))}</small>${esc(formatAuditDateTime(s.expiresAt))}</span>
+          </div>
+        </article>
+      `).join('');
+      const showMore = status.samples.length > 4
+        ? `<button type="button" class="logs-upcoming-more" id="logs-upcoming-more">${esc(logsRetentionSamplesExpanded ? t('logs.showLess') : t('logs.showMore'))}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`
+        : '';
       samplesEl.innerHTML = `
         <div class="table-wrap logs-upcoming-table-wrap">
           <table class="logs-data-table retention-samples-table">
@@ -10499,7 +10552,12 @@ async function loadLogRetentionStatus() {
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
-        </div>`;
+        </div>
+        <div class="logs-upcoming-mobile">${mobileCards}${showMore}</div>`;
+      samplesEl.querySelector('#logs-upcoming-more')?.addEventListener('click', () => {
+        logsRetentionSamplesExpanded = !logsRetentionSamplesExpanded;
+        loadLogRetentionStatus();
+      });
       scheduleEnhanceResponsiveTables();
     } else if (samplesEl) {
       samplesEl.innerHTML = `<p class="field-hint">${esc(t('logs.upcomingEmpty'))}</p>`;

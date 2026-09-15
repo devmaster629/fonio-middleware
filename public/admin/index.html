@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915t" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915v" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1190,77 +1190,111 @@
               <p class="logs-retention-schedule" data-i18n="logs.cleanupRunsAt">Nightly cleanup runs at 03:00 AM for all expired logs</p>
             </header>
             <form id="log-settings-form" class="logs-retention-rules-grid">
-              <article class="logs-retention-rule-card">
+              <article class="logs-retention-rule-card is-expanded" data-retention-rule-card="debug">
                 <div class="logs-retention-rule-top">
                   <span class="logs-retention-rule-icon is-debug" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                   </span>
+                  <div class="logs-retention-rule-heading">
+                    <h4 data-i18n="logs.ruleCardDebugTitle">Development &amp; debug</h4>
+                    <span class="logs-retention-rule-summary" data-retention-summary="debug">14 days</span>
+                  </div>
                   <label class="logs-switch">
                     <input type="checkbox" id="log-debug-enabled" checked />
                     <span class="logs-switch-ui" aria-hidden="true"></span>
                     <span data-i18n="logs.enabled">Enabled</span>
                   </label>
+                  <button type="button" id="log-debug-toggle" class="logs-retention-toggle" data-retention-toggle="debug" aria-expanded="true" aria-label="Toggle rule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
                 </div>
-                <h4 data-i18n="logs.ruleCardDebugTitle">Development &amp; debug</h4>
-                <label class="logs-retention-field">
-                  <span data-i18n="logs.debugDays">Keep for (days)</span>
-                  <input type="number" id="log-debug-days" min="7" max="14" value="14" />
-                </label>
+                <div class="logs-retention-rule-body">
+                  <label class="logs-retention-field">
+                    <span data-i18n="logs.debugDays">Keep for (days)</span>
+                    <span class="logs-retention-number"><input type="number" id="log-debug-days" min="7" max="14" value="14" /><span data-i18n="logs.daysUnit">days</span></span>
+                  </label>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.debugRuleHint">Keep development and debug logs for 7–14 days.</p>
+                </div>
               </article>
 
-              <article class="logs-retention-rule-card">
+              <article class="logs-retention-rule-card" data-retention-rule-card="operational">
                 <div class="logs-retention-rule-top">
                   <span class="logs-retention-rule-icon is-ops" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                   </span>
+                  <div class="logs-retention-rule-heading">
+                    <h4 data-i18n="logs.ruleCardOpsTitle">Operational &amp; security</h4>
+                    <span class="logs-retention-rule-summary" data-retention-summary="operational">30 days</span>
+                  </div>
                   <label class="logs-switch">
                     <input type="checkbox" id="log-operational-enabled" checked />
                     <span class="logs-switch-ui" aria-hidden="true"></span>
                     <span data-i18n="logs.enabled">Enabled</span>
                   </label>
+                  <button type="button" id="log-operational-toggle" class="logs-retention-toggle" data-retention-toggle="operational" aria-expanded="false" aria-label="Toggle rule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
                 </div>
-                <h4 data-i18n="logs.ruleCardOpsTitle">Operational &amp; security</h4>
-                <label class="logs-retention-field">
-                  <span data-i18n="logs.operationalDays">Keep for (days)</span>
-                  <input type="number" id="log-operational-days" min="1" max="90" value="30" />
-                </label>
+                <div class="logs-retention-rule-body">
+                  <label class="logs-retention-field">
+                    <span data-i18n="logs.operationalDays">Keep for (days)</span>
+                    <span class="logs-retention-number"><input type="number" id="log-operational-days" min="1" max="90" value="30" /><span data-i18n="logs.daysUnit">days</span></span>
+                  </label>
+                </div>
               </article>
 
-              <article class="logs-retention-rule-card">
+              <article class="logs-retention-rule-card" data-retention-rule-card="pii">
                 <div class="logs-retention-rule-top">
                   <span class="logs-retention-rule-icon is-pii" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     <span class="logs-gdpr-badge">GDPR</span>
                   </span>
+                  <div class="logs-retention-rule-heading">
+                    <h4 data-i18n="logs.ruleCardPiiTitle">Personal-data logs (GDPR)</h4>
+                    <span class="logs-retention-rule-summary" data-retention-summary="pii">30 days</span>
+                  </div>
                   <label class="logs-switch">
                     <input type="checkbox" id="log-pii-enabled" checked />
                     <span class="logs-switch-ui" aria-hidden="true"></span>
                     <span data-i18n="logs.enabled">Enabled</span>
                   </label>
+                  <button type="button" id="log-pii-toggle" class="logs-retention-toggle" data-retention-toggle="pii" aria-expanded="false" aria-label="Toggle rule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
                 </div>
-                <h4 data-i18n="logs.ruleCardPiiTitle">Personal-data logs (GDPR)</h4>
-                <label class="logs-retention-field">
-                  <span data-i18n="logs.piiDays">Keep for (days)</span>
-                  <input type="number" id="log-pii-days" min="1" max="30" value="30" />
-                </label>
+                <div class="logs-retention-rule-body">
+                  <label class="logs-retention-field">
+                    <span data-i18n="logs.piiDays">Keep for (days)</span>
+                    <span class="logs-retention-number"><input type="number" id="log-pii-days" min="1" max="30" value="30" /><span data-i18n="logs.daysUnit">days</span></span>
+                  </label>
+                </div>
               </article>
 
-              <article class="logs-retention-rule-card">
+              <article class="logs-retention-rule-card" data-retention-rule-card="cleanup">
                 <div class="logs-retention-rule-top">
                   <span class="logs-retention-rule-icon is-cleanup" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                   </span>
+                  <div class="logs-retention-rule-heading">
+                    <h4 data-i18n="logs.ruleCardCleanupTitle">Max age &amp; purge</h4>
+                    <span class="logs-retention-rule-summary" data-retention-summary="cleanup">90 days</span>
+                  </div>
                   <label class="logs-switch">
                     <input type="checkbox" id="log-auto-purge-enabled" checked />
                     <span class="logs-switch-ui" aria-hidden="true"></span>
                     <span data-i18n="logs.enabled">Enabled</span>
                   </label>
+                  <button type="button" id="log-cleanup-toggle" class="logs-retention-toggle" data-retention-toggle="cleanup" aria-expanded="false" aria-label="Toggle rule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
                 </div>
-                <h4 data-i18n="logs.ruleCardCleanupTitle">Max age &amp; purge</h4>
-                <label class="logs-retention-field">
-                  <span data-i18n="logs.maxDays">Hard maximum (days)</span>
-                  <input type="number" id="log-max-days" min="30" max="90" value="90" />
-                </label>
+                <div class="logs-retention-rule-body">
+                  <label class="logs-retention-field">
+                    <span data-i18n="logs.maxDays">Hard maximum (days)</span>
+                    <span class="logs-retention-number"><input type="number" id="log-max-days" min="30" max="90" value="90" /><span data-i18n="logs.daysUnit">days</span></span>
+                  </label>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.maxDaysHint">30–90 days — nothing is kept longer than this</p>
+                </div>
               </article>
 
               <div class="logs-retention-save-row">
@@ -1296,7 +1330,6 @@
             <div id="log-retention-samples" class="logs-upcoming-wrap"></div>
             <div class="logs-purge-row">
               <button type="button" id="log-purge-now-btn" class="btn logs-purge-btn" data-i18n="logs.purgeNow">Delete expired logs now</button>
-              <p class="field-hint" data-i18n="logs.purgeHint">Permanently deletes all eligible expired log entries from the database. This action cannot be undone.</p>
             </div>
           </section>
         </div>
@@ -1956,10 +1989,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915t"></script>
+  <script src="/admin/i18n.js?v=20260915v"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915t"></script>
+  <script src="/admin/app.js?v=20260915v"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>
