@@ -203,6 +203,36 @@ function closeSidebar() {
   if (isMobileNav()) setSidebarOpen(false);
 }
 
+function updateMobileBottomNav(tab) {
+  const primary = new Set(['dashboard', 'reservations', 'requests', 'payments']);
+  $$('#mobile-bottom-nav [data-mobile-nav]').forEach((btn) => {
+    const key = btn.dataset.mobileNav;
+    if (key === 'more') {
+      btn.classList.toggle('is-active', !primary.has(tab));
+      return;
+    }
+    btn.classList.toggle('is-active', key === tab);
+  });
+}
+
+function initMobileBottomNav() {
+  const nav = $('#mobile-bottom-nav');
+  if (!nav || nav.dataset.bound === '1') return;
+  nav.dataset.bound = '1';
+  nav.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mobile-nav]');
+    if (!btn) return;
+    const key = btn.dataset.mobileNav;
+    if (key === 'more') {
+      if (!isMobileNav()) return;
+      const open = !document.body.classList.contains('sidebar-open');
+      setSidebarOpen(open);
+      return;
+    }
+    activateTab(key);
+  });
+}
+
 function updateMobilePageTitle(tab) {
   const titleEl = $('#mobile-page-title');
   const btn = $(`.nav-btn[data-tab="${tab}"]`);
@@ -389,6 +419,10 @@ function applyRoleUi() {
   });
   $('#rule-delete-btn')?.classList.toggle('hidden', !canRulesDelete || !editingRuleId);
   $('#rule-new-btn')?.classList.toggle('hidden', !editingRuleId || !canRulesEdit);
+  $('#rule-delete-btn-mobile')?.classList.toggle('hidden', !canRulesDelete || !editingRuleId);
+  $('#rule-new-btn-mobile')?.classList.toggle('hidden', !editingRuleId || !canRulesEdit);
+  $('#rule-submit-btn-mobile')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#rules-mobile-create-btn')?.classList.toggle('hidden', !canRulesEdit);
 
   const verificationForm = $('#verification-form');
   if (verificationForm) {
@@ -439,6 +473,14 @@ function applyRoleUi() {
     btn.classList.toggle('hidden', !allowed);
   });
 
+  $$('#mobile-bottom-nav [data-mobile-nav]').forEach((btn) => {
+    const key = btn.dataset.mobileNav;
+    if (key === 'more') return;
+    const perm = NAV_PERMISSIONS[key];
+    const allowed = !perm || hasPermission(perm);
+    btn.classList.toggle('hidden', !allowed);
+  });
+
   $$('.nav-section').forEach((section) => {
     const anyVisible = [...section.querySelectorAll('.nav-btn')].some(
       (b) => !b.classList.contains('hidden'),
@@ -453,6 +495,7 @@ function applyRoleUi() {
     $$('.tab').forEach((tab) => tab.classList.add('hidden'));
     $(`#tab-${activeTab}`)?.classList.remove('hidden');
   }
+  updateMobileBottomNav(activeTab);
   scheduleEnhanceResponsiveTables();
 }
 
@@ -491,6 +534,7 @@ function showApp() {
   applyRoleUi();
   applyTabFromUrl();
   updateMobilePageTitle(activeTab);
+  updateMobileBottomNav(activeTab);
   refreshActiveTab();
 }
 
@@ -1138,8 +1182,8 @@ $('#rules-create-toggle')?.addEventListener('click', () => {
   const btn = $('#rules-create-toggle');
   if (!card || !btn) return;
   const open = !card.classList.contains('is-collapsed');
-  card.classList.toggle('is-collapsed', open);
-  btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (open) collapseRulesCreatePanel();
+  else expandRulesCreatePanel();
 });
 
 function expandRulesCreatePanel() {
@@ -1147,6 +1191,280 @@ function expandRulesCreatePanel() {
   const btn = $('#rules-create-toggle');
   card?.classList.remove('is-collapsed');
   btn?.setAttribute('aria-expanded', 'true');
+  if (isRulesMobile()) {
+    card?.classList.add('is-mobile-open');
+    const backdrop = $('#rules-create-backdrop');
+    backdrop?.classList.remove('hidden');
+    backdrop?.removeAttribute('hidden');
+    document.body.classList.add('rules-create-modal-open');
+  }
+}
+
+function collapseRulesCreatePanel() {
+  const card = $('#rules-create-card');
+  const btn = $('#rules-create-toggle');
+  card?.classList.add('is-collapsed');
+  card?.classList.remove('is-mobile-open');
+  btn?.setAttribute('aria-expanded', 'false');
+  const backdrop = $('#rules-create-backdrop');
+  backdrop?.classList.add('hidden');
+  backdrop?.setAttribute('hidden', '');
+  document.body.classList.remove('rules-create-modal-open');
+}
+
+function isRulesMobile() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function closeRulesMenus() {
+  $$('.rules-mobile-card.is-menu-open').forEach((card) => card.classList.remove('is-menu-open'));
+}
+
+function ensureRulesFilterSheet() {
+  let sheet = $('#rules-filter-sheet');
+  if (sheet) return sheet;
+  sheet = document.createElement('div');
+  sheet.id = 'rules-filter-sheet';
+  sheet.className = 'rules-filter-sheet hidden';
+  sheet.innerHTML = `
+    <button type="button" class="rules-filter-sheet-backdrop" aria-label="Close"></button>
+    <div class="rules-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="rules-filter-sheet-title">
+      <div class="rules-filter-sheet-handle" aria-hidden="true"></div>
+      <div class="rules-filter-sheet-head">
+        <h4 id="rules-filter-sheet-title" class="rules-filter-sheet-title">${esc(t('rules.filters'))}</h4>
+        <button type="button" class="rules-filter-sheet-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="rules-filter-sheet-section">
+        <div class="rules-filter-sheet-label">${esc(t('rules.mode'))}</div>
+        <div class="rules-filter-sheet-options" data-rules-filter="mode"></div>
+      </div>
+      <div class="rules-filter-sheet-section">
+        <div class="rules-filter-sheet-label">${esc(t('rules.col.status'))}</div>
+        <div class="rules-filter-sheet-options" data-rules-filter="status"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  sheet.querySelector('.rules-filter-sheet-backdrop')?.addEventListener('click', closeRulesFilterSheet);
+  sheet.querySelector('.rules-filter-sheet-close')?.addEventListener('click', closeRulesFilterSheet);
+  return sheet;
+}
+
+function closeRulesFilterSheet() {
+  const sheet = $('#rules-filter-sheet');
+  sheet?.classList.add('hidden');
+  document.body.classList.remove('rules-filter-sheet-open');
+}
+
+function openRulesFilterSheet() {
+  const sheet = ensureRulesFilterSheet();
+  const modeOpts = [
+    { value: 'all', label: t('rules.filterAllModes') },
+    { value: 'AUTO', label: t('mode.AUTO') },
+    { value: 'MANUAL', label: t('mode.MANUAL') },
+    { value: 'DENY', label: t('mode.DENY') },
+  ];
+  const statusOpts = [
+    { value: 'all', label: t('rules.filterAllStatuses') },
+    { value: 'active', label: t('rules.active') },
+    { value: 'inactive', label: t('rules.inactive') },
+  ];
+  const modeCurrent = tableState.rules.mode || 'all';
+  const statusCurrent = tableState.rules.status || 'all';
+  const titleEl = sheet.querySelector('.rules-filter-sheet-title');
+  if (titleEl) titleEl.textContent = t('rules.filters');
+  const modeEl = sheet.querySelector('[data-rules-filter="mode"]');
+  const statusEl = sheet.querySelector('[data-rules-filter="status"]');
+  if (modeEl) {
+    modeEl.innerHTML = modeOpts.map((o) => `
+      <button type="button" class="rules-filter-sheet-option${o.value === modeCurrent ? ' is-selected' : ''}" data-rules-filter-key="mode" data-value="${esc(o.value)}">${esc(o.label)}</button>
+    `).join('');
+  }
+  if (statusEl) {
+    statusEl.innerHTML = statusOpts.map((o) => `
+      <button type="button" class="rules-filter-sheet-option${o.value === statusCurrent ? ' is-selected' : ''}" data-rules-filter-key="status" data-value="${esc(o.value)}">${esc(o.label)}</button>
+    `).join('');
+  }
+  sheet.querySelectorAll('.rules-filter-sheet-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.rulesFilterKey;
+      const value = btn.dataset.value;
+      if (key === 'mode') tableState.rules.mode = value;
+      if (key === 'status') tableState.rules.status = value;
+      tableState.rules.page = 1;
+      closeRulesFilterSheet();
+      loadRules();
+    });
+  });
+  sheet.classList.remove('hidden');
+  document.body.classList.add('rules-filter-sheet-open');
+}
+
+async function deleteApprovalRule(ruleId) {
+  if (!ruleId || !hasPermission('RULES_DELETE')) return;
+  const ok = await notify.confirm(t('rules.deleteConfirm'), {
+    title: t('rules.deleteTitle'),
+    okLabel: t('rules.delete'),
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/rules/${ruleId}`, { method: 'DELETE' });
+    notify.success(t('rules.deleted'));
+    if (editingRuleId === ruleId) {
+      resetRuleForm();
+      if (isRulesMobile()) collapseRulesCreatePanel();
+    }
+    await loadRules();
+  } catch (ex) {
+    notify.error(t('rules.error', { message: ex.message }));
+  }
+}
+
+function renderRulesMobileList(items, { canEdit, canDelete, totalCount }) {
+  const list = $('#rules-mobile-list');
+  if (!list) return;
+  list.removeAttribute('hidden');
+  const countBadge = $('#rules-existing-count');
+  if (countBadge) countBadge.textContent = String(totalCount ?? items.length);
+  const title = $('#rules-existing-title');
+  if (title) title.textContent = t('rules.existingRules');
+
+  if (!items.length) {
+    list.innerHTML = `<div class="rules-mobile-empty">${esc(t('rules.none'))}</div>`;
+    return;
+  }
+
+  const listingIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>`;
+  const priorityIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>`;
+
+  list.innerHTML = items.map((r) => {
+    const active = r.isActive !== false;
+    const listingLabel = r.listing?.name || t('rules.allListings');
+    const selected = editingRuleId === r.id;
+    return `
+      <article class="rules-mobile-card${selected ? ' is-selected' : ''}" data-rule-id="${r.id}">
+        <div class="rules-mobile-card-top">
+          <div class="rules-mobile-card-main">
+            <h4 class="rules-mobile-card-title">${esc(formatRuleTypeDisplay(r.requestType))}</h4>
+            <span class="rules-mode-badge ${modeBadgeClass(r.mode)}">${esc(t(`mode.${r.mode}`) || r.mode)}</span>
+          </div>
+          ${(canEdit || canDelete) ? `
+          <div class="rules-mobile-card-menu">
+            <button type="button" class="rules-mobile-menu-btn" data-rule-menu="${r.id}" aria-label="${esc(t('rules.col.actions'))}" aria-haspopup="menu">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+            </button>
+            <div class="rules-mobile-menu" role="menu">
+              ${canEdit ? `<button type="button" role="menuitem" data-rule-edit="${r.id}">${esc(t('rules.editRule'))}</button>` : ''}
+              ${canDelete ? `<button type="button" role="menuitem" class="is-danger" data-rule-delete="${r.id}">${esc(t('rules.delete'))}</button>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
+        <div class="rules-mobile-card-meta">
+          <span>${listingIcon}<span>${esc(listingLabel)}</span></span>
+          <span>${priorityIcon}<span>${esc(t('rules.priorityValue', { n: r.priority }))}</span></span>
+          <span class="rules-status-dot ${active ? 'is-active' : 'is-inactive'}">
+            <span class="rules-status-dot-mark" aria-hidden="true"></span>
+            ${esc(active ? t('rules.active') : t('rules.inactive'))}
+          </span>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+function bindRulesMobileList() {
+  const list = $('#rules-mobile-list');
+  if (!list || list.dataset.bound === '1') return;
+  list.dataset.bound = '1';
+  list.addEventListener('click', (e) => {
+    const menuBtn = e.target.closest('[data-rule-menu]');
+    if (menuBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const card = menuBtn.closest('.rules-mobile-card');
+      const open = card?.classList.contains('is-menu-open');
+      closeRulesMenus();
+      if (!open) card?.classList.add('is-menu-open');
+      return;
+    }
+    const editBtn = e.target.closest('[data-rule-edit]');
+    if (editBtn) {
+      e.preventDefault();
+      closeRulesMenus();
+      const rule = cachedRules.find((r) => r.id === editBtn.dataset.ruleEdit);
+      if (rule) loadRuleIntoForm(rule);
+      return;
+    }
+    const deleteBtn = e.target.closest('[data-rule-delete]');
+    if (deleteBtn) {
+      e.preventDefault();
+      closeRulesMenus();
+      deleteApprovalRule(deleteBtn.dataset.ruleDelete);
+      return;
+    }
+    const card = e.target.closest('.rules-mobile-card[data-rule-id]');
+    if (card && hasPermission('RULES_EDIT')) {
+      closeRulesMenus();
+      const rule = cachedRules.find((r) => r.id === card.dataset.ruleId);
+      if (rule) loadRuleIntoForm(rule);
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.rules-mobile-card-menu')) closeRulesMenus();
+  });
+}
+
+function ensureRulesApprovalMobileUi() {
+  const createBtn = $('#rules-mobile-create-btn');
+  const closeBtn = $('#rules-create-modal-close');
+  const backdrop = $('#rules-create-backdrop');
+  const cancelMobile = $('#rule-new-btn-mobile');
+  const deleteMobile = $('#rule-delete-btn-mobile');
+  if (createBtn && createBtn.dataset.bound !== '1') {
+    createBtn.dataset.bound = '1';
+    createBtn.addEventListener('click', () => {
+      if (!hasPermission('RULES_EDIT')) {
+        notify.error(t('perms.featureLocked'));
+        return;
+      }
+      resetRuleForm();
+      expandRulesCreatePanel();
+      $('#rule-type')?.focus();
+    });
+  }
+  if (closeBtn && closeBtn.dataset.bound !== '1') {
+    closeBtn.dataset.bound = '1';
+    closeBtn.addEventListener('click', () => {
+      collapseRulesCreatePanel();
+      resetRuleForm();
+    });
+  }
+  if (backdrop && backdrop.dataset.bound !== '1') {
+    backdrop.dataset.bound = '1';
+    backdrop.addEventListener('click', () => {
+      collapseRulesCreatePanel();
+      resetRuleForm();
+    });
+  }
+  if (cancelMobile && cancelMobile.dataset.bound !== '1') {
+    cancelMobile.dataset.bound = '1';
+    cancelMobile.addEventListener('click', () => {
+      resetRuleForm();
+      if (isRulesMobile()) collapseRulesCreatePanel();
+    });
+  }
+  if (deleteMobile && deleteMobile.dataset.bound !== '1') {
+    deleteMobile.dataset.bound = '1';
+    deleteMobile.addEventListener('click', async () => {
+      if (!editingRuleId || !hasPermission('RULES_DELETE')) return;
+      await deleteApprovalRule(editingRuleId);
+    });
+  }
+  bindRulesMobileList();
+  const card = $('#rules-create-card');
+  if (!isRulesMobile() && card && card.dataset.desktopReady !== '1') {
+    card.dataset.desktopReady = '1';
+    expandRulesCreatePanel();
+  }
 }
 
 $$('.lang-select').forEach((sel) => {
@@ -1193,6 +1511,7 @@ $('#login-form').addEventListener('submit', async (e) => {
 $('#logout-btn').addEventListener('click', logout);
 
 initMobileNav();
+initMobileBottomNav();
 fillSyncIntervalOptions(30);
 
 $$('.nav-btn').forEach((btn) => {
@@ -1872,43 +2191,42 @@ $('#rule-form').addEventListener('submit', async (e) => {
       notify.success(t('rules.created'));
       resetRuleForm();
     }
+    if (isRulesMobile()) collapseRulesCreatePanel();
     await loadRules();
   } catch (ex) {
     notify.error(t('rules.error', { message: ex.message }));
   }
 });
 
-$('#rule-new-btn').addEventListener('click', resetRuleForm);
+$('#rule-new-btn').addEventListener('click', () => {
+  resetRuleForm();
+  if (isRulesMobile()) collapseRulesCreatePanel();
+});
 
 $('#rule-delete-btn').addEventListener('click', async () => {
   if (!editingRuleId || !hasPermission('RULES_DELETE')) return;
-  const ok = await notify.confirm(t('rules.deleteConfirm'), {
-    title: t('rules.deleteTitle'),
-    okLabel: t('rules.delete'),
-    danger: true,
-  });
-  if (!ok) return;
-  try {
-    await api(`/rules/${editingRuleId}`, { method: 'DELETE' });
-    notify.success(t('rules.deleted'));
-    resetRuleForm();
-    await loadRules();
-  } catch (ex) {
-    notify.error(t('rules.error', { message: ex.message }));
-  }
+  await deleteApprovalRule(editingRuleId);
 });
 
 function updateRuleFormUI() {
+  const titleText = editingRuleId
+    ? t('rules.editApprovalRule')
+    : t('rules.createApprovalRule');
   const title = $('#rule-form-title');
+  const titleDesktop = $('#rule-form-title-desktop');
+  const submitText = editingRuleId ? t('rules.updateRule') : t('rules.addRule');
   const submit = $('#rule-submit-btn');
-  if (title) {
-    title.textContent = editingRuleId
-      ? t('rules.editApprovalRule')
-      : t('rules.createApprovalRule');
-  }
-  if (submit) submit.textContent = editingRuleId ? t('rules.updateRule') : t('rules.addRule');
-  $('#rule-delete-btn')?.classList.toggle('hidden', !editingRuleId || !hasPermission('RULES_DELETE'));
-  $('#rule-new-btn')?.classList.toggle('hidden', !editingRuleId || !hasPermission('RULES_EDIT'));
+  const submitMobile = $('#rule-submit-btn-mobile');
+  if (title) title.textContent = titleText;
+  if (titleDesktop) titleDesktop.textContent = titleText;
+  if (submit) submit.textContent = submitText;
+  if (submitMobile) submitMobile.textContent = submitText;
+  const showDelete = !!editingRuleId && hasPermission('RULES_DELETE');
+  const showCancel = !!editingRuleId && hasPermission('RULES_EDIT');
+  $('#rule-delete-btn')?.classList.toggle('hidden', !showDelete);
+  $('#rule-new-btn')?.classList.toggle('hidden', !showCancel);
+  $('#rule-delete-btn-mobile')?.classList.toggle('hidden', !showDelete);
+  $('#rule-new-btn-mobile')?.classList.toggle('hidden', !showCancel);
   applyRoleUi();
 }
 
@@ -1960,6 +2278,9 @@ function populateListingSelect() {
 function highlightSelectedRule(ruleId) {
   $$('#rules-table tbody tr').forEach((row) => {
     row.classList.toggle('selected', ruleId && row.dataset.ruleId === ruleId);
+  });
+  $$('#rules-mobile-list .rules-mobile-card').forEach((card) => {
+    card.classList.toggle('is-selected', ruleId && card.dataset.ruleId === ruleId);
   });
 }
 
@@ -5083,7 +5404,9 @@ async function loadRules() {
   ].join(' '));
 
   const title = $('#rules-existing-title');
-  if (title) title.textContent = t('rules.existingCount', { count: filtered.length });
+  if (title) title.textContent = t('rules.existingRules');
+  const countBadge = $('#rules-existing-count');
+  if (countBadge) countBadge.textContent = String(filtered.length);
 
   const canEdit = hasPermission('RULES_EDIT');
   const canDelete = hasPermission('RULES_DELETE');
@@ -5125,6 +5448,9 @@ async function loadRules() {
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="7">${t('rules.none')}</td></tr>`}</tbody>
     </table>`;
+  renderRulesMobileList(data.items, { canEdit, canDelete, totalCount: filtered.length });
+  ensureRulesApprovalMobileUi();
+  ensureRulesToolbar();
   renderTableInfo('#rules-info', data, data.maxTotal);
   renderPagination('#rules-pagination', data, 'rules', loadRules);
   ensureRulesPageSizeControl();
@@ -7741,6 +8067,7 @@ function activateTab(tab) {
   $$('.tab').forEach((el) => el.classList.add('hidden'));
   $(`#tab-${tab}`)?.classList.remove('hidden');
   updateMobilePageTitle(tab);
+  updateMobileBottomNav(tab);
   closeSidebar();
   try {
     const url = new URL(window.location.href);
