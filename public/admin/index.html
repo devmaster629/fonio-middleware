@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915w" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915y" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -195,7 +195,7 @@
               <div class="webhook-filters" id="webhooks-filters">
                 <label class="webhook-search-field">
                   <span class="sr-only" data-i18n="table.search">Search</span>
-                  <input type="search" id="webhook-filter-search" autocomplete="off" data-i18n-placeholder="dashboard.webhookSearchPlaceholder" placeholder="Search webhooks…" />
+                  <input type="search" id="webhook-filter-search" autocomplete="off" data-i18n-placeholder="dashboard.webhookSearchPlaceholder" placeholder="Search webhooks�" />
                 </label>
                 <select id="webhook-filter-range" aria-label="Time range">
                   <option value="24h" data-i18n="dashboard.filter.24h">Last 24 hours</option>
@@ -457,7 +457,7 @@
                     <div id="conversations-chat-guest" class="conversations-chat-guest">-</div>
                     <div class="conversations-chat-sub">
                       <span id="conversations-chat-listing">-</span>
-                      <span class="conversations-dot conversations-dot-desktop" aria-hidden="true">·</span>
+                      <span class="conversations-dot conversations-dot-desktop" aria-hidden="true">�</span>
                       <span id="conversations-chat-convid" class="conversations-convid-desktop">-</span>
                       <button type="button" class="conversations-icon-btn conversations-convid-desktop" id="conversations-copy-convid" title="Copy" hidden>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -547,7 +547,7 @@
                       <p class="verification-min-match-desc" data-i18n="verification.minMatchesDesc">Guest must match at least this many fields to be verified.</p>
                     </div>
                     <div class="verification-stepper">
-                      <button type="button" class="verification-stepper-btn" id="verification-min-minus" aria-label="Decrease">−</button>
+                      <button type="button" class="verification-stepper-btn" id="verification-min-minus" aria-label="Decrease">-</button>
                       <input type="number" id="verification-min-match" min="1" max="6" value="3" />
                       <button type="button" class="verification-stepper-btn" id="verification-min-plus" aria-label="Increase">+</button>
                     </div>
@@ -662,7 +662,7 @@
                     autocomplete="off"
                     maxlength="80"
                     data-i18n-placeholder="rules.typePlaceholder"
-                    placeholder="Type a rule name…"
+                    placeholder="Type a rule name�"
                   />
                   <datalist id="rule-type-suggestions"></datalist>
                 </label>
@@ -848,9 +848,9 @@
               <div class="request-drawer-heading">
                 <span id="request-drawer-icon" class="request-drawer-icon" aria-hidden="true"></span>
                 <div>
-                  <h3 id="request-drawer-title">—</h3>
+                  <h3 id="request-drawer-title">�</h3>
                   <div id="request-drawer-sub" class="request-drawer-sub"></div>
-                  <div id="request-drawer-id" class="request-drawer-id">—</div>
+                  <div id="request-drawer-id" class="request-drawer-id">�</div>
                 </div>
               </div>
               <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">&times;</button>
@@ -1213,7 +1213,7 @@
                     <span data-i18n="logs.debugDays">Keep for (days)</span>
                     <span class="logs-retention-number"><input type="number" id="log-debug-days" min="7" max="14" value="14" /><span data-i18n="logs.daysUnit">days</span></span>
                   </label>
-                  <p class="logs-retention-rule-hint" data-i18n="logs.debugRuleHint">Keep development and debug logs for 7–14 days.</p>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.debugRuleHint">Keep development and debug logs for 7�14 days.</p>
                 </div>
               </article>
 
@@ -1293,7 +1293,7 @@
                     <span data-i18n="logs.maxDays">Hard maximum (days)</span>
                     <span class="logs-retention-number"><input type="number" id="log-max-days" min="30" max="90" value="90" /><span data-i18n="logs.daysUnit">days</span></span>
                   </label>
-                  <p class="logs-retention-rule-hint" data-i18n="logs.maxDaysHint">30–90 days — nothing is kept longer than this</p>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.maxDaysHint">30�90 days � nothing is kept longer than this</p>
                 </div>
               </article>
 
@@ -1415,6 +1415,7 @@
         <div class="fonio-activity-board">
           <div id="fonio-activity-toolbar" class="fonio-activity-toolbar"></div>
           <div class="fonio-activity-board-divider" aria-hidden="true"></div>
+          <div id="fonio-activity-mobile-list" class="fonio-activity-mobile-list" aria-live="polite"></div>
           <div class="table-wrap fonio-activity-table-wrap" id="fonio-activity-table"></div>
           <div class="fonio-activity-table-footer">
             <div id="fonio-activity-info" class="table-info"></div>
@@ -1433,6 +1434,18 @@
           </div>
         </div>
 
+        <div id="fonio-activity-filter-sheet" class="fonio-activity-filter-sheet hidden" hidden>
+          <button type="button" class="fonio-activity-filter-backdrop" data-fonio-filter-close aria-label="Close"></button>
+          <div class="fonio-activity-filter-panel" role="dialog" aria-modal="true" aria-labelledby="fonio-activity-filter-title">
+            <div class="fonio-activity-filter-handle" aria-hidden="true"></div>
+            <div class="fonio-activity-filter-head">
+              <h3 id="fonio-activity-filter-title">Filter</h3>
+              <button type="button" class="fonio-activity-filter-close" data-fonio-filter-close aria-label="Close">&times;</button>
+            </div>
+            <div id="fonio-activity-filter-body"></div>
+          </div>
+        </div>
+
         <div id="fonio-activity-drawer" class="fonio-activity-drawer hidden" aria-hidden="true">
           <div class="fonio-activity-drawer-backdrop" data-fonio-drawer-close></div>
           <aside class="fonio-activity-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="fonio-activity-drawer-title">
@@ -1440,16 +1453,16 @@
               <div class="fonio-activity-drawer-heading">
                 <span id="fonio-activity-drawer-icon" class="fonio-activity-drawer-icon" aria-hidden="true"></span>
                 <div class="fonio-activity-drawer-title-wrap">
-                  <h3 id="fonio-activity-drawer-title">â€”</h3>
+                  <h3 id="fonio-activity-drawer-title">—</h3>
                   <div class="fonio-activity-drawer-id-row">
-                    <span id="fonio-activity-drawer-id">â€”</span>
+                    <span id="fonio-activity-drawer-id">—</span>
                     <button type="button" id="fonio-activity-copy-callid" class="fonio-activity-copy-btn" aria-label="Copy call ID" title="Copy">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
                 </div>
               </div>
-              <button type="button" class="fonio-activity-drawer-close" data-fonio-drawer-close aria-label="Close">Ã—</button>
+              <button type="button" class="fonio-activity-drawer-close" data-fonio-drawer-close aria-label="Close">×</button>
             </header>
             <div id="fonio-activity-drawer-body" class="fonio-activity-drawer-body"></div>
             <footer id="fonio-activity-drawer-footer" class="fonio-activity-drawer-footer"></footer>
@@ -1611,7 +1624,7 @@
                     <input type="checkbox" id="check24-auto-sync-content" />
                     <span>
                       <strong data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</strong>
-                      <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier — leave off unless details changed.</small>
+                      <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier � leave off unless details changed.</small>
                     </span>
                   </label>
                   <div class="check24-interval-row">
@@ -1990,10 +2003,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915w"></script>
+  <script src="/admin/i18n.js?v=20260915y"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915w"></script>
+  <script src="/admin/app.js?v=20260915y"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

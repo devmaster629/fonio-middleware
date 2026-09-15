@@ -11601,7 +11601,7 @@ function renderFonioActivityStats(logs) {
   const yStats = fonioWindowStats(logs, yesterday.start, yesterday.end);
 
   const card = (iconKind, iconClass, value, label, deltaHtml) => `
-    <article class="fonio-activity-stat-card">
+    <article class="fonio-activity-stat-card ${iconClass}">
       <span class="fonio-activity-stat-icon ${iconClass}" aria-hidden="true">${fonioActivityStatIcon(iconKind)}</span>
       <div class="fonio-activity-stat-value">${value}</div>
       <div class="fonio-activity-stat-label">${esc(label)}</div>
@@ -11905,6 +11905,143 @@ function syncFonioActivityToolbarControls() {
   const outcome = el.querySelector('#fonio-activity-outcome-filter');
   if (outcome && document.activeElement !== outcome) outcome.value = s.outcomeFilter || '';
   ensureFonioActivityPageSizeControl();
+  syncFonioActivityMobileChips();
+}
+
+function closeFonioActivityFilterSheet() {
+  const sheet = $('#fonio-activity-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('fonio-activity-filter-open');
+}
+
+function openFonioActivityFilterSheet(kind) {
+  const sheet = $('#fonio-activity-filter-sheet');
+  const body = $('#fonio-activity-filter-body');
+  const title = $('#fonio-activity-filter-title');
+  if (!sheet || !body || !title) return;
+  const s = tableState.fonioActivity;
+  const titles = {
+    action: t('fonioActivity.filterAction'),
+    status: t('fonioActivity.filterStatus'),
+    outcome: t('fonioActivity.filterOutcome'),
+    date: t('fonioActivity.filterDate'),
+  };
+  title.textContent = titles[kind] || 'Filter';
+
+  if (kind === 'date') {
+    body.innerHTML = `
+      <div class="fonio-activity-filter-dates">
+        <label><span>${esc(t('fonioActivity.filterDateFrom'))}</span><input type="date" data-fonio-sheet-date="from" value="${esc(s.dateFrom || '')}" /></label>
+        <label><span>${esc(t('fonioActivity.filterDateTo'))}</span><input type="date" data-fonio-sheet-date="to" value="${esc(s.dateTo || '')}" /></label>
+        <div class="fonio-activity-filter-actions">
+          <button type="button" class="btn ghost" data-fonio-clear-dates>${esc(t('logs.filterClearDates'))}</button>
+          <button type="button" class="btn primary" data-fonio-apply-dates>${esc(t('logs.filterApplyDates'))}</button>
+        </div>
+      </div>`;
+    body.querySelector('[data-fonio-clear-dates]')?.addEventListener('click', () => {
+      s.dateFrom = '';
+      s.dateTo = '';
+      s.page = 1;
+      syncFonioActivityToolbarControls();
+      closeFonioActivityFilterSheet();
+      renderFonioActivityTable();
+    });
+    body.querySelector('[data-fonio-apply-dates]')?.addEventListener('click', () => {
+      s.dateFrom = body.querySelector('[data-fonio-sheet-date="from"]')?.value || '';
+      s.dateTo = body.querySelector('[data-fonio-sheet-date="to"]')?.value || '';
+      s.page = 1;
+      syncFonioActivityToolbarControls();
+      closeFonioActivityFilterSheet();
+      renderFonioActivityTable();
+    });
+  } else {
+    const select =
+      kind === 'action'
+        ? $('#fonio-activity-action-filter')
+        : kind === 'status'
+          ? $('#fonio-activity-status-filter')
+          : $('#fonio-activity-outcome-filter');
+    if (!select) return;
+    body.innerHTML = `<div class="fonio-activity-filter-options">${[...select.options]
+      .map((option) => `<button type="button" class="fonio-activity-filter-option${option.value === select.value ? ' is-selected' : ''}" data-value="${esc(option.value)}">${esc(option.textContent.trim())}</button>`)
+      .join('')}</div>`;
+    body.querySelectorAll('[data-value]').forEach((button) => {
+      button.addEventListener('click', () => {
+        select.value = button.getAttribute('data-value') || '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        closeFonioActivityFilterSheet();
+      });
+    });
+  }
+
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('fonio-activity-filter-open');
+}
+
+function syncFonioActivityMobileChips() {
+  const s = tableState.fonioActivity;
+  $$('[data-fonio-quick-action]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.fonioQuickAction === (s.actionFilter || ''));
+  });
+  const set = (kind, active, text) => {
+    const button = $(`[data-fonio-mobile-filter="${kind}"]`);
+    if (!button) return;
+    button.classList.toggle('is-active', active);
+    const label = button.querySelector('span');
+    if (label) label.textContent = text;
+  };
+  set('action', !!s.actionFilter, $('#fonio-activity-action-filter')?.selectedOptions?.[0]?.textContent?.trim() || t('fonioActivity.filterAction'));
+  set('status', !!s.statusFilter, $('#fonio-activity-status-filter')?.selectedOptions?.[0]?.textContent?.trim() || t('fonioActivity.filterStatus'));
+  set('outcome', !!s.outcomeFilter, $('#fonio-activity-outcome-filter')?.selectedOptions?.[0]?.textContent?.trim() || t('fonioActivity.filterOutcome'));
+  const dateActive = !!(s.dateFrom || s.dateTo);
+  const dateText = s.dateFrom && s.dateTo ? `${s.dateFrom} → ${s.dateTo}` : s.dateFrom || s.dateTo || t('fonioActivity.filterDate');
+  set('date', dateActive, dateText);
+}
+
+function renderFonioActivityMobileCards(items) {
+  const root = $('#fonio-activity-mobile-list');
+  if (!root) return;
+  if (!items.length) {
+    root.innerHTML = `<div class="fonio-activity-mobile-empty">${esc(t('fonioActivity.none'))}</div>`;
+    return;
+  }
+  root.innerHTML = items.map((log) => {
+    const meta = log.metadata ?? {};
+    const kind = fonioOutcomeKind(log);
+    const request = formatFonioRequestSummary(meta.requestReceived, log.action, meta);
+    const summary = formatFonioActionSummary(log.action, meta);
+    const callId = String(meta.callId || log.id || '—');
+    const selected = String(log.id) === String(fonioActivitySelectedId);
+    return `
+      <article class="fonio-activity-mobile-card is-${esc(kind)}${selected ? ' is-selected' : ''}" data-fonio-mobile-row="${esc(String(log.id))}" tabindex="0">
+        <div class="fonio-activity-mobile-card-top">
+          ${fonioActionChip(log.action)}
+          ${fonioStatusPill(log.statusCode)}
+          <time>${esc(new Date(log.createdAt).toLocaleTimeString(typeof locale === 'function' ? locale() : 'en-GB', { hour: '2-digit', minute: '2-digit' }))}</time>
+          <span class="fonio-activity-mobile-user">${fonioSvg('<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>', 11)}${esc(truncateText(callId, 10))}</span>
+        </div>
+        <div class="fonio-activity-mobile-card-main">
+          <div>
+            <strong>${esc(fonioActionDisplayTitle(log.action))}</strong>
+            <span>${esc(summary || request || '—')}</span>
+          </div>
+          <div class="fonio-activity-mobile-outcome">${fonioOutcomePill(log)}<span class="fonio-activity-mobile-chevron">›</span></div>
+        </div>
+      </article>`;
+  }).join('');
+  root.querySelectorAll('[data-fonio-mobile-row]').forEach((card) => {
+    const open = () => openFonioActivityDrawer(card.dataset.fonioMobileRow);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
 }
 
 function ensureFonioActivityToolbar() {
@@ -11963,6 +12100,16 @@ function ensureFonioActivityToolbar() {
       </label>
       <button type="button" class="btn ghost btn-sm" id="fonio-activity-reset-filters">${esc(t('fonioActivity.resetFilters'))}</button>
     </div>
+    <div class="fonio-activity-mobile-filters">
+      <button type="button" class="fonio-activity-mobile-chip is-active" data-fonio-quick-action="">${esc(t('common.all'))}</button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-quick-action="guest_verify">${esc(t('fonioActivity.quickVerify'))}</button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-quick-action="availability_search">${esc(t('fonioActivity.quickSearch'))}</button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-quick-action="booking_offer">${esc(t('fonioActivity.quickBooking'))}</button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-mobile-filter="action"><span>${esc(t('fonioActivity.filterAction'))}</span></button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-mobile-filter="status"><span>${esc(t('fonioActivity.filterStatus'))}</span></button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-mobile-filter="outcome"><span>${esc(t('fonioActivity.filterOutcome'))}</span></button>
+      <button type="button" class="fonio-activity-mobile-chip" data-fonio-mobile-filter="date"><span>${esc(t('fonioActivity.filterDate'))}</span></button>
+    </div>
   `;
 
   const search = $('#fonio-activity-search');
@@ -12018,6 +12165,21 @@ function ensureFonioActivityToolbar() {
       renderFonioActivityTable();
     }
   });
+  $$('[data-fonio-quick-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.fonioQuickAction || '';
+      const select = $('#fonio-activity-action-filter');
+      if (!select) return;
+      select.value = action;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+  $$('[data-fonio-mobile-filter]').forEach((button) => {
+    button.addEventListener('click', () => openFonioActivityFilterSheet(button.dataset.fonioMobileFilter));
+  });
+  $$('[data-fonio-filter-close]').forEach((button) => {
+    button.addEventListener('click', closeFonioActivityFilterSheet);
+  });
 
   syncFonioActivityToolbarControls();
 }
@@ -12071,6 +12233,7 @@ function renderFonioActivityTable() {
   bindSortableHeaders('#fonio-activity-table', 'fonioActivity', renderFonioActivityTable);
   renderTableInfo('#fonio-activity-info', data, data.maxTotal);
   renderPagination('#fonio-activity-pagination', data, 'fonioActivity', renderFonioActivityTable);
+  renderFonioActivityMobileCards(data.items);
 
   $$('#fonio-activity-table [data-fonio-row]').forEach((row) => {
     const open = () => openFonioActivityDrawer(row.getAttribute('data-fonio-row'));
@@ -12612,6 +12775,9 @@ function openFonioActivityDrawer(id) {
   $$('#fonio-activity-table .fonio-activity-row').forEach((row) => {
     row.classList.toggle('is-selected', row.getAttribute('data-fonio-row') === String(log.id));
   });
+  $$('#fonio-activity-mobile-list [data-fonio-mobile-row]').forEach((card) => {
+    card.classList.toggle('is-selected', card.getAttribute('data-fonio-mobile-row') === String(log.id));
+  });
 }
 
 function closeFonioActivityDrawer() {
@@ -12623,6 +12789,9 @@ function closeFonioActivityDrawer() {
   fonioActivitySelectedId = null;
   $$('#fonio-activity-table .fonio-activity-row').forEach((row) => {
     row.classList.remove('is-selected');
+  });
+  $$('#fonio-activity-mobile-list [data-fonio-mobile-row]').forEach((card) => {
+    card.classList.remove('is-selected');
   });
 }
 
