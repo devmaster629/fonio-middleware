@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915e" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915f" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -508,15 +508,19 @@
 
         <nav class="payments-subnav rules-subnav" aria-label="Rules sections">
           <button type="button" class="payments-subnav-btn active" data-rules-view="verification" data-i18n="rules.tabVerification">Verification</button>
-          <button type="button" class="payments-subnav-btn" data-rules-view="approval" data-i18n="rules.tabApproval">Approval rules</button>
+          <button type="button" class="payments-subnav-btn" data-rules-view="approval">
+            <span class="rules-tab-label-full" data-i18n="rules.tabApproval">Approval rules</span>
+            <span class="rules-tab-label-short" data-i18n="rules.tabApprovalShort">Rules</span>
+          </button>
         </nav>
         <p id="verification-readonly-hint" class="field-hint hidden" data-i18n="perms.featureLocked">This feature is read-only for your role.</p>
 
         <div id="rules-view-verification" class="rules-view">
+          <p class="rules-verification-intro field-hint" data-i18n="verification.mobileIntro">Define which guest details must match a booking before we share information or take action.</p>
           <div class="rules-verification-grid">
             <div class="card rules-verification-card">
-              <h3 data-i18n="verification.title">Guest verification</h3>
-              <p class="field-hint" data-i18n="verification.hint">Required before fonio shares booking details or processes changes.</p>
+              <h3 class="rules-verification-desktop-title" data-i18n="verification.title">Guest verification</h3>
+              <p class="field-hint rules-verification-desktop-hint" data-i18n="verification.hint">Required before fonio shares booking details or processes changes.</p>
               <form id="verification-form" class="verification-form">
                 <input type="hidden" id="verification-config-id" value="" />
                 <div class="verification-fields-panel">
@@ -526,20 +530,27 @@
 
                 <div class="verification-min-match-card">
                   <div class="verification-min-match-head">
-                    <span data-i18n="verification.minMatches">Minimum matching fields</span>
+                    <div class="verification-min-match-copy">
+                      <span class="verification-min-match-label" data-i18n="verification.minMatches">Minimum matching fields</span>
+                      <p class="verification-min-match-desc" data-i18n="verification.minMatchesDesc">Guest must match at least this many fields to be verified.</p>
+                    </div>
                     <div class="verification-stepper">
-                      <button type="button" class="verification-stepper-btn" id="verification-min-minus" aria-label="Decrease">-</button>
+                      <button type="button" class="verification-stepper-btn" id="verification-min-minus" aria-label="Decrease">−</button>
                       <input type="number" id="verification-min-match" min="1" max="6" value="3" />
                       <button type="button" class="verification-stepper-btn" id="verification-min-plus" aria-label="Increase">+</button>
                     </div>
                   </div>
-                  <p class="verification-min-match-hint" data-i18n="verification.minMatchesHint">Stay dates count as 1 match. With minimum 3, guests need dates plus 2 more details - not all fields.</p>
+                  <p class="verification-min-match-hint desktop-only-hint" data-i18n="verification.minMatchesHint">Stay dates count as 1 match. With minimum 3, guests need dates plus 2 more details - not all fields.</p>
+                  <p class="verification-min-match-info" id="verification-min-match-info">We'll only verify the guest if at least 3 of the enabled fields match the reservation.</p>
                 </div>
 
                 <label class="verification-offer-row">
-                  <span>
-                    <strong data-i18n="verification.bookingOffer">Automatic booking offer (fonio)</strong>
-                    <span class="field-hint" data-i18n="verification.bookingOfferHint">When dates are available, fonio can create a Hostaway inquiry via booking-offer API. No prices on the phone.</span>
+                  <span class="verification-offer-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>
+                  </span>
+                  <span class="verification-offer-copy">
+                    <strong data-i18n="verification.bookingOffer">Automatic booking offer</strong>
+                    <span class="field-hint" data-i18n="verification.bookingOfferHint">If the guest is verified, automatically create and send a booking offer (if unit is available).</span>
                   </span>
                   <span class="toggle-switch">
                     <input type="checkbox" id="verification-booking-offer" checked />
@@ -550,35 +561,53 @@
             </div>
 
             <aside class="card rules-hear-card" id="verification-prompt-preview">
+              <button type="button" class="rules-hear-summary" id="rules-hear-toggle" aria-expanded="false">
+                <span class="rules-hear-summary-icon" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>
+                </span>
+                <span class="rules-hear-summary-copy">
+                  <strong data-i18n="verification.whatGuestsHear">What guests hear</strong>
+                  <span class="field-hint" data-i18n="verification.hearPreviewHint">Preview the message guests will hear during verification.</span>
+                </span>
+                <svg class="rules-hear-summary-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
               <div class="rules-hear-header">
                 <h3 data-i18n="verification.whatGuestsHear">What guests hear</h3>
                 <span class="rules-live-badge"><span class="rules-live-dot" aria-hidden="true"></span><span data-i18n="verification.livePreview">Live preview</span></span>
               </div>
-              <div class="rules-hear-phone">
-                <div class="rules-hear-phone-icon" aria-hidden="true">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>
+              <div class="rules-hear-body" id="rules-hear-body">
+                <div class="rules-hear-phone">
+                  <div class="rules-hear-phone-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>
+                  </div>
+                  <div class="rules-hear-kicker" data-i18n="verification.fonioCalling">fonio calling</div>
+                  <div class="rules-hear-label" data-i18n="verification.spokenIntro">Spoken introduction</div>
+                  <blockquote id="verification-guest-script-quote" class="rules-hear-quote">-</blockquote>
+                  <input type="hidden" id="verification-guest-script" value="" />
+                  <div class="rules-hear-wave" aria-hidden="true">
+                    <span style="--h:12%"></span><span style="--h:18%"></span><span style="--h:28%"></span>
+                    <span style="--h:22%"></span><span style="--h:45%"></span><span style="--h:62%"></span>
+                    <span style="--h:38%"></span><span style="--h:78%"></span><span style="--h:55%"></span>
+                    <span style="--h:92%"></span><span style="--h:70%"></span><span style="--h:48%"></span>
+                    <span style="--h:85%"></span><span style="--h:100%"></span><span style="--h:72%"></span>
+                    <span style="--h:58%"></span><span style="--h:88%"></span><span style="--h:64%"></span>
+                    <span style="--h:42%"></span><span style="--h:76%"></span><span style="--h:50%"></span>
+                    <span style="--h:34%"></span><span style="--h:56%"></span><span style="--h:40%"></span>
+                    <span style="--h:26%"></span><span style="--h:18%"></span><span style="--h:12%"></span>
+                  </div>
                 </div>
-                <div class="rules-hear-kicker" data-i18n="verification.fonioCalling">fonio calling</div>
-                <div class="rules-hear-label" data-i18n="verification.spokenIntro">Spoken introduction</div>
-                <blockquote id="verification-guest-script-quote" class="rules-hear-quote">-</blockquote>
-                <input type="hidden" id="verification-guest-script" value="" />
-                <div class="rules-hear-wave" aria-hidden="true">
-                  <span style="--h:12%"></span><span style="--h:18%"></span><span style="--h:28%"></span>
-                  <span style="--h:22%"></span><span style="--h:45%"></span><span style="--h:62%"></span>
-                  <span style="--h:38%"></span><span style="--h:78%"></span><span style="--h:55%"></span>
-                  <span style="--h:92%"></span><span style="--h:70%"></span><span style="--h:48%"></span>
-                  <span style="--h:85%"></span><span style="--h:100%"></span><span style="--h:72%"></span>
-                  <span style="--h:58%"></span><span style="--h:88%"></span><span style="--h:64%"></span>
-                  <span style="--h:42%"></span><span style="--h:76%"></span><span style="--h:50%"></span>
-                  <span style="--h:34%"></span><span style="--h:56%"></span><span style="--h:40%"></span>
-                  <span style="--h:26%"></span><span style="--h:18%"></span><span style="--h:12%"></span>
-                </div>
+                <p class="field-hint rules-hear-footer" data-i18n="verification.hearFooter">This is what guests will hear at the start of the verification call.</p>
+              </div>
+              <div class="rules-hear-actions">
+                <button type="button" class="btn ghost btn-sm rules-hear-expand-btn" id="rules-hear-expand-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span data-i18n="verification.expandScript">Expand</span>
+                </button>
                 <button type="button" class="btn ghost btn-sm rules-copy-script" id="verification-copy-script">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  <span data-i18n="verification.copyScript">Copy script</span>
+                  <span data-i18n="verification.copyScript">Copy</span>
                 </button>
               </div>
-              <p class="field-hint rules-hear-footer" data-i18n="verification.hearFooter">This is what guests will hear at the start of the verification call.</p>
             </aside>
           </div>
         </div>
@@ -681,6 +710,11 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div id="rules-mobile-save-bar" class="rules-mobile-save-bar" hidden>
+          <div id="verification-last-saved-mobile" class="rules-last-saved hidden"></div>
+          <button type="submit" form="verification-form" class="btn primary rules-mobile-save-btn" id="verification-save-btn-mobile" data-i18n="verification.saveSettings">Save settings</button>
         </div>
       </section>
 
@@ -1765,10 +1799,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915e"></script>
+  <script src="/admin/i18n.js?v=20260915f"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915e"></script>
+  <script src="/admin/app.js?v=20260915f"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

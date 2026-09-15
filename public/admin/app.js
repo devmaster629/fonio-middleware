@@ -402,6 +402,7 @@ function applyRoleUi() {
     verificationForm.classList.toggle('is-readonly', !canRulesEdit);
   }
   $('#verification-save-btn')?.toggleAttribute('disabled', !canRulesEdit);
+  $('#verification-save-btn-mobile')?.toggleAttribute('disabled', !canRulesEdit);
   $('#verification-min-minus')?.toggleAttribute('disabled', !canRulesEdit);
   $('#verification-min-plus')?.toggleAttribute('disabled', !canRulesEdit);
   $('#verification-readonly-hint')?.classList.toggle('hidden', canRulesEdit);
@@ -4824,9 +4825,37 @@ function verificationFieldIcon(field) {
     listingName: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>',
     phone: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>',
     email: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 7L2 7"/></svg>',
-    reservationId: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3v18M14 3v18"/></svg>',
+    reservationId: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9h14M5 15h14M10 4l-2 16M16 4l-2 16"/></svg>',
   };
   return icons[field] || icons.reservationId;
+}
+
+function verificationFieldHint(field, fieldMeta) {
+  const key = `verification.fieldHint.${field}`;
+  const translated = t(key);
+  if (translated && translated !== key) return translated;
+  return fieldMeta?.descriptions?.[field] || '';
+}
+
+function setRulesHearExpanded(expanded) {
+  const card = $('#verification-prompt-preview');
+  const toggle = $('#rules-hear-toggle');
+  const expandBtn = $('#rules-hear-expand-btn');
+  if (!card) return;
+  card.classList.toggle('is-expanded', !!expanded);
+  toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  if (expandBtn) {
+    const label = expandBtn.querySelector('[data-i18n="verification.expandScript"], span:last-child');
+    if (label) label.textContent = expanded ? t('verification.collapseScript') : t('verification.expandScript');
+  }
+}
+
+function updateVerificationMinMatchInfo() {
+  const input = $('#verification-min-match');
+  const info = $('#verification-min-match-info');
+  if (!info) return;
+  const count = Math.max(1, Number(input?.value) || 3);
+  info.innerHTML = `<span class="verification-min-match-info-icon" aria-hidden="true">i</span><span>${esc(t('verification.minMatchesInfo', { count }))}</span>`;
 }
 
 function ensureRulesUi() {
@@ -4837,10 +4866,21 @@ function ensureRulesUi() {
   });
   $('#verification-min-minus')?.addEventListener('click', () => stepVerificationMin(-1));
   $('#verification-min-plus')?.addEventListener('click', () => stepVerificationMin(1));
+  $('#verification-min-match')?.addEventListener('input', updateVerificationMinMatchInfo);
+  $('#verification-min-match')?.addEventListener('change', updateVerificationMinMatchInfo);
+  $('#rules-hear-toggle')?.addEventListener('click', () => {
+    const card = $('#verification-prompt-preview');
+    setRulesHearExpanded(!card?.classList.contains('is-expanded'));
+  });
+  $('#rules-hear-expand-btn')?.addEventListener('click', () => {
+    const card = $('#verification-prompt-preview');
+    setRulesHearExpanded(!card?.classList.contains('is-expanded'));
+  });
   document.addEventListener('langchange', () => {
     if (activeTab === 'rules' && cachedVerificationPrompt) {
       renderVerificationPromptPreview(cachedVerificationPrompt);
     }
+    updateVerificationMinMatchInfo();
   });
 }
 
@@ -4853,6 +4893,11 @@ function activateRulesView(view) {
   $('#rules-view-verification')?.classList.toggle('hidden', next !== 'verification');
   $('#rules-view-approval')?.classList.toggle('hidden', next !== 'approval');
   $('#rules-verification-actions')?.classList.toggle('hidden', next !== 'verification');
+  const mobileSave = $('#rules-mobile-save-bar');
+  if (mobileSave) {
+    if (next === 'verification') mobileSave.removeAttribute('hidden');
+    else mobileSave.setAttribute('hidden', '');
+  }
 }
 
 function stepVerificationMin(delta) {
@@ -4862,18 +4907,24 @@ function stepVerificationMin(delta) {
   const min = Number(input.min) || 1;
   const next = Math.min(max, Math.max(min, (Number(input.value) || min) + delta));
   input.value = String(next);
+  updateVerificationMinMatchInfo();
 }
 
 function renderVerificationLastSaved(updatedAt) {
-  const el = $('#verification-last-saved');
-  if (!el) return;
+  const targets = [$('#verification-last-saved'), $('#verification-last-saved-mobile')].filter(Boolean);
+  if (!targets.length) return;
   if (!updatedAt) {
-    el.classList.add('hidden');
-    el.textContent = '';
+    targets.forEach((el) => {
+      el.classList.add('hidden');
+      el.textContent = '';
+    });
     return;
   }
-  el.classList.remove('hidden');
-  el.innerHTML = `<span class="rules-last-saved-ok" aria-hidden="true">✓</span> ${esc(t('verification.lastSaved', { when: formatDateTime(updatedAt) }))}`;
+  const html = `<span class="rules-last-saved-ok" aria-hidden="true">✓</span> ${esc(t('verification.lastSaved', { when: formatDateTime(updatedAt) }))}`;
+  targets.forEach((el) => {
+    el.classList.remove('hidden');
+    el.innerHTML = html;
+  });
 }
 
 function renderVerificationForm(config, fieldMeta) {
@@ -4891,6 +4942,7 @@ function renderVerificationForm(config, fieldMeta) {
   }
   $('#verification-min-minus')?.toggleAttribute('disabled', !canRulesEdit);
   $('#verification-min-plus')?.toggleAttribute('disabled', !canRulesEdit);
+  updateVerificationMinMatchInfo();
   const offerCb = $('#verification-booking-offer');
   if (offerCb) {
     offerCb.checked = config?.bookingOfferEnabled !== false;
@@ -4903,44 +4955,28 @@ function renderVerificationForm(config, fieldMeta) {
     const locked = field === 'stayDates';
     const checked = locked || selected.has(field);
     const disabled = locked || !canRulesEdit;
-    const label = t(`verification.field.${field}`);
-    const hint = fieldMeta?.descriptions?.[field] ?? '';
-    const statusIcon = checked
-      ? '<span class="verification-field-status is-on" aria-hidden="true">✓</span>'
-      : '<span class="verification-field-status is-off" aria-hidden="true">−</span>';
+    const label = locked ? t('verification.field.stayDatesLockedTitle') : t(`verification.field.${field}`);
+    const hint = verificationFieldHint(field, fieldMeta);
     return `
       <div class="verification-field-item${locked ? ' is-locked' : ''}${checked ? ' is-checked' : ''}">
         <div class="verification-field-icon" aria-hidden="true">${verificationFieldIcon(field)}</div>
         <div class="verification-field-copy">
           <strong>${esc(label)}</strong>
-          ${locked
-            ? `<span class="verification-always-required">${esc(t('verification.alwaysRequired'))}</span>`
-            : hint
-              ? `<span class="field-hint">${esc(hint)}</span>`
-              : ''}
+          ${hint ? `<span class="field-hint">${esc(hint)}</span>` : ''}
+          ${locked ? `<span class="verification-always-required">${esc(t('verification.alwaysRequired'))}</span>` : ''}
         </div>
-        ${locked
-          ? `<span class="verification-lock" title="${esc(t('verification.alwaysRequired'))}" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>${statusIcon}`
-          : `<label class="toggle-switch">
-              <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-              <span class="toggle-slider" aria-hidden="true"></span>
-            </label>
-            ${statusIcon}`}
-        ${locked ? `<input type="checkbox" name="verification-field" value="${field}" checked disabled class="sr-only" />` : ''}
+        <label class="toggle-switch${locked ? ' is-locked-toggle' : ''}">
+          <input type="checkbox" name="verification-field" value="${field}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+          <span class="toggle-slider" aria-hidden="true"></span>
+        </label>
       </div>`;
   }).join('');
 
   container.querySelectorAll('input[name="verification-field"]').forEach((input) => {
     input.addEventListener('change', () => {
       const row = input.closest('.verification-field-item');
-      if (!row) return;
+      if (!row || input.disabled) return;
       row.classList.toggle('is-checked', input.checked);
-      const status = row.querySelector('.verification-field-status');
-      if (status) {
-        status.classList.toggle('is-on', input.checked);
-        status.classList.toggle('is-off', !input.checked);
-        status.textContent = input.checked ? '✓' : '−';
-      }
     });
   });
 }
@@ -5057,18 +5093,18 @@ async function loadRules() {
     const listingLabel = r.listing?.name || t('rules.global');
     return `
     <tr data-rule-id="${r.id}" class="${editingRuleId === r.id ? 'selected' : ''}">
-      <td class="rules-index-cell">${startIndex + idx + 1}</td>
-      <td><strong>${esc(formatRuleTypeDisplay(r.requestType))}</strong></td>
-      <td><span class="rules-mode-badge ${modeBadgeClass(r.mode)}">${esc(t(`mode.${r.mode}`) || r.mode)}</span></td>
-      <td>${esc(listingLabel)}</td>
-      <td class="rules-priority-cell">${esc(String(r.priority))}</td>
-      <td>
+      <td class="rules-index-cell" data-label="#">${startIndex + idx + 1}</td>
+      <td data-label="${esc(t('rules.col.type'))}"><strong>${esc(formatRuleTypeDisplay(r.requestType))}</strong></td>
+      <td data-label="${esc(t('rules.col.mode'))}"><span class="rules-mode-badge ${modeBadgeClass(r.mode)}">${esc(t(`mode.${r.mode}`) || r.mode)}</span></td>
+      <td data-label="${esc(t('rules.col.appliesTo'))}">${esc(listingLabel)}</td>
+      <td class="rules-priority-cell" data-label="${esc(t('rules.col.priority'))}">${esc(String(r.priority))}</td>
+      <td data-label="${esc(t('rules.col.status'))}">
         <span class="rules-status-dot ${active ? 'is-active' : 'is-inactive'}">
           <span class="rules-status-dot-mark" aria-hidden="true"></span>
           ${esc(active ? t('rules.active') : t('rules.inactive'))}
         </span>
       </td>
-      <td class="rules-row-actions">
+      <td class="rules-row-actions" data-label="${esc(t('rules.col.actions'))}">
         ${canEdit ? `<button type="button" class="rules-icon-btn" data-rule-edit="${r.id}" title="${esc(t('rules.editRule'))}" aria-label="${esc(t('rules.editRule'))}">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         </button>` : '–'}
@@ -5104,6 +5140,7 @@ async function loadRules() {
   bindRuleRowActions();
   applyRoleUi();
   activateRulesView(rulesActiveView);
+  scheduleEnhanceResponsiveTables();
 }
 
 let requestsListCache = [];
