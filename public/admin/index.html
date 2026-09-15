@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915y" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260916a" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -195,7 +195,7 @@
               <div class="webhook-filters" id="webhooks-filters">
                 <label class="webhook-search-field">
                   <span class="sr-only" data-i18n="table.search">Search</span>
-                  <input type="search" id="webhook-filter-search" autocomplete="off" data-i18n-placeholder="dashboard.webhookSearchPlaceholder" placeholder="Search webhooks…" />
+                  <input type="search" id="webhook-filter-search" autocomplete="off" data-i18n-placeholder="dashboard.webhookSearchPlaceholder" placeholder="Search webhooks?" />
                 </label>
                 <select id="webhook-filter-range" aria-label="Time range">
                   <option value="24h" data-i18n="dashboard.filter.24h">Last 24 hours</option>
@@ -457,7 +457,7 @@
                     <div id="conversations-chat-guest" class="conversations-chat-guest">-</div>
                     <div class="conversations-chat-sub">
                       <span id="conversations-chat-listing">-</span>
-                      <span class="conversations-dot conversations-dot-desktop" aria-hidden="true">·</span>
+                      <span class="conversations-dot conversations-dot-desktop" aria-hidden="true">?</span>
                       <span id="conversations-chat-convid" class="conversations-convid-desktop">-</span>
                       <button type="button" class="conversations-icon-btn conversations-convid-desktop" id="conversations-copy-convid" title="Copy" hidden>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -662,7 +662,7 @@
                     autocomplete="off"
                     maxlength="80"
                     data-i18n-placeholder="rules.typePlaceholder"
-                    placeholder="Type a rule name…"
+                    placeholder="Type a rule name?"
                   />
                   <datalist id="rule-type-suggestions"></datalist>
                 </label>
@@ -848,9 +848,9 @@
               <div class="request-drawer-heading">
                 <span id="request-drawer-icon" class="request-drawer-icon" aria-hidden="true"></span>
                 <div>
-                  <h3 id="request-drawer-title">—</h3>
+                  <h3 id="request-drawer-title">?</h3>
                   <div id="request-drawer-sub" class="request-drawer-sub"></div>
-                  <div id="request-drawer-id" class="request-drawer-id">—</div>
+                  <div id="request-drawer-id" class="request-drawer-id">?</div>
                 </div>
               </div>
               <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">&times;</button>
@@ -1213,7 +1213,7 @@
                     <span data-i18n="logs.debugDays">Keep for (days)</span>
                     <span class="logs-retention-number"><input type="number" id="log-debug-days" min="7" max="14" value="14" /><span data-i18n="logs.daysUnit">days</span></span>
                   </label>
-                  <p class="logs-retention-rule-hint" data-i18n="logs.debugRuleHint">Keep development and debug logs for 7–14 days.</p>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.debugRuleHint">Keep development and debug logs for 7?14 days.</p>
                 </div>
               </article>
 
@@ -1293,7 +1293,7 @@
                     <span data-i18n="logs.maxDays">Hard maximum (days)</span>
                     <span class="logs-retention-number"><input type="number" id="log-max-days" min="30" max="90" value="90" /><span data-i18n="logs.daysUnit">days</span></span>
                   </label>
-                  <p class="logs-retention-rule-hint" data-i18n="logs.maxDaysHint">30–90 days — nothing is kept longer than this</p>
+                  <p class="logs-retention-rule-hint" data-i18n="logs.maxDaysHint">30?90 days ? nothing is kept longer than this</p>
                 </div>
               </article>
 
@@ -1453,16 +1453,16 @@
               <div class="fonio-activity-drawer-heading">
                 <span id="fonio-activity-drawer-icon" class="fonio-activity-drawer-icon" aria-hidden="true"></span>
                 <div class="fonio-activity-drawer-title-wrap">
-                  <h3 id="fonio-activity-drawer-title">â€”</h3>
+                  <h3 id="fonio-activity-drawer-title">???</h3>
                   <div class="fonio-activity-drawer-id-row">
-                    <span id="fonio-activity-drawer-id">â€”</span>
+                    <span id="fonio-activity-drawer-id">???</span>
                     <button type="button" id="fonio-activity-copy-callid" class="fonio-activity-copy-btn" aria-label="Copy call ID" title="Copy">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
                 </div>
               </div>
-              <button type="button" class="fonio-activity-drawer-close" data-fonio-drawer-close aria-label="Close">Ã—</button>
+              <button type="button" class="fonio-activity-drawer-close" data-fonio-drawer-close aria-label="Close">??</button>
             </header>
             <div id="fonio-activity-drawer-body" class="fonio-activity-drawer-body"></div>
             <footer id="fonio-activity-drawer-footer" class="fonio-activity-drawer-footer"></footer>
@@ -1624,7 +1624,7 @@
                     <input type="checkbox" id="check24-auto-sync-content" />
                     <span>
                       <strong data-i18n="check24.autoSyncContent">Also re-send apartment details (photos, description)</strong>
-                      <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier — leave off unless details changed.</small>
+                      <small data-i18n="check24.autoSyncContentHelp">Optional. Only runs when auto-update is on. Pushes photos, description and amenities (Data column). Heavier ? leave off unless details changed.</small>
                     </span>
                   </label>
                   <div class="check24-interval-row">
@@ -1728,13 +1728,20 @@
       <section id="tab-users" class="tab hidden">
         <header class="page-header users-page-header">
           <div class="users-page-heading">
-            <h2 data-i18n="users.title">Admin users</h2>
-            <p class="page-subtitle" data-i18n="users.hint">Manage admin accounts, roles and access.</p>
+            <h2>
+              <span class="users-title-desktop" data-i18n="users.title">Admin users</span>
+              <span class="users-title-mobile" data-i18n="users.titleMobile">Users</span>
+            </h2>
+            <p class="page-subtitle">
+              <span class="users-hint-desktop" data-i18n="users.hint">Manage admin accounts, roles and access.</span>
+              <span class="users-hint-mobile" data-i18n="users.hintMobile">Manage admin users and their permissions.</span>
+            </p>
           </div>
           <div class="users-page-actions">
-            <button type="button" id="user-new-btn" class="btn primary">
-              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-              <span data-i18n="users.addUser">Add user</span>
+            <button type="button" id="user-new-btn" class="btn primary users-add-btn" aria-label="Add user">
+              <svg class="btn-icon users-add-icon-desktop" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              <svg class="btn-icon users-add-icon-mobile" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+              <span class="users-add-label" data-i18n="users.addUser">Add user</span>
             </button>
           </div>
         </header>
@@ -1743,8 +1750,14 @@
 
         <nav class="users-tabs" role="tablist" aria-label="Admin users views">
           <button type="button" class="users-tab active" data-users-tab="list" role="tab" aria-selected="true" data-i18n="users.tabUsers">Users</button>
-          <button type="button" class="users-tab" data-users-tab="perms" role="tab" aria-selected="false" data-i18n="users.tabPerms">Role permissions</button>
-          <button type="button" class="users-tab" data-users-tab="security" role="tab" aria-selected="false" data-i18n="users.tabSecurity">Security activity</button>
+          <button type="button" class="users-tab" data-users-tab="perms" role="tab" aria-selected="false">
+            <span class="users-tab-label-desktop" data-i18n="users.tabPerms">Role permissions</span>
+            <span class="users-tab-label-mobile" data-i18n="users.tabPermsShort">Roles</span>
+          </button>
+          <button type="button" class="users-tab" data-users-tab="security" role="tab" aria-selected="false">
+            <span class="users-tab-label-desktop" data-i18n="users.tabSecurity">Security activity</span>
+            <span class="users-tab-label-mobile" data-i18n="users.tabSecurityShort">Security</span>
+          </button>
         </nav>
 
         <div id="users-view-list" class="users-view">
@@ -1755,7 +1768,7 @@
                   <svg class="fonio-activity-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                   <input type="search" id="users-search" data-i18n-placeholder="users.searchPlaceholder" placeholder="Search users..." autocomplete="off" aria-label="Search users" />
                 </div>
-                <label>
+                <label class="users-filter-desktop">
                   <span data-i18n="users.col.role">Role</span>
                   <select id="users-filter-role">
                     <option value="all" data-i18n="users.filterRoleAll">All roles</option>
@@ -1764,7 +1777,7 @@
                     <option value="BACK_OFFICE" data-i18n="role.BACK_OFFICE">Back Office</option>
                   </select>
                 </label>
-                <label>
+                <label class="users-filter-desktop">
                   <span data-i18n="users.col.status">Status</span>
                   <select id="users-filter-status">
                     <option value="all" data-i18n="users.filterStatusAll">All statuses</option>
@@ -1772,14 +1785,48 @@
                     <option value="inactive" data-i18n="users.inactive">Inactive</option>
                   </select>
                 </label>
-                <button type="button" id="users-clear-filters-btn" class="btn ghost btn-sm" data-i18n="users.clearFilters">Reset</button>
+                <button type="button" id="users-clear-filters-btn" class="btn ghost btn-sm users-filter-desktop" data-i18n="users.clearFilters">Reset</button>
+              </div>
+              <div class="users-mobile-chips" aria-label="Filters">
+                <button type="button" class="users-mobile-chip" data-users-mobile-filter="role">
+                  <span data-i18n="users.col.role">Role</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <button type="button" class="users-mobile-chip" data-users-mobile-filter="status">
+                  <span data-i18n="users.col.status">Status</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
               </div>
             </div>
             <div class="fonio-activity-board-divider" aria-hidden="true"></div>
             <div class="table-wrap users-table-wrap" id="users-table"></div>
+            <div id="users-mobile-list" class="users-mobile-list" aria-live="polite"></div>
             <div class="users-table-footer fonio-activity-table-footer">
               <div id="users-info" class="table-info"></div>
-              <div id="users-pagination" class="table-pagination"></div>
+              <div class="users-footer-right fonio-activity-footer-right">
+                <div id="users-pagination" class="table-pagination"></div>
+                <label class="table-page-size" for="users-page-size">
+                  <span class="sr-only" data-i18n="table.show">Show</span>
+                  <select id="users-page-size" aria-label="Per page">
+                    <option value="10" selected>10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div id="users-filter-sheet" class="users-filter-sheet hidden" hidden>
+            <button type="button" class="users-filter-sheet-backdrop" data-users-filter-close aria-label="Close"></button>
+            <div class="users-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="users-filter-sheet-title">
+              <div class="users-filter-sheet-handle" aria-hidden="true"></div>
+              <div class="users-filter-sheet-head">
+                <h3 id="users-filter-sheet-title" class="users-filter-sheet-title">Filter</h3>
+                <button type="button" class="users-filter-sheet-close" data-users-filter-close aria-label="Close">&times;</button>
+              </div>
+              <div id="users-filter-sheet-body" class="users-filter-sheet-body"></div>
             </div>
           </div>
 
@@ -1843,6 +1890,7 @@
         <div id="users-drawer" class="users-drawer hidden" aria-hidden="true">
           <div class="users-drawer-backdrop" data-users-drawer-close></div>
           <aside class="users-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="user-form-title">
+            <div class="users-drawer-handle" aria-hidden="true"></div>
             <header class="users-drawer-header">
               <div>
                 <h3 id="user-form-title" data-i18n="users.addAdminUser">Add admin user</h3>
@@ -1853,7 +1901,7 @@
             <form id="user-form" class="users-drawer-body">
               <input type="hidden" id="user-id" />
               <label class="users-field">
-                <span data-i18n="users.email">Email</span>
+                <span data-i18n="users.emailAddress">Email address</span>
                 <input type="email" id="user-email" required autocomplete="off" placeholder="name@company.com" />
               </label>
               <div class="users-field">
@@ -1883,12 +1931,12 @@
                   <option value="ADMIN" data-i18n="role.ADMIN">Admin</option>
                   <option value="SUPER_ADMIN" data-i18n="role.SUPER_ADMIN">Super Admin</option>
                 </select>
-                <span class="field-hint" data-i18n="users.roleHelpSuper">Super Admin can assign any role, including Super Admin.</span>
+                <span class="field-hint users-role-help" data-i18n="users.roleHelpSuper">Super Admin can assign any role, including Super Admin.</span>
               </label>
               <label class="users-switch-row">
                 <span>
-                  <strong data-i18n="users.active">Account active</strong>
-                  <span class="field-hint" data-i18n="users.activeHelp">Inactive accounts cannot sign in.</span>
+                  <strong data-i18n="users.activeAccount">Active account</strong>
+                  <span class="field-hint" id="user-active-help" data-i18n="users.activeHelpCreate">User can sign in immediately.</span>
                 </span>
                 <span class="users-switch">
                   <input type="checkbox" id="user-active" checked />
@@ -2003,10 +2051,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915y"></script>
+  <script src="/admin/i18n.js?v=20260916a"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915y"></script>
+  <script src="/admin/app.js?v=20260916a"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

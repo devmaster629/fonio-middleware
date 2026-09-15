@@ -12998,13 +12998,13 @@ function userDisplayName(user) {
   const local = email.split('@')[0] || email;
   return local
     .replace(/[._-]+/g, ' ')
-    .replace(/w/g, (c) => c.toUpperCase())
+    .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim() || email || '–';
 }
 
 function userInitials(user) {
   const name = userDisplayName(user);
-  const parts = name.split(/s+/).filter(Boolean);
+  const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase() || '?';
 }
@@ -13044,7 +13044,7 @@ function passwordStrength(value) {
   if (v.length >= 8) score += 1;
   if (v.length >= 12) score += 1;
   if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score += 1;
-  if (/d/.test(v) && /[^A-Za-z0-9]/.test(v)) score += 1;
+  if (/\d/.test(v) && /[^A-Za-z0-9]/.test(v)) score += 1;
   const labels = ['', 'users.strengthWeak', 'users.strengthFair', 'users.strengthGood', 'users.strengthStrong'];
   return { score, label: labels[score] ? t(labels[score]) : '' };
 }
@@ -13088,6 +13088,74 @@ function setUsersView(view) {
   if (usersActiveView === 'perms') loadRolePermissionsMatrix();
 }
 
+function isUsersMobileLayout() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function closeUsersFilterSheet() {
+  const sheet = $('#users-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('users-filter-open');
+}
+
+function openUsersFilterSheet(kind) {
+  const sheet = $('#users-filter-sheet');
+  const body = $('#users-filter-sheet-body');
+  const title = $('#users-filter-sheet-title');
+  if (!sheet || !body || !title) return;
+  const select = kind === 'status' ? $('#users-filter-status') : $('#users-filter-role');
+  if (!select) return;
+  title.textContent = kind === 'status' ? t('users.col.status') : t('users.col.role');
+  const current = select.value;
+  body.innerHTML = [...select.options].map((opt) => `
+    <button type="button" class="users-filter-option${opt.value === current ? ' is-selected' : ''}" data-users-filter-value="${esc(opt.value)}">
+      ${esc(opt.textContent || opt.value)}
+    </button>
+  `).join('');
+  body.querySelectorAll('[data-users-filter-value]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      select.value = btn.dataset.usersFilterValue;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      closeUsersFilterSheet();
+    });
+  });
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('users-filter-open');
+}
+
+function syncUsersFilterChips() {
+  const role = tableState.users.role || 'all';
+  const status = tableState.users.status || 'all';
+  const roleBtn = $('[data-users-mobile-filter="role"]');
+  const statusBtn = $('[data-users-mobile-filter="status"]');
+  const roleSelect = $('#users-filter-role');
+  const statusSelect = $('#users-filter-status');
+  if (roleBtn) {
+    roleBtn.classList.toggle('is-active', role !== 'all');
+    const label = roleBtn.querySelector('span');
+    if (label) label.textContent = roleSelect?.selectedOptions?.[0]?.textContent?.trim() || t('users.col.role');
+  }
+  if (statusBtn) {
+    statusBtn.classList.toggle('is-active', status !== 'all');
+    const label = statusBtn.querySelector('span');
+    if (label) label.textContent = statusSelect?.selectedOptions?.[0]?.textContent?.trim() || t('users.col.status');
+  }
+}
+
+function syncUserFormHints({ editing = false } = {}) {
+  const passwordHint = $('#user-password-hint');
+  const activeHelp = $('#user-active-help');
+  if (passwordHint) {
+    passwordHint.textContent = editing ? t('users.passwordHint') : t('users.passwordHintGenerate');
+  }
+  if (activeHelp) {
+    activeHelp.textContent = editing ? t('users.activeHelp') : t('users.activeHelpCreate');
+  }
+}
+
 function openUsersDrawer() {
   const drawer = $('#users-drawer');
   if (!drawer) return;
@@ -13108,18 +13176,20 @@ function closeUsersDrawer() {
 
 function resetUserForm({ keepDrawerClosed = false } = {}) {
   editingUserId = null;
+  usersDrawerPermOpen = false;
   $('#user-id').value = '';
   $('#user-email').value = '';
   $('#user-email').removeAttribute('readonly');
   $('#user-password').value = '';
   $('#user-password').required = true;
   $('#user-password').type = 'password';
-  $('#user-role').value = 'BACK_OFFICE';
+  $('#user-role').value = 'ADMIN';
   $('#user-active').checked = true;
   $('#user-form-title').textContent = t('users.addAdminUser');
   $('#users-drawer-subtitle').textContent = t('users.drawerHint');
   $('#user-submit-btn').textContent = t('users.addUser');
   $('#user-delete-btn')?.classList.add('hidden');
+  syncUserFormHints({ editing: false });
   updateUserPasswordWarning();
   updateUserRowSelection(null);
   renderUsersDrawerPermPreview();
@@ -13128,6 +13198,7 @@ function resetUserForm({ keepDrawerClosed = false } = {}) {
 
 function loadUserIntoForm(user) {
   editingUserId = user.id;
+  usersDrawerPermOpen = false;
   $('#user-id').value = user.id;
   $('#user-email').value = user.email;
   $('#user-email').setAttribute('readonly', 'readonly');
@@ -13142,6 +13213,7 @@ function loadUserIntoForm(user) {
   $('#users-drawer-subtitle').textContent = t('users.editDrawerHint');
   $('#user-submit-btn').textContent = t('users.save');
   $('#user-delete-btn')?.classList.toggle('hidden', !user.isActive);
+  syncUserFormHints({ editing: true });
   updateUserPasswordWarning();
   updateUserRowSelection(user.id);
   openUsersDrawer();
@@ -13152,10 +13224,13 @@ function updateUserRowSelection(userId) {
   $$('#users-table tbody tr').forEach((row) => {
     row.classList.toggle('selected', userId && row.dataset.userId === userId);
   });
+  $$('#users-mobile-list .users-mobile-card').forEach((card) => {
+    card.classList.toggle('is-selected', userId && card.dataset.userId === userId);
+  });
 }
 
-function bindUserRowClicks() {
-  $$('#users-table [data-user-edit]').forEach((btn) => {
+function bindUserRowClicks(root = document) {
+  root.querySelectorAll('[data-user-edit]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.userEdit;
@@ -13163,11 +13238,11 @@ function bindUserRowClicks() {
       if (user) loadUserIntoForm(user);
     });
   });
-  $$('#users-table [data-user-menu]').forEach((btn) => {
+  root.querySelectorAll('[data-user-menu]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.userMenu;
-      const menu = $(`#users-menu-${id}`);
+      const menu = $(`#users-menu-${id}`) || $(`#users-mobile-menu-${id}`);
       $$('.users-row-menu').forEach((el) => {
         if (el !== menu) el.classList.add('hidden');
       });
@@ -13211,14 +13286,32 @@ function renderPermPreviewCards(targetSel, role) {
   `).join('');
 }
 
+let usersDrawerPermOpen = false;
+
 function renderUsersDrawerPermPreview() {
   const role = $('#user-role')?.value || 'BACK_OFFICE';
   const el = $('#users-drawer-perm-preview');
   if (!el) return;
   const cards = permCountsForRole(role);
+  const enabled = cards.reduce((sum, c) => sum + c.enabled, 0);
+  const total = cards.reduce((sum, c) => sum + c.total, 0) || 1;
+  const summaryKey = `users.permSummary.${role}`;
+  const summary = t(summaryKey);
+  const summaryText = summary === summaryKey ? t('users.permPreviewHint') : summary;
+  el.classList.toggle('is-open', usersDrawerPermOpen);
   el.innerHTML = `
-    <div class="users-drawer-perm-title">${esc(t('users.permPreviewTitle'))}</div>
-    <div class="users-drawer-perm-list">
+    <button type="button" class="users-drawer-perm-summary" data-users-perm-toggle aria-expanded="${usersDrawerPermOpen ? 'true' : 'false'}">
+      <span class="users-drawer-perm-summary-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </span>
+      <span class="users-drawer-perm-summary-copy">
+        <strong>${esc(t('users.permPreviewTitleShort'))}</strong>
+        <small>${esc(summaryText)}</small>
+      </span>
+      <span class="users-drawer-perm-summary-count">${esc(t('users.permPreviewOf', { enabled, total }))}</span>
+      <span class="users-drawer-perm-summary-chevron" aria-hidden="true"></span>
+    </button>
+    <div class="users-drawer-perm-list${usersDrawerPermOpen ? '' : ' is-collapsed'}">
       ${cards.map((c) => `
         <div class="users-drawer-perm-row">
           <span class="users-perm-card-icon is-${esc(c.tone)}" aria-hidden="true">
@@ -13230,6 +13323,10 @@ function renderUsersDrawerPermPreview() {
       `).join('')}
     </div>
   `;
+  el.querySelector('[data-users-perm-toggle]')?.addEventListener('click', () => {
+    usersDrawerPermOpen = !usersDrawerPermOpen;
+    renderUsersDrawerPermPreview();
+  });
 }
 
 function renderUsersKpis(users) {
@@ -13293,6 +13390,63 @@ function filterUsersList(users) {
     const hay = [u.email, u.role, userDisplayName(u), formatRoleLabel(u.role)].join(' ').toLowerCase();
     return hay.includes(q);
   });
+}
+
+function renderUsersMobile(items) {
+  const root = $('#users-mobile-list');
+  if (!root) return;
+  if (!items.length) {
+    root.innerHTML = `<div class="users-mobile-empty">${esc(t('users.none'))}</div>`;
+    return;
+  }
+  root.innerHTML = items.map((u) => {
+    const tone = userRoleTone(u.role);
+    const selected = editingUserId === u.id;
+    return `
+      <article class="users-mobile-card${selected ? ' is-selected' : ''}${u.isActive ? '' : ' is-inactive'}" data-user-id="${esc(u.id)}" tabindex="0">
+        <div class="users-mobile-card-top">
+          <span class="users-avatar is-${esc(tone)}" aria-hidden="true">${esc(userInitials(u))}</span>
+          <div class="users-mobile-card-identity">
+            <strong>${esc(userDisplayName(u))}</strong>
+            <span>${esc(u.email)}</span>
+            <div class="users-mobile-card-badges">
+              <span class="users-role-pill is-${esc(tone)}">${esc(formatRoleLabel(u.role))}</span>
+              <span class="users-status ${u.isActive ? 'is-active' : 'is-inactive'}">
+                <span class="users-status-dot" aria-hidden="true"></span>
+                ${esc(u.isActive ? t('users.active') : t('users.inactive'))}
+              </span>
+            </div>
+          </div>
+          <div class="users-actions-wrap users-mobile-actions">
+            <button type="button" class="users-menu-btn" data-user-menu="${esc(u.id)}" aria-label="${esc(t('users.actions'))}">⋯</button>
+            <div id="users-mobile-menu-${esc(u.id)}" class="users-row-menu hidden">
+              <button type="button" data-user-edit="${esc(u.id)}">${esc(t('users.editUser'))}</button>
+            </div>
+          </div>
+        </div>
+        <div class="users-mobile-card-meta">
+          <span>${esc(t('users.createdOn', { date: formatUserShortDate(u.createdAt) }))}</span>
+          <span>${esc(t('users.lastActiveOn', { date: formatUserLastActive(u.updatedAt) }))}</span>
+        </div>
+      </article>`;
+  }).join('');
+  root.querySelectorAll('.users-mobile-card').forEach((card) => {
+    const open = () => {
+      const user = cachedUsers.find((u) => u.id === card.dataset.userId);
+      if (user) loadUserIntoForm(user);
+    };
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.users-actions-wrap')) return;
+      open();
+    });
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+  bindUserRowClicks(root);
 }
 
 function renderUsersTable() {
@@ -13374,17 +13528,47 @@ function renderUsersTable() {
         <tbody>${rows || `<tr><td colspan="7" class="empty-row">${esc(t('users.none'))}</td></tr>`}</tbody>
       </table>`;
   }
+  renderUsersMobile(items);
+  syncUsersFilterChips();
+  ensureUsersPageSizeControl();
   renderTableInfo('#users-info', pageData, pageData.maxTotal);
   renderPagination('#users-pagination', pageData, 'users', () => renderUsersTable());
-  bindUserRowClicks();
+  bindUserRowClicks($('#users-table') || document);
   scheduleEnhanceResponsiveTables();
 }
 
 let cachedUsers = [];
 
+function ensureUsersPageSizeControl() {
+  const lengthSel = $('#users-page-size');
+  if (!lengthSel) return;
+  const s = tableState.users;
+  const label = (n) => t('table.perPage', { n });
+  PAGE_SIZE_OPTIONS.forEach((n) => {
+    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(n);
+      lengthSel.appendChild(opt);
+    }
+    opt.textContent = label(n);
+  });
+  if (document.activeElement !== lengthSel) {
+    lengthSel.value = String(s.pageSize || 10);
+  }
+  if (lengthSel.dataset.bound === '1') return;
+  lengthSel.dataset.bound = '1';
+  lengthSel.addEventListener('change', () => {
+    tableState.users.pageSize = Number(lengthSel.value) || 10;
+    tableState.users.page = 1;
+    renderUsersTable();
+  });
+}
+
 function bindUsersUi() {
   if (usersUiBound) return;
   usersUiBound = true;
+  ensureUsersPageSizeControl();
 
   $$('.users-tab').forEach((btn) => {
     btn.addEventListener('click', () => setUsersView(btn.dataset.usersTab));
@@ -13409,6 +13593,13 @@ function bindUsersUi() {
     if ($('#users-filter-role')) $('#users-filter-role').value = 'all';
     if ($('#users-filter-status')) $('#users-filter-status').value = 'all';
     syncFilters();
+  });
+
+  $$('[data-users-mobile-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => openUsersFilterSheet(btn.dataset.usersMobileFilter));
+  });
+  $$('[data-users-filter-close]').forEach((el) => {
+    el.addEventListener('click', () => closeUsersFilterSheet());
   });
 
   $('#users-preview-role')?.addEventListener('change', () => {
@@ -13593,6 +13784,13 @@ $('#user-form')?.addEventListener('submit', async (e) => {
       await api('/users', {
         method: 'POST',
         body: JSON.stringify({ email, password, role }),
+      }).then(async (created) => {
+        if (!isActive && created?.id) {
+          await api(`/users/${created.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ isActive: false }),
+          });
+        }
       });
       notify.success(t('users.created'));
       closeUsersDrawer();
