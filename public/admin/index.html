@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260915o" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260915r" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -772,6 +772,13 @@
             <span data-i18n="requests.backfillBtn">Link inbox &amp; retry pending</span>
           </button>
         </header>
+        <p class="requests-mobile-intro field-hint" data-i18n="requests.mobileHint">Manage and monitor guest requests across your properties.</p>
+        <div class="requests-mobile-backfill-wrap">
+          <button type="button" id="inbox-backfill-btn-mobile" class="btn ghost requests-backfill-btn-mobile">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span data-i18n="requests.backfillBtn">Link inbox &amp; retry pending</span>
+          </button>
+        </div>
 
         <div id="requests-stats" class="requests-stats" aria-live="polite"></div>
 
@@ -779,6 +786,7 @@
           <div class="requests-tabs" role="tablist" aria-label="Request status">
             <button type="button" class="requests-tab is-active" data-requests-tab="all" role="tab" aria-selected="true">
               <span data-i18n="requests.tabAll">All requests</span>
+              <span class="requests-tab-label-short" data-i18n="requests.tabAllShort">All</span>
             </button>
             <button type="button" class="requests-tab" data-requests-tab="pending" role="tab" aria-selected="false">
               <span data-i18n="requests.tabPending">Pending</span>
@@ -790,6 +798,7 @@
             </button>
             <button type="button" class="requests-tab" data-requests-tab="auto" role="tab" aria-selected="false">
               <span data-i18n="requests.tabAuto">Auto-approved</span>
+              <span class="requests-tab-label-short" data-i18n="requests.tabAutoShort">Auto</span>
               <span class="requests-tab-count" data-requests-count="auto">0</span>
             </button>
             <button type="button" class="requests-tab" data-requests-tab="failed" role="tab" aria-selected="false">
@@ -800,6 +809,7 @@
 
           <div id="requests-toolbar" class="requests-toolbar"></div>
           <div class="requests-board-divider" aria-hidden="true"></div>
+          <div id="requests-mobile-list" class="requests-mobile-list" aria-live="polite"></div>
           <div class="table-wrap requests-table-wrap" id="requests-table"></div>
           <div class="requests-table-footer">
             <div id="requests-info" class="table-info"></div>
@@ -818,20 +828,40 @@
           </div>
         </div>
 
+        <div id="requests-filter-sheet" class="requests-filter-sheet hidden" hidden>
+          <button type="button" class="requests-filter-sheet-backdrop" data-requests-filter-close aria-label="Close"></button>
+          <div class="requests-filter-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="requests-filter-sheet-title">
+            <div class="requests-filter-sheet-handle" aria-hidden="true"></div>
+            <div class="requests-filter-sheet-head">
+              <h3 id="requests-filter-sheet-title" class="requests-filter-sheet-title">Filter</h3>
+              <button type="button" class="requests-filter-sheet-close" data-requests-filter-close aria-label="Close">&times;</button>
+            </div>
+            <div id="requests-filter-sheet-body" class="requests-filter-sheet-body"></div>
+          </div>
+        </div>
+
         <div id="request-drawer" class="request-drawer hidden" aria-hidden="true">
           <div class="request-drawer-backdrop" data-request-drawer-close></div>
           <aside class="request-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="request-drawer-title">
+            <div class="request-drawer-handle" aria-hidden="true"></div>
             <header class="request-drawer-header">
               <div class="request-drawer-heading">
                 <span id="request-drawer-icon" class="request-drawer-icon" aria-hidden="true"></span>
                 <div>
-                  <h3 id="request-drawer-title">â€”</h3>
-                  <div id="request-drawer-id" class="request-drawer-id">â€”</div>
+                  <h3 id="request-drawer-title">—</h3>
+                  <div id="request-drawer-sub" class="request-drawer-sub"></div>
+                  <div id="request-drawer-id" class="request-drawer-id">—</div>
                 </div>
               </div>
-              <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">Ã—</button>
+              <button type="button" class="request-drawer-close" data-request-drawer-close aria-label="Close">&times;</button>
             </header>
+            <div class="request-drawer-tabs" role="tablist" aria-label="Request detail">
+              <button type="button" class="request-drawer-tab is-active" data-request-drawer-tab="details" role="tab" aria-selected="true" data-i18n="requests.tabDetails">Details</button>
+              <button type="button" class="request-drawer-tab" data-request-drawer-tab="guest" role="tab" aria-selected="false" data-i18n="requests.tabGuest">Guest</button>
+              <button type="button" class="request-drawer-tab" data-request-drawer-tab="timeline" role="tab" aria-selected="false" data-i18n="requests.tabTimeline">Timeline</button>
+            </div>
             <div id="request-drawer-body" class="request-drawer-body"></div>
+            <div id="request-drawer-footer" class="request-drawer-footer" hidden></div>
           </aside>
         </div>
       </section>
@@ -1867,10 +1897,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260915o"></script>
+  <script src="/admin/i18n.js?v=20260915r"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260915o"></script>
+  <script src="/admin/app.js?v=20260915r"></script>
   <script src="/admin/payment-plans.js?v=20260910a"></script>
 </body>
 </html>

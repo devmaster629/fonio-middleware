@@ -443,6 +443,9 @@ function applyRoleUi() {
 
   $('#inbox-backfill-btn')?.toggleAttribute('disabled', !canConversationsManage);
   $('#inbox-backfill-btn')?.classList.toggle('hidden', !canConversationsManage);
+  $('#inbox-backfill-btn-mobile')?.toggleAttribute('disabled', !canConversationsManage);
+  $('#inbox-backfill-btn-mobile')?.classList.toggle('hidden', !canConversationsManage);
+  $('.requests-mobile-backfill-wrap')?.classList.toggle('hidden', !canConversationsManage);
 
   $$('.listing-aliases-edit').forEach((btn) => {
     btn.classList.toggle('hidden', !canListingsEdit);
@@ -5864,6 +5867,7 @@ async function loadRules() {
 
 let requestsListCache = [];
 let selectedRequestId = null;
+let requestDrawerTab = 'details';
 
 function requestPayload(r) {
   const p = r?.payload;
@@ -6013,6 +6017,138 @@ function formatRequestGuests(res) {
   return parts.join(', ') || '—';
 }
 
+function isRequestsMobile() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function requestChipIcon(kind) {
+  const icons = {
+    type: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+    property: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    date: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    delivery: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+    chevron: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    home: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    retry: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.5-6.2"/><path d="M21 3v6h-6"/></svg>',
+    more: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+  };
+  return icons[kind] || '';
+}
+
+function requestCardStatusIcon(r) {
+  const decision = requestDecisionMeta(r.status);
+  const delivery = requestDeliveryMeta(r);
+  const common = 'xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  if (delivery.kind === 'failed' || decision.cls === 'is-rejected') {
+    return { cls: 'is-failed', svg: `<svg ${common}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>` };
+  }
+  if (decision.cls === 'is-auto' || decision.cls === 'is-completed') {
+    return { cls: 'is-auto', svg: `<svg ${common}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>` };
+  }
+  if (decision.cls === 'is-forwarded' || delivery.kind === 'delivered') {
+    return { cls: 'is-forwarded', svg: `<svg ${common}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>` };
+  }
+  return { cls: 'is-pending', svg: `<svg ${common}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>` };
+}
+
+function closeRequestsFilterSheet() {
+  const sheet = $('#requests-filter-sheet');
+  if (!sheet) return;
+  sheet.classList.add('hidden');
+  sheet.hidden = true;
+  document.body.classList.remove('requests-filter-sheet-open');
+}
+
+function openRequestsFilterSheet(kind) {
+  const sheet = $('#requests-filter-sheet');
+  const body = $('#requests-filter-sheet-body');
+  const titleEl = $('#requests-filter-sheet-title');
+  if (!sheet || !body) return;
+  const titles = {
+    type: t('requests.filterType'),
+    listing: t('requests.filterProperty'),
+    delivery: t('requests.filterDelivery'),
+    date: t('requests.filterDate'),
+  };
+  if (titleEl) titleEl.textContent = titles[kind] || 'Filter';
+  const s = tableState.requests;
+
+  if (kind === 'date') {
+    body.innerHTML = `
+      <div class="requests-filter-date-sheet">
+        <label><span>${esc(t('requests.dateFrom'))}</span><input type="date" data-sheet-date="dateFrom" value="${esc(s.dateFrom || '')}" /></label>
+        <label><span>${esc(t('requests.dateTo'))}</span><input type="date" data-sheet-date="dateTo" value="${esc(s.dateTo || '')}" /></label>
+        <div class="requests-filter-date-actions">
+          <button type="button" class="btn ghost" data-sheet-clear-dates>${esc(t('requests.filterClearDates'))}</button>
+          <button type="button" class="btn primary" data-sheet-apply-dates>${esc(t('requests.filterApplyDates'))}</button>
+        </div>
+      </div>`;
+    body.querySelector('[data-sheet-clear-dates]')?.addEventListener('click', () => {
+      tableState.requests.dateFrom = '';
+      tableState.requests.dateTo = '';
+      tableState.requests.page = 1;
+      ensureRequestsToolbar();
+      closeRequestsFilterSheet();
+      renderRequestsTable();
+    });
+    body.querySelector('[data-sheet-apply-dates]')?.addEventListener('click', () => {
+      tableState.requests.dateFrom = body.querySelector('[data-sheet-date="dateFrom"]')?.value || '';
+      tableState.requests.dateTo = body.querySelector('[data-sheet-date="dateTo"]')?.value || '';
+      tableState.requests.page = 1;
+      ensureRequestsToolbar();
+      closeRequestsFilterSheet();
+      renderRequestsTable();
+    });
+  } else {
+    const selId =
+      kind === 'type' ? '#requests-filter-type' : kind === 'listing' ? '#requests-filter-listing' : '#requests-filter-delivery';
+    const sel = $(selId);
+    if (!sel) return;
+    const current = String(sel.value || '');
+    body.innerHTML = `<div class="requests-filter-sheet-options">${[...sel.options]
+      .map((opt) => {
+        const value = String(opt.value ?? '');
+        const label = String(opt.textContent || '').trim() || value;
+        return `<button type="button" class="requests-filter-sheet-option${value === current ? ' is-selected' : ''}" data-value="${esc(value)}">${esc(label)}</button>`;
+      })
+      .join('')}</div>`;
+    body.querySelectorAll('[data-value]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sel.value = btn.getAttribute('data-value') ?? 'all';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        closeRequestsFilterSheet();
+      });
+    });
+  }
+
+  sheet.classList.remove('hidden');
+  sheet.hidden = false;
+  document.body.classList.add('requests-filter-sheet-open');
+}
+
+function syncRequestsFilterChips() {
+  const s = tableState.requests;
+  const setChip = (key, active, text) => {
+    const chip = $(`[data-requests-chip="${key}"]`);
+    if (!chip) return;
+    chip.classList.toggle('is-active', !!active);
+    const textEl = chip.querySelector('.requests-filter-chip-text');
+    if (textEl && text) textEl.textContent = text;
+  };
+  const typeSel = $('#requests-filter-type');
+  setChip('type', s.type !== 'all', typeSel?.selectedOptions?.[0]?.textContent?.trim() || t('requests.filterType'));
+  const listingSel = $('#requests-filter-listing');
+  setChip('listing', s.listingId !== 'all', listingSel?.selectedOptions?.[0]?.textContent?.trim() || t('requests.filterProperty'));
+  const deliverySel = $('#requests-filter-delivery');
+  setChip('delivery', s.delivery !== 'all', deliverySel?.selectedOptions?.[0]?.textContent?.trim() || t('requests.filterDelivery'));
+  let dateText = t('requests.filterDate');
+  const dateActive = !!(s.dateFrom || s.dateTo);
+  if (s.dateFrom && s.dateTo) dateText = `${s.dateFrom} → ${s.dateTo}`;
+  else if (s.dateFrom) dateText = s.dateFrom;
+  else if (s.dateTo) dateText = s.dateTo;
+  setChip('date', dateActive, dateText);
+}
+
 function ensureRequestsToolbar() {
   const el = $('#requests-toolbar');
   if (!el) return;
@@ -6030,52 +6166,66 @@ function ensureRequestsToolbar() {
 
   el.innerHTML = `
     <div class="requests-toolbar-row">
-      <div class="requests-search">
-        <svg class="requests-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="search" id="requests-search" value="${esc(s.search)}" placeholder="${esc(t('requests.searchPlaceholder'))}" autocomplete="off" aria-label="${esc(t('requests.searchPlaceholder'))}" />
+      <label class="requests-search-field">
+        <span>${esc(t('table.search'))}</span>
+        <span class="requests-search">
+          <svg class="requests-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="requests-search" value="${esc(s.search)}" placeholder="${esc(t('requests.searchPlaceholder'))}" autocomplete="off" aria-label="${esc(t('requests.searchPlaceholder'))}" />
+        </span>
+      </label>
+      <div class="requests-filters-desktop">
+        <label>
+          <span>${esc(t('requests.dateFrom'))}</span>
+          <span class="requests-date-field">
+            <input type="date" id="requests-date-from" value="${esc(s.dateFrom || '')}" />
+            <button type="button" class="requests-date-picker-btn" data-requests-date-picker="from" aria-label="${esc(t('reservations.openDatePicker'))}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+          </span>
+        </label>
+        <label>
+          <span>${esc(t('requests.dateTo'))}</span>
+          <span class="requests-date-field">
+            <input type="date" id="requests-date-to" value="${esc(s.dateTo || '')}" />
+            <button type="button" class="requests-date-picker-btn" data-requests-date-picker="to" aria-label="${esc(t('reservations.openDatePicker'))}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+          </span>
+        </label>
+        <label>
+          <span>${esc(t('requests.filterType'))}</span>
+          <select id="requests-filter-type">
+            <option value="all">${esc(t('requests.filterAll'))}</option>
+            ${types.map((type) => `<option value="${esc(type)}"${s.type === type ? ' selected' : ''}>${esc(t(`requestType.${type}`) || type)}</option>`).join('')}
+          </select>
+        </label>
+        <label>
+          <span>${esc(t('requests.filterProperty'))}</span>
+          <select id="requests-filter-listing">
+            <option value="all">${esc(t('requests.filterAll'))}</option>
+            ${listings.map((l) => `<option value="${esc(l.id)}"${s.listingId === l.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
+          </select>
+        </label>
+        <label>
+          <span>${esc(t('requests.filterDelivery'))}</span>
+          <select id="requests-filter-delivery">
+            <option value="all">${esc(t('requests.filterAll'))}</option>
+            <option value="delivered"${s.delivery === 'delivered' ? ' selected' : ''}>${esc(t('requests.delivery.forwarded'))}</option>
+            <option value="pending"${s.delivery === 'pending' ? ' selected' : ''}>${esc(t('requests.delivery.pending'))}</option>
+            <option value="failed"${s.delivery === 'failed' ? ' selected' : ''}>${esc(t('requests.delivery.failed'))}</option>
+          </select>
+        </label>
+        <label class="requests-clear-field">
+          <span>&nbsp;</span>
+          <button type="button" class="btn ghost btn-sm requests-clear-filters" id="requests-clear-filters">${esc(t('requests.clearFilters'))}</button>
+        </label>
       </div>
-      <label>
-        <span>${esc(t('requests.dateFrom'))}</span>
-        <span class="requests-date-field">
-          <input type="date" id="requests-date-from" value="${esc(s.dateFrom || '')}" />
-          <button type="button" class="requests-date-picker-btn" data-requests-date-picker="from" aria-label="${esc(t('reservations.openDatePicker'))}">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          </button>
-        </span>
-      </label>
-      <label>
-        <span>${esc(t('requests.dateTo'))}</span>
-        <span class="requests-date-field">
-          <input type="date" id="requests-date-to" value="${esc(s.dateTo || '')}" />
-          <button type="button" class="requests-date-picker-btn" data-requests-date-picker="to" aria-label="${esc(t('reservations.openDatePicker'))}">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          </button>
-        </span>
-      </label>
-      <label>
-        <span>${esc(t('requests.filterType'))}</span>
-        <select id="requests-filter-type">
-          <option value="all">${esc(t('requests.filterAll'))}</option>
-          ${types.map((type) => `<option value="${esc(type)}"${s.type === type ? ' selected' : ''}>${esc(t(`requestType.${type}`) || type)}</option>`).join('')}
-        </select>
-      </label>
-      <label>
-        <span>${esc(t('requests.filterProperty'))}</span>
-        <select id="requests-filter-listing">
-          <option value="all">${esc(t('requests.filterAll'))}</option>
-          ${listings.map((l) => `<option value="${esc(l.id)}"${s.listingId === l.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
-        </select>
-      </label>
-      <label>
-        <span>${esc(t('requests.filterDelivery'))}</span>
-        <select id="requests-filter-delivery">
-          <option value="all">${esc(t('requests.filterAll'))}</option>
-          <option value="delivered"${s.delivery === 'delivered' ? ' selected' : ''}>${esc(t('requests.delivery.forwarded'))}</option>
-          <option value="pending"${s.delivery === 'pending' ? ' selected' : ''}>${esc(t('requests.delivery.pending'))}</option>
-          <option value="failed"${s.delivery === 'failed' ? ' selected' : ''}>${esc(t('requests.delivery.failed'))}</option>
-        </select>
-      </label>
-      <button type="button" class="btn ghost btn-sm requests-clear-filters" id="requests-clear-filters">${esc(t('requests.clearFilters'))}</button>
+      <div class="requests-mobile-chips" aria-label="Filters">
+        <button type="button" class="requests-filter-chip" data-requests-chip="type">${requestChipIcon('type')}<span class="requests-filter-chip-text">${esc(t('requests.filterType'))}</span>${requestChipIcon('chevron')}</button>
+        <button type="button" class="requests-filter-chip" data-requests-chip="listing">${requestChipIcon('property')}<span class="requests-filter-chip-text">${esc(t('requests.filterProperty'))}</span>${requestChipIcon('chevron')}</button>
+        <button type="button" class="requests-filter-chip" data-requests-chip="date">${requestChipIcon('date')}<span class="requests-filter-chip-text">${esc(t('requests.filterDate'))}</span>${requestChipIcon('chevron')}</button>
+        <button type="button" class="requests-filter-chip" data-requests-chip="delivery">${requestChipIcon('delivery')}<span class="requests-filter-chip-text">${esc(t('requests.filterDelivery'))}</span>${requestChipIcon('chevron')}</button>
+      </div>
     </div>
   `;
 
@@ -6111,26 +6261,31 @@ function ensureRequestsToolbar() {
   $('#requests-date-from')?.addEventListener('change', (e) => {
     tableState.requests.dateFrom = e.target.value;
     tableState.requests.page = 1;
+    syncRequestsFilterChips();
     renderRequestsTable();
   });
   $('#requests-date-to')?.addEventListener('change', (e) => {
     tableState.requests.dateTo = e.target.value;
     tableState.requests.page = 1;
+    syncRequestsFilterChips();
     renderRequestsTable();
   });
   $('#requests-filter-type')?.addEventListener('change', (e) => {
     tableState.requests.type = e.target.value;
     tableState.requests.page = 1;
+    syncRequestsFilterChips();
     renderRequestsTable();
   });
   $('#requests-filter-listing')?.addEventListener('change', (e) => {
     tableState.requests.listingId = e.target.value;
     tableState.requests.page = 1;
+    syncRequestsFilterChips();
     renderRequestsTable();
   });
   $('#requests-filter-delivery')?.addEventListener('change', (e) => {
     tableState.requests.delivery = e.target.value;
     tableState.requests.page = 1;
+    syncRequestsFilterChips();
     renderRequestsTable();
   });
   $('#requests-clear-filters')?.addEventListener('click', () => {
@@ -6144,6 +6299,10 @@ function ensureRequestsToolbar() {
     ensureRequestsToolbar();
     renderRequestsTable();
   });
+  $$('[data-requests-chip]').forEach((btn) => {
+    btn.addEventListener('click', () => openRequestsFilterSheet(btn.getAttribute('data-requests-chip')));
+  });
+  syncRequestsFilterChips();
 }
 
 function filterRequestsList(list) {
@@ -6228,7 +6387,10 @@ function renderRequestsStats(list) {
       </span>
       <div>
         <div class="requests-stat-value">${formatCount(attention)}</div>
-        <div class="requests-stat-label">${esc(t('requests.statAttention'))}</div>
+        <div class="requests-stat-label">
+          <span class="requests-stat-label-full">${esc(t('requests.statAttention'))}</span>
+          <span class="requests-stat-label-short">${esc(t('requests.statAttentionShort'))}</span>
+        </div>
         <div class="requests-stat-hint">${esc(t('requests.statOfTotal', { pct: pct(attention) }))}</div>
       </div>
     </article>
@@ -6252,13 +6414,13 @@ function renderRequestsStats(list) {
 }
 
 function bindRequestRowActions() {
-  $$('#requests-table [data-open-request]').forEach((row) => {
-    row.addEventListener('click', (e) => {
+  $$('#requests-table [data-open-request], #requests-mobile-list [data-open-request]').forEach((el) => {
+    el.addEventListener('click', (e) => {
       if (e.target.closest('button, a')) return;
-      openRequestDrawer(row.dataset.openRequest);
+      openRequestDrawer(el.dataset.openRequest);
     });
   });
-  $$('#requests-table .retry-forward-btn').forEach((btn) => {
+  $$('#requests-table .retry-forward-btn, #requests-mobile-list .retry-forward-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!hasPermission('REQUESTS_MANAGE')) return;
@@ -6272,12 +6434,63 @@ function bindRequestRowActions() {
       }
     });
   });
-  $$('#requests-table [data-request-more]').forEach((btn) => {
+  $$('#requests-table [data-request-more], #requests-mobile-list [data-request-more]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openRequestDrawer(btn.dataset.requestMore);
     });
   });
+}
+
+function renderRequestsMobile(items) {
+  const root = $('#requests-mobile-list');
+  if (!root) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    root.innerHTML = `<div class="requests-m-empty">${esc(t('requests.none'))}</div>`;
+    return;
+  }
+  root.innerHTML = list
+    .map((r) => {
+      const decision = requestDecisionMeta(r.status);
+      const delivery = requestDeliveryMeta(r);
+      const statusIcon = requestCardStatusIcon(r);
+      const typeLabel = t(`requestType.${r.requestType}`) || r.requestType;
+      const listing = r.reservation?.listing;
+      const listingName = listing?.name || '—';
+      const listingId = listing?.hostawayId != null ? String(listing.hostawayId) : '';
+      const payload = requestPayload(r);
+      const ruleText = payload.ruleReason || payload.ruleId || decision.label;
+      const canRetry = requestNeedsDelivery(r) && hasPermission('REQUESTS_MANAGE');
+      const badgeCls = delivery.kind === 'failed' ? 'is-failed' : decision.cls;
+      const badgeLabel = delivery.kind === 'failed' ? delivery.label : decision.label;
+      return `
+      <article class="requests-m-card${selectedRequestId === r.id ? ' is-selected' : ''}" data-open-request="${esc(r.id)}">
+        <div class="requests-m-card-main">
+          <span class="requests-m-status-icon ${statusIcon.cls}" aria-hidden="true">${statusIcon.svg}</span>
+          <div class="requests-m-card-body">
+            <div class="requests-m-card-top">
+              <div class="requests-m-card-heading">
+                <div class="requests-m-time">${esc(formatPaymentImportTime(r.createdAt))}</div>
+                <div class="requests-m-title">${esc(typeLabel)}</div>
+                <div class="requests-m-guest">${esc(requestGuestLabel(r))} · ${esc(requestReservationCode(r))}</div>
+              </div>
+              <div class="requests-m-card-aside">
+                <button type="button" class="requests-m-more" data-request-more="${esc(r.id)}" aria-label="${esc(t('requests.openDetails'))}">${requestChipIcon('more')}</button>
+                <span class="requests-decision-badge ${badgeCls}">${esc(badgeLabel)}</span>
+              </div>
+            </div>
+            <div class="requests-m-property">${requestChipIcon('home')}<span>${esc(listingName)}${listingId ? ` · ${esc(listingId)}` : ''}</span></div>
+            <div class="requests-m-meta">
+              <span>${esc(t('requests.ruleLabel', { rule: ruleText }))}</span>
+              <span>${esc(t('requests.hostawayLabel', { status: delivery.label }))}</span>
+            </div>
+            ${canRetry ? `<div class="requests-m-actions"><button type="button" class="btn btn-sm requests-m-retry retry-forward-btn" data-request-id="${esc(r.id)}">${requestChipIcon('retry')}<span>${esc(t('requests.retry'))}</span></button></div>` : ''}
+          </div>
+        </div>
+      </article>`;
+    })
+    .join('');
 }
 
 function renderRequestsTable() {
@@ -6345,6 +6558,7 @@ function renderRequestsTable() {
       <tbody>${rows || `<tr><td colspan="7" class="requests-empty">${esc(t('requests.none'))}</td></tr>`}</tbody>
     </table>`;
 
+  renderRequestsMobile(pageData.items);
   renderTableInfo('#requests-info', pageData, pageData.maxTotal);
   renderPagination('#requests-pagination', pageData, 'requests', () => renderRequestsTable());
   syncRequestsPageSizeSelect();
@@ -6388,7 +6602,8 @@ function openRequestDrawer(id) {
   const drawer = $('#request-drawer');
   if (!r || !drawer) return;
   selectedRequestId = id;
-  $$('#requests-table .requests-row').forEach((row) => {
+  requestDrawerTab = 'details';
+  $$('#requests-table .requests-row, #requests-mobile-list .requests-m-card').forEach((row) => {
     row.classList.toggle('is-selected', row.dataset.openRequest === id);
   });
 
@@ -6398,17 +6613,35 @@ function openRequestDrawer(id) {
   const decision = requestDecisionMeta(r.status);
   const delivery = requestDeliveryMeta(r);
   const res = r.reservation;
+  const listing = res?.listing;
   const canPii = hasPermission('RESERVATIONS_VIEW_PII') || adminRole === 'SUPER_ADMIN';
   const email = canPii ? (res?.guestEmail || '—') : (res?.guestEmail ? '••••' : '—');
   const phone = canPii ? (res?.guestPhone || '—') : (res?.guestPhone ? '••••' : '—');
   const note = details.note ? String(details.note) : '';
   const proposed = formatRequestDetailsSummary(details);
   const canRetry = requestNeedsDelivery(r) && hasPermission('REQUESTS_MANAGE');
+  const originalDates = formatRequestStay(res);
+  const requestedDates =
+    details.requestedDates ||
+    details.newDates ||
+    details.checkIn ||
+    details.checkOut ||
+    proposed ||
+    '—';
 
   $('#request-drawer-title').textContent = t('requests.drawerTitle', { type: typeLabel });
+  const subParts = [requestReservationCode(r), listing?.name].filter(Boolean);
+  const subEl = $('#request-drawer-sub');
+  if (subEl) subEl.textContent = subParts.join(' · ');
   $('#request-drawer-id').textContent = `REQ-${r.id.slice(0, 8).toUpperCase()}`;
   $('#request-drawer-icon').className = `request-drawer-icon tone-${requestTypeTone(r.requestType)}`;
   $('#request-drawer-icon').innerHTML = requestTypeIconSvg(r.requestType);
+
+  $$('[data-request-drawer-tab]').forEach((btn) => {
+    const active = btn.dataset.requestDrawerTab === requestDrawerTab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
 
   const timeline = [];
   timeline.push({
@@ -6420,7 +6653,11 @@ function openRequestDrawer(id) {
     done: r.status !== 'PENDING',
     title: t('requests.timeline.evaluated', { decision: decision.label }),
     at: r.createdAt,
-    meta: payload.ruleReason ? `${t('requests.timeline.rule')}: ${payload.ruleReason}` : (payload.ruleId ? `${t('requests.timeline.rule')}: ${payload.ruleId}` : ''),
+    meta: payload.ruleReason
+      ? `${t('requests.timeline.rule')}: ${payload.ruleReason}`
+      : payload.ruleId
+        ? `${t('requests.timeline.rule')}: ${payload.ruleId}`
+        : '',
   });
   if (r.status === 'FORWARDED' || r.forwardedToHostaway) {
     timeline.push({
@@ -6431,61 +6668,85 @@ function openRequestDrawer(id) {
     });
   }
 
-  const deliveryBlock = delivery.kind === 'na'
-    ? ''
-    : `
-    <section class="request-drawer-section">
+  const deliveryBlock =
+    delivery.kind === 'na'
+      ? ''
+      : `
+    <section class="request-drawer-section request-panel" data-request-panel="details">
       <h4>${esc(t('requests.hostawayDelivery'))}</h4>
       <div class="request-delivery-card ${delivery.cls}">
         <div class="request-delivery-card-top">
           <span class="requests-delivery ${delivery.cls}">${delivery.icon || ''}${esc(delivery.label)}</span>
           <span class="request-delivery-time">${esc(formatDashboardDateTime(r.updatedAt || r.createdAt))}</span>
         </div>
-        ${delivery.kind === 'failed' ? `<p class="request-delivery-error">${esc(t('requests.deliveryErrorDefault'))}</p>
-        <p class="request-delivery-attempt">${esc(t('requests.lastAttempt'))}: ${esc(formatDashboardDateTime(r.updatedAt || r.createdAt))}</p>` : ''}
-        ${delivery.kind === 'delivered' && r.hostawayMessageId != null ? `<p class="muted">${esc(t('requests.messageId'))}: ${esc(String(r.hostawayMessageId))}</p>` : ''}
+        ${
+          delivery.kind === 'failed'
+            ? `<p class="request-delivery-error">${esc(t('requests.deliveryErrorDefault'))}</p>
+        <p class="request-delivery-attempt">${esc(t('requests.lastAttempt'))}: ${esc(formatDashboardDateTime(r.updatedAt || r.createdAt))}</p>`
+            : ''
+        }
+        ${
+          delivery.kind === 'delivered' && r.hostawayMessageId != null
+            ? `<p class="muted">${esc(t('requests.messageId'))}: ${esc(String(r.hostawayMessageId))}</p>`
+            : ''
+        }
       </div>
     </section>`;
 
-  const retryBlock = canRetry
-    ? `
-    <section class="request-drawer-section request-drawer-retry">
-      <p class="muted">${esc(t('requests.retryHint'))}</p>
-      <button type="button" class="btn requests-retry-delivery-btn retry-forward-btn" data-request-id="${esc(r.id)}">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-        ${esc(t('requests.retryDelivery'))}
-      </button>
-    </section>`
-    : '';
+  const footer = $('#request-drawer-footer');
+  if (footer) {
+    if (canRetry) {
+      footer.hidden = false;
+      footer.innerHTML = `
+        <button type="button" class="btn primary requests-retry-delivery-btn retry-forward-btn" data-request-id="${esc(r.id)}">
+          ${requestChipIcon('retry')}
+          ${esc(t('requests.retryDelivery'))}
+        </button>`;
+    } else {
+      footer.hidden = true;
+      footer.innerHTML = '';
+    }
+  }
 
   $('#request-drawer-body').innerHTML = `
-    <section class="request-drawer-section">
+    <section class="request-drawer-section request-panel is-active" data-request-panel="details">
       <h4>${esc(t('requests.summary'))}</h4>
-      <dl class="request-kv">
+      <div class="request-m-detail-list">
+        <div class="request-m-detail-line"><span class="request-m-detail-ico tone-${requestTypeTone(r.requestType)}" aria-hidden="true">${requestTypeIconSvg(r.requestType)}</span><div><div class="muted">${esc(t('requests.typeLabel'))}</div><strong>${esc(typeLabel)}</strong></div></div>
+        <div class="request-m-detail-line"><span class="request-m-detail-ico" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><div><div class="muted">${esc(t('requests.messageLabel'))}</div><strong>“${esc(note || t('requests.noGuestMessage'))}”</strong></div></div>
+        <div class="request-m-detail-line"><span class="request-m-detail-ico" aria-hidden="true">${requestChipIcon('date')}</span><div><div class="muted">${esc(t('requests.originalDates'))}</div><strong>${esc(originalDates)}</strong></div></div>
+        <div class="request-m-detail-line"><span class="request-m-detail-ico" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span><div><div class="muted">${esc(t('requests.requestedDates'))}</div><strong>${esc(String(requestedDates))}</strong></div></div>
+      </div>
+      <dl class="request-kv request-desktop-kv">
         <div><dt>${esc(t('requests.requestedOn'))}</dt><dd>${esc(formatDashboardDateTime(r.createdAt))}</dd></div>
         <div><dt>${esc(t('requests.guestMessage'))}</dt><dd>${esc(note || t('requests.noGuestMessage'))}</dd></div>
         <div><dt>${esc(t('requests.proposedChange'))}</dt><dd>${esc(proposed || '—')}</dd></div>
       </dl>
     </section>
-    <section class="request-drawer-section">
+    ${deliveryBlock}
+    <section class="request-drawer-section request-panel" data-request-panel="guest">
       <h4>${esc(t('requests.verifiedGuest'))}</h4>
       <dl class="request-kv">
         <div><dt>${esc(t('requests.guestName'))}</dt><dd>${esc(requestGuestLabel(r))}</dd></div>
         <div><dt>${esc(t('requests.email'))}</dt><dd>${esc(email)}</dd></div>
         <div><dt>${esc(t('requests.phone'))}</dt><dd>${esc(phone)}</dd></div>
         <div><dt>${esc(t('requests.reservation'))}</dt><dd>
-          ${res?.hostawayId != null
-            ? `<button type="button" class="link-btn" data-open-reservation="${esc(String(res.hostawayId))}">${esc(requestReservationCode(r))} ↗</button>`
-            : '—'}
+          ${
+            res?.hostawayId != null
+              ? `<button type="button" class="link-btn" data-open-reservation="${esc(String(res.hostawayId))}">${esc(requestReservationCode(r))} ↗</button>`
+              : '—'
+          }
         </dd></div>
         <div><dt>${esc(t('requests.stay'))}</dt><dd>${esc(formatRequestStay(res))}</dd></div>
         <div><dt>${esc(t('requests.guests'))}</dt><dd>${esc(formatRequestGuests(res))}</dd></div>
       </dl>
     </section>
-    <section class="request-drawer-section">
+    <section class="request-drawer-section request-panel" data-request-panel="timeline">
       <h4>${esc(t('requests.decisionTimeline'))}</h4>
       <ol class="request-timeline">
-        ${timeline.map((item) => `
+        ${timeline
+          .map(
+            (item) => `
           <li class="${item.done ? 'is-done' : 'is-todo'}">
             <div class="request-timeline-dot" aria-hidden="true"></div>
             <div>
@@ -6493,34 +6754,61 @@ function openRequestDrawer(id) {
               <div class="request-timeline-at">${esc(formatDashboardDateTime(item.at))}</div>
               ${item.meta ? `<div class="request-timeline-meta">${esc(item.meta)}</div>` : ''}
             </div>
-          </li>`).join('')}
+          </li>`,
+          )
+          .join('')}
       </ol>
     </section>
-    ${deliveryBlock}
-    ${retryBlock}
+    ${
+      canRetry
+        ? `<section class="request-drawer-section request-drawer-retry request-desktop-retry">
+      <p class="muted">${esc(t('requests.retryHint'))}</p>
+      <button type="button" class="btn requests-retry-delivery-btn retry-forward-btn" data-request-id="${esc(r.id)}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        ${esc(t('requests.retryDelivery'))}
+      </button>
+    </section>`
+        : ''
+    }
   `;
 
+  syncRequestDrawerPanels();
   drawer.classList.remove('hidden');
   drawer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('request-drawer-open');
 
-  $('#request-drawer-body .retry-forward-btn')?.addEventListener('click', async () => {
-    if (!hasPermission('REQUESTS_MANAGE')) return;
-    try {
-      const result = await api(`/guest-requests/${r.id}/retry-forward`, { method: 'POST' });
-      if (result.forwarded) notify.success(t('requests.retryOk'));
-      else notify.error(t('requests.retryFail', { message: result.error || result.message || 'unknown' }));
-      await loadRequests();
-      if (selectedRequestId) openRequestDrawer(selectedRequestId);
-    } catch (ex) {
-      notify.error(t('requests.retryFail', { message: ex.message }));
-    }
-  });
+  const bindRetry = (btn) => {
+    btn?.addEventListener('click', async () => {
+      if (!hasPermission('REQUESTS_MANAGE')) return;
+      try {
+        const result = await api(`/guest-requests/${r.id}/retry-forward`, { method: 'POST' });
+        if (result.forwarded) notify.success(t('requests.retryOk'));
+        else notify.error(t('requests.retryFail', { message: result.error || result.message || 'unknown' }));
+        await loadRequests();
+        if (selectedRequestId) openRequestDrawer(selectedRequestId);
+      } catch (ex) {
+        notify.error(t('requests.retryFail', { message: ex.message }));
+      }
+    });
+  };
+  $$('#request-drawer .retry-forward-btn').forEach(bindRetry);
   $('#request-drawer-body [data-open-reservation]')?.addEventListener('click', (e) => {
     const hostawayId = Number(e.currentTarget.dataset.openReservation);
     if (Number.isFinite(hostawayId) && typeof openReservationDrawer === 'function') {
       openReservationDrawer(hostawayId);
     }
+  });
+}
+
+function syncRequestDrawerPanels() {
+  $$('[data-request-drawer-tab]').forEach((btn) => {
+    const active = btn.dataset.requestDrawerTab === requestDrawerTab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  $$('#request-drawer-body [data-request-panel]').forEach((panel) => {
+    const match = panel.dataset.requestPanel === requestDrawerTab;
+    panel.classList.toggle('is-active', match);
   });
 }
 
@@ -6531,7 +6819,14 @@ function closeRequestDrawer() {
   drawer.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('request-drawer-open');
   selectedRequestId = null;
-  $$('#requests-table .requests-row').forEach((row) => row.classList.remove('is-selected'));
+  $$('#requests-table .requests-row, #requests-mobile-list .requests-m-card').forEach((row) =>
+    row.classList.remove('is-selected'),
+  );
+  const footer = $('#request-drawer-footer');
+  if (footer) {
+    footer.hidden = true;
+    footer.innerHTML = '';
+  }
 }
 
 async function loadRequests() {
@@ -6556,11 +6851,22 @@ $$('.requests-tab').forEach((btn) => {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-request-drawer-close]')) closeRequestDrawer();
+  if (e.target.closest('[data-requests-filter-close]')) closeRequestsFilterSheet();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('#request-drawer')?.classList.contains('hidden')) {
     closeRequestDrawer();
   }
+  if (e.key === 'Escape' && !$('#requests-filter-sheet')?.classList.contains('hidden')) {
+    closeRequestsFilterSheet();
+  }
+});
+
+$$('[data-request-drawer-tab]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    requestDrawerTab = btn.dataset.requestDrawerTab || 'details';
+    syncRequestDrawerPanels();
+  });
 });
 
 function paymentStatusBadge(status) {
@@ -9925,10 +10231,12 @@ async function loadPaymentsHistory() {
   }
 }
 
-$('#inbox-backfill-btn')?.addEventListener('click', async () => {
+async function runInboxBackfill(triggerBtn) {
   if (!hasPermission('CONVERSATIONS_MANAGE')) return;
-  const btn = $('#inbox-backfill-btn');
-  btn.disabled = true;
+  const buttons = [$('#inbox-backfill-btn'), $('#inbox-backfill-btn-mobile')].filter(Boolean);
+  buttons.forEach((btn) => {
+    btn.disabled = true;
+  });
   try {
     const result = await api('/sync/conversations-backfill', { method: 'POST' });
     notify.success(t('requests.backfillDone', {
@@ -9940,9 +10248,16 @@ $('#inbox-backfill-btn')?.addEventListener('click', async () => {
   } catch (ex) {
     notify.error(ex.message);
   } finally {
-    btn.disabled = !hasPermission('CONVERSATIONS_MANAGE');
+    const can = hasPermission('CONVERSATIONS_MANAGE');
+    buttons.forEach((btn) => {
+      btn.disabled = !can;
+    });
+    if (triggerBtn) triggerBtn.blur?.();
   }
-});
+}
+
+$('#inbox-backfill-btn')?.addEventListener('click', () => runInboxBackfill($('#inbox-backfill-btn')));
+$('#inbox-backfill-btn-mobile')?.addEventListener('click', () => runInboxBackfill($('#inbox-backfill-btn-mobile')));
 
 function truncateText(text, max = 100) {
   const s = String(text ?? '');
