@@ -1858,8 +1858,17 @@ body.modal-open {
   justify-content: flex-end;
 }
 
+.table-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+
 .paginate {
   display: inline-flex;
+  flex-wrap: nowrap;
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
@@ -1872,7 +1881,7 @@ body.modal-open {
   border: none;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  color: var(--accent);
+  color: var(--text);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -1882,11 +1891,11 @@ body.modal-open {
 }
 
 .paginate .page-btn:hover:not(:disabled):not(.active) {
-  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  background: var(--surface2, rgba(255, 255, 255, 0.05));
 }
 
 .paginate .page-btn.active {
-  background: var(--accent);
+  background: rgba(59, 130, 246, 0.22);
   color: #fff;
   font-weight: 600;
 }
@@ -1900,6 +1909,62 @@ body.modal-open {
 .paginate .page-btn.ellipsis {
   cursor: default;
   color: var(--muted);
+}
+
+.table-page-size {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.table-page-size select {
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  margin: 0;
+  width: auto;
+  min-width: 6.75rem;
+  height: 2.25rem;
+  padding: 0 1.85rem 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 0.75rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.table-page-size select:hover {
+  background-color: var(--surface2, #243044);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.table-page-size select:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.table-pager.is-compact .paginate .page-btn {
+  min-width: 1.7rem;
+  height: 1.75rem;
+  padding: 0 0.3rem;
+  font-size: 0.75rem;
+}
+
+.table-pager.is-compact .table-page-size select {
+  min-width: 5.5rem;
+  height: 1.75rem;
+  padding: 0 1.45rem 0 0.45rem;
+  font-size: 0.75rem;
+  background-position: right 0.4rem center;
+  background-size: 0.65rem;
 }
 
 .pagination .page-info {
@@ -3204,11 +3269,9 @@ body.modal-open {
 
 .conversations-list-filters select,
 .conversations-list-meta select,
-.conversations-page-size select,
 #conversations-channel,
 #conversations-status,
-#conversations-sort,
-#conversations-page-size {
+#conversations-sort {
   color-scheme: dark;
   margin: 0;
   background: #0f172a;
@@ -3224,11 +3287,9 @@ body.modal-open {
 
 .conversations-list-filters select option,
 .conversations-list-meta select option,
-.conversations-page-size select option,
 #conversations-channel option,
 #conversations-status option,
-#conversations-sort option,
-#conversations-page-size option {
+#conversations-sort option {
   background-color: #0f172a;
   color: #e2e8f0;
 }
@@ -3330,49 +3391,8 @@ body.modal-open {
   overflow: hidden;
 }
 
-.conversations-list-footer .paginate {
-  display: inline-flex;
-  flex-wrap: nowrap !important;
-  justify-content: flex-start;
-  border-radius: 6px;
-  overflow: hidden;
+.conversations-list-footer .table-pager {
   max-width: 100%;
-  white-space: nowrap;
-}
-
-.conversations-list-footer .paginate .page-btn {
-  min-width: 1.7rem;
-  width: auto;
-  height: 1.75rem;
-  font-size: 0.75rem;
-  padding: 0 0.3rem;
-  flex: 0 0 auto;
-}
-
-.conversations-page-size {
-  flex: 0 0 auto;
-}
-
-.conversations-page-size select,
-#conversations-page-size {
-  appearance: none;
-  -webkit-appearance: none;
-  margin-bottom: 0;
-  min-width: 5.5rem;
-  width: auto;
-  height: 1.75rem;
-  padding: 0 1.45rem 0 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--surface);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%3b82f6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.4rem center;
-  background-size: 0.65rem;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
 }
 
 .conversations-list-item {
@@ -7247,24 +7267,6 @@ a.payment-suggestion-id:hover {
   margin-left: auto;
 }
 
-.payments-queue-foot-right .table-page-size {
-  margin: 0;
-}
-
-.payments-queue-foot-right .table-page-size select,
-#payments-page-size,
-#payments-history-page-size {
-  min-width: 4.5rem;
-  width: auto;
-  height: 2.2rem;
-  margin: 0;
-  padding: 0.3rem 0.55rem;
-  border-radius: 8px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-}
-
 /* Payment History board */
 .payments-history-board-top {
   align-items: stretch;
@@ -9416,15 +9418,6 @@ a.payment-suggestion-id:hover {
   min-width: 0;
 }
 
-.webhooks-footer-right .table-page-size {
-  flex: 0 0 auto;
-}
-
-.webhooks-footer-right .table-page-size select {
-  height: 2.2rem;
-  min-width: 6.5rem;
-}
-
 @media (max-width: 1023px) {
   #tab-dashboard .dashboard-header {
     display: flex;
@@ -9610,10 +9603,6 @@ a.payment-suggestion-id:hover {
 
   .webhooks-footer-right .paginate {
     flex-wrap: nowrap;
-  }
-
-  .webhooks-footer-right .table-page-size select {
-    min-width: 5.75rem;
   }
 
   .dashboard-mid-grid,
@@ -9858,14 +9847,6 @@ a.payment-suggestion-id:hover {
   justify-content: center;
   color: var(--muted);
   background: linear-gradient(145deg, #1a2330, #121820);
-}
-
-.listings-page-size {
-  margin-left: 0.15rem;
-}
-
-.listings-page-size select {
-  min-width: 4.5rem;
 }
 
 .listings-mobile-list {
@@ -10198,19 +10179,6 @@ a.payment-suggestion-id:hover {
   justify-content: flex-end;
   gap: 0.55rem 0.65rem;
   margin-left: auto;
-}
-
-.listings-footer-right .table-page-size select,
-#listings-page-size {
-  min-width: 6.5rem;
-  margin: 0;
-  font-size: 0.82rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.35rem 0.55rem;
-  color-scheme: dark;
 }
 
 @media (max-width: 1023px) {
@@ -10607,13 +10575,6 @@ a.payment-suggestion-id:hover {
     color: var(--muted);
   }
 
-  #tab-listings .listings-page-size select,
-  #tab-listings #listings-page-size {
-    height: 2.15rem;
-    border-radius: 999px;
-    background: var(--surface);
-  }
-
   /* Aliases editor as bottom sheet on mobile */
   #listing-aliases-modal.modal-overlay {
     align-items: flex-end;
@@ -10880,8 +10841,6 @@ a.payment-suggestion-id:hover {
   border: 1px solid var(--border);
 }
 
-.groups-page-size select { min-width: 4.5rem; }
-
 .groups-table-wrap {
   margin: 0;
   border: none;
@@ -11128,19 +11087,6 @@ a.payment-suggestion-id:hover {
   justify-content: flex-end;
   gap: 0.55rem 0.65rem;
   margin-left: auto;
-}
-
-.groups-footer-right .table-page-size select,
-#groups-page-size {
-  min-width: 6.5rem;
-  margin: 0;
-  font-size: 0.82rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.35rem 0.55rem;
-  color-scheme: dark;
 }
 
 @media (max-width: 1100px) {
@@ -12261,13 +12207,6 @@ a.payment-suggestion-id:hover {
   margin-left: auto;
 }
 
-.table-page-size {
-  display: inline-flex;
-  align-items: center;
-  margin: 0;
-  white-space: nowrap;
-}
-
 .reservations-stat-card.is-clickable {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -12307,13 +12246,12 @@ a.payment-suggestion-id:hover {
   cursor: pointer;
 }
 
-.table-page-size select,
-#reservations-page-size,
-#rules-page-size {
+/* Shared pager select look — do not restyle per page */
+.table-pager .table-page-size select {
   appearance: none;
   -webkit-appearance: none;
   color-scheme: dark;
-  margin-bottom: 0;
+  margin: 0;
   width: auto;
   min-width: 6.75rem;
   height: 2.25rem;
@@ -12331,33 +12269,13 @@ a.payment-suggestion-id:hover {
   cursor: pointer;
 }
 
-.table-page-size select:hover,
-#reservations-page-size:hover,
-#rules-page-size:hover {
-  background-color: var(--surface2, #243044);
-  border-color: rgba(148, 163, 184, 0.4);
-}
-
-.table-page-size select:focus,
-#reservations-page-size:focus,
-#rules-page-size:focus {
-  outline: none;
-  border-color: rgba(148, 163, 184, 0.55);
-  box-shadow: none;
-}
-
-.table-page-size select option,
-#reservations-page-size option,
-#rules-page-size option {
-  background-color: #0f172a;
-  color: #e2e8f0;
-}
-
-.rules-existing-pager .table-page-size select,
-#rules-page-size {
-  color: var(--text);
-  border-color: var(--border);
-  background-color: var(--surface);
+.table-pager.is-compact .table-page-size select {
+  min-width: 5.5rem;
+  height: 1.75rem;
+  padding: 0 1.45rem 0 0.45rem;
+  font-size: 0.75rem;
+  background-position: right 0.4rem center;
+  background-size: 0.65rem;
 }
 
 .reservation-row {
@@ -14098,19 +14016,6 @@ body.reservation-drawer-open .mobile-bottom-nav {
   margin-left: auto;
 }
 
-.requests-footer-right .table-page-size select,
-#requests-page-size {
-  min-width: 6.5rem;
-  margin: 0;
-  font-size: 0.82rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.35rem 0.55rem;
-  color-scheme: dark;
-}
-
 /* Request detail drawer */
 .request-drawer {
   position: fixed;
@@ -15596,19 +15501,6 @@ body.request-drawer-open {
   justify-content: flex-end;
   gap: 0.55rem 0.65rem;
   margin-left: auto;
-}
-
-.fonio-activity-footer-right .table-page-size select,
-#fonio-activity-page-size {
-  min-width: 6.5rem;
-  margin: 0;
-  font-size: 0.82rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.35rem 0.55rem;
-  color-scheme: dark;
 }
 
 .fonio-activity-drawer {
@@ -19615,18 +19507,6 @@ tr.is-archived-row td {
   border-top: 1px solid rgba(148, 163, 184, 0.28);
 }
 
-.logs-footer-right .table-page-size select,
-#logs-page-size {
-  min-width: 6.5rem;
-  margin: 0;
-  font-size: 0.82rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.4rem 0.55rem;
-}
-
 /* Retention settings redesign */
 .logs-gdpr-banner {
   display: flex;
@@ -22382,11 +22262,6 @@ tr.is-archived-row td {
   margin-left: auto;
 }
 
-.users-footer-right .table-page-size select,
-#users-page-size {
-  min-width: 6.5rem;
-}
-
 body.users-drawer-open,
 body.users-filter-open {
   overflow: hidden;
@@ -22789,12 +22664,6 @@ body.users-filter-open {
 
   #tab-users .users-footer-right .table-page-size {
     flex: 0 0 auto;
-  }
-
-  #tab-users .users-footer-right .table-page-size select,
-  #tab-users #users-page-size {
-    min-height: 2.1rem;
-    font-size: 0.8rem;
   }
 
   #tab-users .users-perm-preview-section {
@@ -25461,11 +25330,6 @@ body.rules-filter-sheet-open {
     margin: 0;
   }
 
-  #tab-payments #payments-view-history .table-page-size select {
-    min-width: 4.25rem;
-    height: 2.15rem;
-  }
-
   #tab-payments #payments-view-history .table-info {
     display: none;
   }
@@ -25707,8 +25571,7 @@ body.rules-filter-sheet-open {
     grid-column: 1 / -1;
   }
 
-  #tab-payments #payments-view-reconcile .payments-queue-board-foot .table-info,
-  #tab-payments #payments-view-reconcile .payments-queue-foot-right .table-page-size {
+  #tab-payments #payments-view-reconcile .payments-queue-board-foot .table-info {
     display: none;
   }
 

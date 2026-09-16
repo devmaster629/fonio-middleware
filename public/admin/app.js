@@ -24,12 +24,13 @@ let cachedWebhookJobs = [];
 const webhookFilters = { range: '24h', event: 'all', result: 'all' };
 const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_PAGE_SIZE = 10;
 const tableState = {
-  listings: { page: 1, pageSize: 25, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
-  groups: { page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '', chip: 'all' },
+  listings: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
+  groups: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '', chip: 'all' },
   reservations: {
     page: 1,
-    pageSize: 10,
+    pageSize: DEFAULT_PAGE_SIZE,
     search: '',
     sortBy: 'arrivalDate',
     sortDir: 'desc',
@@ -43,17 +44,17 @@ const tableState = {
   },
   conversations: {
     page: 1,
-    pageSize: 25,
+    pageSize: DEFAULT_PAGE_SIZE,
     search: '',
     sortBy: 'updatedAt',
     sortDir: 'desc',
     status: 'all',
     channel: 'all',
   },
-  rules: { page: 1, pageSize: 10, search: '', sortBy: 'priority', sortDir: 'desc', mode: 'all', status: 'all' },
+  rules: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'priority', sortDir: 'desc', mode: 'all', status: 'all' },
   requests: {
     page: 1,
-    pageSize: 10,
+    pageSize: DEFAULT_PAGE_SIZE,
     search: '',
     sortBy: 'createdAt',
     sortDir: 'desc',
@@ -64,11 +65,11 @@ const tableState = {
     dateFrom: '',
     dateTo: '',
   },
-  payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
-  paymentsHistory: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
+  payments: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
+  paymentsHistory: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
   logs: {
     page: 1,
-    pageSize: 25,
+    pageSize: DEFAULT_PAGE_SIZE,
     search: '',
     sortBy: 'createdAt',
     sortDir: 'desc',
@@ -80,12 +81,12 @@ const tableState = {
     dateFrom: '',
     dateTo: '',
   },
-  webhooks: { page: 1, pageSize: 10, search: '' },
-  users: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc', role: 'all', status: 'all' },
-  usersSecurity: { page: 1, pageSize: 10 },
+  webhooks: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '' },
+  users: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'createdAt', sortDir: 'desc', role: 'all', status: 'all' },
+  usersSecurity: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
   fonioActivity: {
     page: 1,
-    pageSize: 25,
+    pageSize: DEFAULT_PAGE_SIZE,
     search: '',
     sortBy: 'createdAt',
     sortDir: 'desc',
@@ -121,7 +122,7 @@ let logsPageResult = {
   items: [],
   total: 0,
   page: 1,
-  pageSize: 25,
+  pageSize: DEFAULT_PAGE_SIZE,
   totalPages: 1,
 };
 
@@ -760,12 +761,10 @@ function ensurePaymentsToolbar(loader) {
   if (!el) return;
   const tabKey = 'payments';
   const s = tableState[tabKey];
-  const lengthSel = document.querySelector(`[data-table-length="${tabKey}"]`);
   if (el.dataset.toolbarInit === 'payments-v7') {
     const dateSel = el.querySelector('[data-payment-filter="date"]');
     const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
     if (dateSel) dateSel.value = s.date || 'all';
-    if (lengthSel) lengthSel.value = String(s.pageSize);
     if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
     return;
   }
@@ -795,17 +794,6 @@ function ensurePaymentsToolbar(loader) {
   `;
   const dateSel = el.querySelector('[data-payment-filter="date"]');
   if (dateSel) dateSel.value = s.date || 'all';
-  if (lengthSel) {
-    lengthSel.value = String(s.pageSize);
-    if (lengthSel.dataset.bound !== '1') {
-      lengthSel.dataset.bound = '1';
-      lengthSel.addEventListener('change', (e) => {
-        tableState[tabKey].pageSize = Number(e.target.value) || 10;
-        tableState[tabKey].page = 1;
-        loader();
-      });
-    }
-  }
   el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
     clearTimeout(searchTimers[tabKey]);
     searchTimers[tabKey] = setTimeout(() => {
@@ -826,12 +814,10 @@ function ensurePaymentsHistoryToolbar(loader) {
   if (!el) return;
   const tabKey = 'paymentsHistory';
   const s = tableState[tabKey];
-  const lengthSel = document.querySelector(`[data-table-length="${tabKey}"]`);
   if (el.dataset.toolbarInit === 'payments-history-v4') {
     const sourceSel = el.querySelector('[data-history-filter="source"]');
     const searchInput = el.querySelector(`[data-table-search="${tabKey}"]`);
     if (sourceSel) sourceSel.value = s.source || 'all';
-    if (lengthSel) lengthSel.value = String(s.pageSize);
     if (searchInput && document.activeElement !== searchInput) searchInput.value = s.search || '';
     return;
   }
@@ -860,17 +846,6 @@ function ensurePaymentsHistoryToolbar(loader) {
   `;
   const sourceSel = el.querySelector('[data-history-filter="source"]');
   if (sourceSel) sourceSel.value = s.source || 'all';
-  if (lengthSel) {
-    lengthSel.value = String(s.pageSize);
-    if (lengthSel.dataset.bound !== '1') {
-      lengthSel.dataset.bound = '1';
-      lengthSel.addEventListener('change', (e) => {
-        tableState[tabKey].pageSize = Number(e.target.value) || 10;
-        tableState[tabKey].page = 1;
-        loader();
-      });
-    }
-  }
   el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
     clearTimeout(searchTimers[tabKey]);
     searchTimers[tabKey] = setTimeout(() => {
@@ -883,48 +858,6 @@ function ensurePaymentsHistoryToolbar(loader) {
     tableState[tabKey].source = e.target.value;
     tableState[tabKey].page = 1;
     loader();
-  });
-}
-
-function ensureTableToolbar(toolbarId, tabKey, loader) {
-  const el = $(toolbarId);
-  if (!el) return;
-  if (el.dataset.toolbarInit === tabKey) return;
-  el.dataset.toolbarInit = tabKey;
-  const s = tableState[tabKey];
-  el.innerHTML = `
-    <div class="table-length">
-      <label>
-        <span class="table-length-prefix">${t('table.show')}</span>
-        <span class="table-length-control">
-          <select data-table-length="${tabKey}">
-            ${PAGE_SIZE_OPTIONS.map((n) =>
-              `<option value="${n}"${n === s.pageSize ? ' selected' : ''}>${n}</option>`,
-            ).join('')}
-          </select>
-          <span>${t('table.entries')}</span>
-        </span>
-      </label>
-    </div>
-    <div class="table-filter">
-      <label>
-        ${t('table.search')}
-        <input type="search" data-table-search="${tabKey}" value="${esc(s.search)}" autocomplete="off" />
-      </label>
-    </div>
-  `;
-  el.querySelector(`[data-table-length="${tabKey}"]`)?.addEventListener('change', (e) => {
-    tableState[tabKey].pageSize = Number(e.target.value);
-    tableState[tabKey].page = 1;
-    loader();
-  });
-  el.querySelector(`[data-table-search="${tabKey}"]`)?.addEventListener('input', (e) => {
-    clearTimeout(searchTimers[tabKey]);
-    searchTimers[tabKey] = setTimeout(() => {
-      tableState[tabKey].search = e.target.value;
-      tableState[tabKey].page = 1;
-      loader();
-    }, 300);
   });
 }
 
@@ -967,33 +900,100 @@ function buildPageList(page, totalPages) {
   return result;
 }
 
-function renderPagination(containerId, data, tabKey, loader) {
+function pageSizeOptionLabel(n) {
+  return t('table.perPage', { n: String(n) });
+}
+
+/**
+ * Shared pagination control for the whole admin UI.
+ * Renders page buttons + "N / page" select in one consistent control.
+ *
+ * @param {string} containerId
+ * @param {{ page: number, totalPages: number, pageSize?: number }} data
+ * @param {string} tabKey
+ * @param {Function} loader
+ * @param {{
+ *   compact?: boolean,
+ *   includePageSize?: boolean,
+ *   pageSizeOptions?: number[],
+ *   state?: { page: number, pageSize: number },
+ *   selectId?: string,
+ * }} [opts]
+ */
+function renderPagination(containerId, data, tabKey, loader, opts = {}) {
   const el = $(containerId);
   if (!el || !data) return;
-  const { page, totalPages } = data;
+  const state = opts.state || tableState[tabKey];
+  const page = Number(data.page) || 1;
+  const totalPages = Math.max(1, Number(data.totalPages) || 1);
   const pages = buildPageList(page, totalPages);
+  const compact = Boolean(opts.compact);
+  const includePageSize = opts.includePageSize !== false;
+  const sizeOpts =
+    Array.isArray(opts.pageSizeOptions) && opts.pageSizeOptions.length
+      ? opts.pageSizeOptions
+      : PAGE_SIZE_OPTIONS;
+  const currentSize = Number(state?.pageSize ?? data.pageSize) || DEFAULT_PAGE_SIZE;
+  const safeSize = sizeOpts.includes(currentSize) ? currentSize : sizeOpts[0];
+  const selectId =
+    opts.selectId ||
+    `pager-${String(tabKey || 'table').replace(/[^a-zA-Z0-9_-]/g, '')}-size`;
+
+  el.classList.toggle('is-compact', compact);
   el.innerHTML = `
-    <div class="paginate" role="navigation" aria-label="Pagination">
-      <button type="button" class="page-btn prev" data-page="prev" ${page <= 1 ? 'disabled' : ''} aria-label="Previous">‹</button>
-      ${pages.map((p) => {
-        if (p === '…') return `<span class="page-btn ellipsis">…</span>`;
-        return `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-page="${p}">${p}</button>`;
-      }).join('')}
-      <button type="button" class="page-btn next" data-page="next" ${page >= totalPages ? 'disabled' : ''} aria-label="Next">›</button>
+    <div class="table-pager${compact ? ' is-compact' : ''}">
+      <div class="paginate" role="navigation" aria-label="Pagination">
+        <button type="button" class="page-btn prev" data-page="prev" ${page <= 1 ? 'disabled' : ''} aria-label="Previous">‹</button>
+        ${pages
+          .map((p) => {
+            if (p === '…') return `<span class="page-btn ellipsis">…</span>`;
+            return `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-page="${p}">${p}</button>`;
+          })
+          .join('')}
+        <button type="button" class="page-btn next" data-page="next" ${page >= totalPages ? 'disabled' : ''} aria-label="Next">›</button>
+      </div>
+      ${
+        includePageSize
+          ? `<label class="table-page-size" for="${esc(selectId)}">
+        <span class="sr-only">${esc(t('table.show'))}</span>
+        <select id="${esc(selectId)}" aria-label="Per page">
+          ${sizeOpts
+            .map(
+              (n) =>
+                `<option value="${n}"${Number(n) === safeSize ? ' selected' : ''}>${esc(pageSizeOptionLabel(n))}</option>`,
+            )
+            .join('')}
+        </select>
+      </label>`
+          : ''
+      }
     </div>
   `;
+
+  const goTo = (nextPage) => {
+    if (!state) return;
+    state.page = nextPage;
+    loader();
+  };
   el.querySelector('[data-page="prev"]')?.addEventListener('click', () => {
-    if (page > 1) { tableState[tabKey].page = page - 1; loader(); }
+    if (page > 1) goTo(page - 1);
   });
   el.querySelector('[data-page="next"]')?.addEventListener('click', () => {
-    if (page < totalPages) { tableState[tabKey].page = page + 1; loader(); }
+    if (page < totalPages) goTo(page + 1);
   });
   el.querySelectorAll('[data-page]').forEach((btn) => {
     if (btn.dataset.page === 'prev' || btn.dataset.page === 'next') return;
-    btn.addEventListener('click', () => {
-      tableState[tabKey].page = Number(btn.dataset.page);
-      loader();
-    });
+    btn.addEventListener('click', () => goTo(Number(btn.dataset.page)));
+  });
+
+  const sizeSel = includePageSize ? el.querySelector('.table-page-size select') : null;
+  sizeSel?.addEventListener('change', (e) => {
+    const next = Number(e.target.value) || DEFAULT_PAGE_SIZE;
+    if (state) {
+      state.pageSize = next;
+      state.page = 1;
+    }
+    loader();
   });
 }
 
@@ -1619,17 +1619,6 @@ $('#sync-btn-card')?.addEventListener('click', () => {
   runHostawaySyncNow();
 });
 
-function bindWebhookPageSize() {
-  const lengthSel = $('#webhooks-page-size');
-  if (!lengthSel || lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.value = String(tableState.webhooks.pageSize || 10);
-  lengthSel.addEventListener('change', (e) => {
-    tableState.webhooks.pageSize = Number(e.target.value) || 10;
-    tableState.webhooks.page = 1;
-    renderWebhookDashboard(cachedWebhookJobs);
-  });
-}
 
 $('#webhook-filter-search')?.addEventListener('input', (e) => {
   clearTimeout(searchTimers.webhooks);
@@ -1906,14 +1895,10 @@ function renderWebhookDashboard(allJobs) {
   populateWebhookEventFilter(allJobs);
   const filtered = filterWebhookJobs(allJobs);
   renderWebhookTrend(filtered);
-  bindWebhookPageSize();
-
-  const searchInput = $('#webhook-filter-search');
+const searchInput = $('#webhook-filter-search');
   if (searchInput && document.activeElement !== searchInput) {
     searchInput.value = tableState.webhooks.search || '';
   }
-  const lengthSel = $('#webhooks-page-size');
-  if (lengthSel) lengthSel.value = String(tableState.webhooks.pageSize || 10);
 
   const webhookData = paginateClient(filtered, 'webhooks', (w) =>
     [w.startedAt, w.jobType, w.status, JSON.stringify(w.metadata || {}), w.error || ''].join(' '),
@@ -2342,31 +2327,6 @@ function ensureRulesToolbar() {
   });
 }
 
-function ensureRulesPageSizeControl() {
-  const lengthSel = $('#rules-page-size');
-  if (!lengthSel) return;
-  const s = tableState.rules;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.rules.pageSize = Number(lengthSel.value) || 10;
-    tableState.rules.page = 1;
-    loadRules();
-  });
-}
 
 function bindRuleRowActions() {
   $$('#rules-table [data-rule-edit]').forEach((btn) => {
@@ -2451,8 +2411,7 @@ async function loadListings() {
   renderListingsMobile(cachedListings);
   renderTableInfo('#listings-info', data);
   renderPagination('#listings-pagination', data, 'listings', loadListings);
-  ensureListingsPageSizeControl();
-  applyRoleUi();
+applyRoleUi();
   scheduleEnhanceResponsiveTables();
 }
 
@@ -2821,31 +2780,6 @@ function syncListingsFilterChips(root = document) {
   });
 }
 
-function ensureListingsPageSizeControl() {
-  const lengthSel = $('#listings-page-size');
-  if (!lengthSel) return;
-  const s = tableState.listings;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.listings.pageSize = Number(lengthSel.value) || 10;
-    tableState.listings.page = 1;
-    loadListings().catch((ex) => notify.error(ex.message));
-  });
-}
 
 function refreshListingsFilterOptions() {
   const citySel = document.querySelector('[data-listing-filter="city"]');
@@ -3080,8 +3014,7 @@ async function loadGroups() {
   bindGroupsExpandToggles();
   renderTableInfo('#groups-info', data);
   renderPagination('#groups-pagination', data, 'groups', loadGroups);
-  ensureGroupsPageSizeControl();
-  applyRoleUi();
+applyRoleUi();
   scheduleEnhanceResponsiveTables();
 }
 
@@ -3352,31 +3285,6 @@ function refreshGroupsChipActive() {
   /* no-op: chip UI removed */
 }
 
-function ensureGroupsPageSizeControl() {
-  const lengthSel = $('#groups-page-size');
-  if (!lengthSel) return;
-  const s = tableState.groups;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.groups.pageSize = Number(lengthSel.value) || 10;
-    tableState.groups.page = 1;
-    loadGroups().catch((ex) => notify.error(ex.message));
-  });
-}
 
 function refreshGroupsFilterOptions() {
   const citySel = document.querySelector('[data-group-filter="city"]');
@@ -4126,34 +4034,8 @@ async function ensureReservationsToolbar() {
       }
     });
   });
-  ensureReservationsPageSizeControl();
 }
 
-function ensureReservationsPageSizeControl() {
-  const lengthSel = $('#reservations-page-size');
-  if (!lengthSel) return;
-  const s = tableState.reservations;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.reservations.pageSize = Number(lengthSel.value) || 10;
-    tableState.reservations.page = 1;
-    loadReservations().catch((ex) => notify.error(ex.message));
-  });
-}
 
 function syncReservationsToolbarControls(el) {
   const s = tableState.reservations;
@@ -4162,7 +4044,6 @@ function syncReservationsToolbarControls(el) {
     if (document.activeElement === control) return;
     control.value = s[key] ?? (control.tagName === 'SELECT' ? 'all' : '');
   });
-  ensureReservationsPageSizeControl();
 }
 
 function reservationGuestsLabel(r) {
@@ -4929,13 +4810,6 @@ function ensureConversationsUi() {
     });
   }
 
-  const pageSize = $('#conversations-page-size');
-  pageSize?.addEventListener('change', () => {
-    tableState.conversations.pageSize = Number(pageSize.value) || 25;
-    tableState.conversations.page = 1;
-    loadConversations().catch((ex) => notify.error(ex.message));
-  });
-
   const auto = $('#conversations-auto-refresh');
   auto?.addEventListener('change', () => {
     manageConversationsPoll();
@@ -4992,8 +4866,6 @@ function syncConversationsControls() {
   if (status) status.value = s.status || 'all';
   const sort = $('#conversations-sort');
   if (sort) sort.value = `${s.sortBy || 'updatedAt'}:${s.sortDir || 'desc'}`;
-  const pageSize = $('#conversations-page-size');
-  if (pageSize) pageSize.value = String(s.pageSize || 25);
 }
 
 async function loadConversationsChannels() {
@@ -5058,7 +4930,10 @@ async function loadConversations(opts = {}) {
   bindConversationAvatarFallbacks(list);
 
   renderTableInfo('#conversations-info', data);
-  renderPagination('#conversations-pagination', data, 'conversations', loadConversations);
+  renderPagination('#conversations-pagination', data, 'conversations', loadConversations, {
+    compact: true,
+    pageSizeOptions: [10, 25, 50],
+  });
   syncConversationsControls();
   updateConversationsGlobalSync(conversationsCache);
   setConversationsMobileView(
@@ -5851,8 +5726,7 @@ async function loadRules() {
   ensureRulesToolbar();
   renderTableInfo('#rules-info', data, data.maxTotal);
   renderPagination('#rules-pagination', data, 'rules', loadRules);
-  ensureRulesPageSizeControl();
-  if (editingRuleId) {
+if (editingRuleId) {
     const current = rules.find((r) => r.id === editingRuleId);
     if (current) loadRuleIntoForm(current, { activate: false });
     else resetRuleForm();
@@ -6563,8 +6437,7 @@ function renderRequestsTable() {
   renderRequestsMobile(pageData.items);
   renderTableInfo('#requests-info', pageData, pageData.maxTotal);
   renderPagination('#requests-pagination', pageData, 'requests', () => renderRequestsTable());
-  syncRequestsPageSizeSelect();
-  bindRequestRowActions();
+bindRequestRowActions();
   $$('#requests-table .requests-guest-avatar-img').forEach((img) => {
     img.addEventListener('error', () => {
       img.remove();
@@ -6574,30 +6447,6 @@ function renderRequestsTable() {
   applyRoleUi();
 }
 
-function syncRequestsPageSizeSelect() {
-  const sel = $('#requests-page-size');
-  if (!sel) return;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...sel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      sel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== sel) {
-    sel.value = String(tableState.requests.pageSize || 10);
-  }
-  if (sel.dataset.bound === '1') return;
-  sel.dataset.bound = '1';
-  sel.addEventListener('change', () => {
-    tableState.requests.pageSize = Number(sel.value) || 10;
-    tableState.requests.page = 1;
-    renderRequestsTable();
-  });
-}
 
 function openRequestDrawer(id) {
   const r = requestsListCache.find((item) => item.id === id);
@@ -10809,31 +10658,6 @@ function setLogsView(view) {
   $('#logs-view-retention')?.classList.toggle('hidden', logsActiveView !== 'retention');
 }
 
-function ensureLogsPageSizeControl() {
-  const lengthSel = $('#logs-page-size');
-  if (!lengthSel) return;
-  const s = tableState.logs;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.logs.pageSize = Number(lengthSel.value) || 25;
-    tableState.logs.page = 1;
-    loadLogs({ silent: true });
-  });
-}
 
 function isLogsMobileLayout() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1023px)').matches;
@@ -11067,9 +10891,7 @@ function bindLogsUi() {
     syncLogsFilterChips();
     loadLogs({ silent: true });
   };
-
-  ensureLogsPageSizeControl();
-  $('#logs-search')?.addEventListener('input', () => {
+$('#logs-search')?.addEventListener('input', () => {
     clearTimeout(searchTimers.logs);
     searchTimers.logs = setTimeout(syncFiltersFromDom, 280);
   });
@@ -11207,7 +11029,7 @@ function renderLogsTable() {
     items,
     total: logsPageResult.total || 0,
     page: logsPageResult.page || s.page || 1,
-    pageSize: logsPageResult.pageSize || s.pageSize || 25,
+    pageSize: logsPageResult.pageSize || s.pageSize || DEFAULT_PAGE_SIZE,
     totalPages: logsPageResult.totalPages || 1,
     maxTotal: logsPageResult.total || 0,
   };
@@ -11267,14 +11089,13 @@ function renderLogsTable() {
 async function loadLogs({ silent = false } = {}) {
   bindLogsUi();
   setLogsView(logsActiveView);
-  ensureLogsPageSizeControl();
-  if (!silent) await loadLogSettings();
+if (!silent) await loadLogSettings();
   else if (!logsRetentionStatus) await loadLogRetentionStatus();
 
   const s = tableState.logs;
   const params = new URLSearchParams();
   params.set('page', String(s.page || 1));
-  params.set('pageSize', String(s.pageSize || 25));
+  params.set('pageSize', String(s.pageSize || DEFAULT_PAGE_SIZE));
   if (s.search?.trim()) params.set('search', s.search.trim());
   if (s.source && s.source !== 'all') params.set('source', s.source);
   if (s.action && s.action !== 'all') params.set('action', s.action);
@@ -11294,7 +11115,7 @@ async function loadLogs({ silent = false } = {}) {
       items: data,
       total: data.length,
       page: 1,
-      pageSize: data.length || 25,
+      pageSize: data.length || DEFAULT_PAGE_SIZE,
       totalPages: 1,
     };
     logsFacets = {
@@ -11306,7 +11127,7 @@ async function loadLogs({ silent = false } = {}) {
       items: Array.isArray(data.items) ? data.items : [],
       total: Number(data.total) || 0,
       page: Number(data.page) || s.page || 1,
-      pageSize: Number(data.pageSize) || s.pageSize || 25,
+      pageSize: Number(data.pageSize) || s.pageSize || DEFAULT_PAGE_SIZE,
       totalPages: Number(data.totalPages) || 1,
     };
     if (data.facets) {
@@ -11953,31 +11774,6 @@ function fonioDurationLabel(ms) {
   return `${(n / 1000).toFixed(2)}s`;
 }
 
-function ensureFonioActivityPageSizeControl() {
-  const lengthSel = $('#fonio-activity-page-size');
-  if (!lengthSel) return;
-  const s = tableState.fonioActivity;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.fonioActivity.pageSize = Number(lengthSel.value) || 25;
-    tableState.fonioActivity.page = 1;
-    renderFonioActivityTable();
-  });
-}
 
 function syncFonioActivityToolbarControls() {
   const el = $('#fonio-activity-toolbar');
@@ -11995,8 +11791,7 @@ function syncFonioActivityToolbarControls() {
   if (status && document.activeElement !== status) status.value = s.statusFilter || '';
   const outcome = el.querySelector('#fonio-activity-outcome-filter');
   if (outcome && document.activeElement !== outcome) outcome.value = s.outcomeFilter || '';
-  ensureFonioActivityPageSizeControl();
-  syncFonioActivityMobileChips();
+syncFonioActivityMobileChips();
 }
 
 function closeFonioActivityFilterSheet() {
@@ -12277,9 +12072,7 @@ function ensureFonioActivityToolbar() {
 
 function renderFonioActivityTable() {
   ensureFonioActivityToolbar();
-  ensureFonioActivityPageSizeControl();
-
-  const filtered = filterFonioActivityList(fonioActivityCache);
+const filtered = filterFonioActivityList(fonioActivityCache);
   const savedSearch = tableState.fonioActivity.search;
   tableState.fonioActivity.search = '';
   const data = paginateClient(filtered, 'fonioActivity', () => '');
@@ -13617,8 +13410,7 @@ function renderUsersTable() {
   }
   renderUsersMobile(items);
   syncUsersFilterChips();
-  ensureUsersPageSizeControl();
-  renderTableInfo('#users-info', pageData, pageData.maxTotal);
+renderTableInfo('#users-info', pageData, pageData.maxTotal);
   renderPagination('#users-pagination', pageData, 'users', () => renderUsersTable());
   bindUserRowClicks($('#users-table') || document);
   scheduleEnhanceResponsiveTables();
@@ -13626,38 +13418,11 @@ function renderUsersTable() {
 
 let cachedUsers = [];
 
-function ensureUsersPageSizeControl() {
-  const lengthSel = $('#users-page-size');
-  if (!lengthSel) return;
-  const s = tableState.users;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(s.pageSize || 10);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.users.pageSize = Number(lengthSel.value) || 10;
-    tableState.users.page = 1;
-    renderUsersTable();
-  });
-}
 
 function bindUsersUi() {
   if (usersUiBound) return;
   usersUiBound = true;
-  ensureUsersPageSizeControl();
-
-  $$('.users-tab').forEach((btn) => {
+$$('.users-tab').forEach((btn) => {
     btn.addEventListener('click', () => setUsersView(btn.dataset.usersTab));
   });
   $('#users-open-perms-btn')?.addEventListener('click', () => setUsersView('perms'));
@@ -14256,8 +14021,7 @@ async function loadUsersSecurityActivity({ silent = false, append = false } = {}
   const tableEl = $('#users-security-table');
   if (!tableEl) return;
   bindUsersSecurityUi();
-  ensureUsersSecurityPageSizeControl();
-  if (!append) {
+if (!append) {
     USERS_SECURITY_STATE.page = tableState.usersSecurity.page || USERS_SECURITY_STATE.page;
   }
   USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize || USERS_SECURITY_STATE.pageSize;
@@ -14544,33 +14308,6 @@ function openUsersSecurityFilterSheet() {
   document.body.classList.add('users-filter-open');
 }
 
-function ensureUsersSecurityPageSizeControl() {
-  const lengthSel = $('#users-security-page-size');
-  if (!lengthSel) return;
-  const label = (n) => t('table.perPage', { n });
-  PAGE_SIZE_OPTIONS.forEach((n) => {
-    let opt = [...lengthSel.options].find((o) => Number(o.value) === n);
-    if (!opt) {
-      opt = document.createElement('option');
-      opt.value = String(n);
-      lengthSel.appendChild(opt);
-    }
-    opt.textContent = label(n);
-  });
-  if (document.activeElement !== lengthSel) {
-    lengthSel.value = String(tableState.usersSecurity.pageSize || 10);
-  }
-  if (lengthSel.dataset.bound === '1') return;
-  lengthSel.dataset.bound = '1';
-  lengthSel.addEventListener('change', () => {
-    tableState.usersSecurity.pageSize = Number(lengthSel.value) || 10;
-    tableState.usersSecurity.page = 1;
-    USERS_SECURITY_STATE.pageSize = tableState.usersSecurity.pageSize;
-    USERS_SECURITY_STATE.page = 1;
-    usersSecurityMobileItems = [];
-    loadUsersSecurityActivity({ silent: true });
-  });
-}
 
 function bindUsersSecurityUi() {
   if (usersSecurityUiBound) return;
@@ -15181,8 +14918,8 @@ let check24Syncing = false;
 let check24SyncPollTimer = null;
 let check24PipeExpanded = false;
 const check24TableState = {
-  apartments: { page: 1, pageSize: 25, search: '', status: 'all', sort: 'name', mobileLimit: 8 },
-  bookings: { page: 1, pageSize: 25, search: '', status: 'all', sort: 'newest' },
+  apartments: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', status: 'all', sort: 'name', mobileLimit: 8 },
+  bookings: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', status: 'all', sort: 'newest' },
 };
 
 function isCheck24MobileLayout() {
@@ -15293,12 +15030,6 @@ function ensureCheck24Ui() {
     }, 200);
   });
 
-  $('#check24-apartments-page-size')?.addEventListener('change', (e) => {
-    check24TableState.apartments.pageSize = Number(e.target.value) || 25;
-    check24TableState.apartments.page = 1;
-    renderCheck24ApartmentsTable();
-  });
-
   $('#check24-bookings-search')?.addEventListener('input', () => {
     clearTimeout(searchTimers.check24Bookings);
     searchTimers.check24Bookings = setTimeout(() => {
@@ -15306,12 +15037,6 @@ function ensureCheck24Ui() {
       check24TableState.bookings.page = 1;
       renderCheck24BookingsTable();
     }, 200);
-  });
-
-  $('#check24-bookings-page-size')?.addEventListener('change', (e) => {
-    check24TableState.bookings.pageSize = Number(e.target.value) || 25;
-    check24TableState.bookings.page = 1;
-    renderCheck24BookingsTable();
   });
 
   const syncMaster = $('#check24-auto-sync-master');
@@ -16081,7 +15806,7 @@ function renderCheck24ApartmentsTable() {
   const all = check24Cache.mappings || [];
   const filtered = filterCheck24Apartments(all);
 
-  const pageSize = check24TableState.apartments.pageSize || 25;
+  const pageSize = check24TableState.apartments.pageSize || DEFAULT_PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   if (check24TableState.apartments.page > totalPages) {
     check24TableState.apartments.page = totalPages;
@@ -16136,44 +15861,20 @@ function renderCheck24ApartmentsTable() {
     totalPages,
   };
   renderTableInfo('#check24-apartments-info', info, all.length);
-
-  const pager = $('#check24-apartments-pagination');
-  if (pager) {
-    pager.innerHTML = `
-      <div class="paginate" role="navigation">
-        <button type="button" class="page-btn prev" data-c24-apt-page="prev" ${page <= 1 ? 'disabled' : ''}>‹</button>
-        ${Array.from({ length: totalPages }, (_, i) => i + 1)
-          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-          .reduce((acc, p, idx, arr) => {
-            if (idx && p - arr[idx - 1] > 1) acc.push('…');
-            acc.push(p);
-            return acc;
-          }, [])
-          .map((p) =>
-            p === '…'
-              ? `<span class="page-btn ellipsis">…</span>`
-              : `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-c24-apt-page="${p}">${p}</button>`,
-          )
-          .join('')}
-        <button type="button" class="page-btn next" data-c24-apt-page="next" ${page >= totalPages ? 'disabled' : ''}>›</button>
-      </div>`;
-    pager.querySelectorAll('[data-c24-apt-page]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const v = btn.getAttribute('data-c24-apt-page');
-        if (v === 'prev') check24TableState.apartments.page = Math.max(1, page - 1);
-        else if (v === 'next') check24TableState.apartments.page = Math.min(totalPages, page + 1);
-        else check24TableState.apartments.page = Number(v) || 1;
-        renderCheck24ApartmentsTable();
-      });
-    });
-  }
+  renderPagination(
+    '#check24-apartments-pagination',
+    info,
+    'check24Apartments',
+    renderCheck24ApartmentsTable,
+    { state: check24TableState.apartments },
+  );
 }
 
 function renderCheck24BookingsTable() {
   const all = check24Cache.bookings || [];
   const filtered = filterCheck24Bookings(all);
 
-  const pageSize = check24TableState.bookings.pageSize || 25;
+  const pageSize = check24TableState.bookings.pageSize || DEFAULT_PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   if (check24TableState.bookings.page > totalPages) check24TableState.bookings.page = totalPages;
   const page = check24TableState.bookings.page;
@@ -16204,36 +15905,13 @@ function renderCheck24BookingsTable() {
     totalPages,
   };
   renderTableInfo('#check24-bookings-info', info, all.length);
-  const pager = $('#check24-bookings-pagination');
-  if (pager) {
-    pager.innerHTML = `
-      <div class="paginate" role="navigation">
-        <button type="button" class="page-btn prev" data-c24-bk-page="prev" ${page <= 1 ? 'disabled' : ''}>‹</button>
-        ${Array.from({ length: totalPages }, (_, i) => i + 1)
-          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-          .reduce((acc, p, idx, arr) => {
-            if (idx && p - arr[idx - 1] > 1) acc.push('…');
-            acc.push(p);
-            return acc;
-          }, [])
-          .map((p) =>
-            p === '…'
-              ? `<span class="page-btn ellipsis">…</span>`
-              : `<button type="button" class="page-btn${p === page ? ' active' : ''}" data-c24-bk-page="${p}">${p}</button>`,
-          )
-          .join('')}
-        <button type="button" class="page-btn next" data-c24-bk-page="next" ${page >= totalPages ? 'disabled' : ''}>›</button>
-      </div>`;
-    pager.querySelectorAll('[data-c24-bk-page]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const v = btn.getAttribute('data-c24-bk-page');
-        if (v === 'prev') check24TableState.bookings.page = Math.max(1, page - 1);
-        else if (v === 'next') check24TableState.bookings.page = Math.min(totalPages, page + 1);
-        else check24TableState.bookings.page = Number(v) || 1;
-        renderCheck24BookingsTable();
-      });
-    });
-  }
+  renderPagination(
+    '#check24-bookings-pagination',
+    info,
+    'check24Bookings',
+    renderCheck24BookingsTable,
+    { state: check24TableState.bookings },
+  );
 }
 
 async function loadCheck24(opts = {}) {
