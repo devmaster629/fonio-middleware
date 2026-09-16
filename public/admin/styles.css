@@ -9427,7 +9427,30 @@ a.payment-suggestion-id:hover {
 
 @media (max-width: 1023px) {
   #tab-dashboard .dashboard-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+    margin: 0 0 0.85rem;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  #tab-dashboard .dashboard-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  #tab-dashboard .dashboard-sync-meta {
     display: none;
+  }
+
+  #tab-dashboard .sync-now-btn:not(.sync-now-btn-card) {
+    width: 100%;
+    justify-content: center;
   }
 
   #tab-dashboard .stats {
@@ -9516,16 +9539,17 @@ a.payment-suggestion-id:hover {
     font-size: 0.85rem !important;
   }
 
+  /* Card footer: Save settings (not Sync now) on mobile */
   .sync-settings-save-btn {
-    display: none !important;
-  }
-
-  .sync-now-btn-card {
     display: inline-flex !important;
     width: 100%;
     justify-content: center;
     align-self: stretch;
     margin-top: 0.75rem;
+  }
+
+  .sync-now-btn-card {
+    display: none !important;
   }
 
   .health-row {
