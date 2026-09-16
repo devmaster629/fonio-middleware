@@ -65,7 +65,7 @@ const tableState = {
     dateTo: '',
   },
   payments: { page: 1, pageSize: 10, search: '', sortBy: '', sortDir: 'asc', source: 'all', match: 'all', date: 'all' },
-  paymentsHistory: { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
+  paymentsHistory: { page: 1, pageSize: 10, search: '', sortBy: 'createdAt', sortDir: 'desc', source: 'all', status: 'all' },
   logs: {
     page: 1,
     pageSize: 25,
@@ -219,6 +219,7 @@ function updateMobileBottomNav(tab) {
     btn.classList.toggle('is-active', key === tab);
   });
   syncCheck24MobileChrome();
+  syncPaymentsMobileChrome();
 }
 
 function initMobileBottomNav() {
@@ -864,7 +865,7 @@ function ensurePaymentsHistoryToolbar(loader) {
     if (lengthSel.dataset.bound !== '1') {
       lengthSel.dataset.bound = '1';
       lengthSel.addEventListener('change', (e) => {
-        tableState[tabKey].pageSize = Number(e.target.value) || 25;
+        tableState[tabKey].pageSize = Number(e.target.value) || 10;
         tableState[tabKey].page = 1;
         loader();
       });
@@ -1531,10 +1532,20 @@ $$('.nav-btn').forEach((btn) => {
   });
 });
 
-$$('.payments-subnav-btn').forEach((btn) => {
+$$('#tab-payments .payments-subnav-btn[data-payments-view]').forEach((btn) => {
   btn.addEventListener('click', () => {
     activatePaymentsView(btn.dataset.paymentsView);
   });
+});
+
+$$('#payments-mobile-bottom-nav [data-payments-view]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    activatePaymentsView(btn.dataset.paymentsView);
+  });
+});
+
+$('#qonto-poll-btn-mobile')?.addEventListener('click', () => {
+  $('#qonto-poll-btn')?.click();
 });
 
 async function saveSyncSettings({ silent = false } = {}) {
@@ -8598,17 +8609,29 @@ async function loadQontoStatus() {
           ? t('payments.lastSync', { when: whenText })
           : t('payments.lastSyncUnknown');
     }
+    const mobileMeta = $('#payments-mobile-sync-meta');
+    if (mobileMeta) mobileMeta.textContent = lastSyncEl?.textContent || '';
 
-    if (btn) {
+    const mobileBtn = $('#qonto-poll-btn-mobile');
+    if (btn || mobileBtn) {
       const canPoll =
         (hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')) &&
         status.enabled &&
         status.configured;
-      btn.disabled = !canPoll || status.inProgress;
-      btn.classList.toggle(
-        'hidden',
-        !(hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')),
-      );
+      if (btn) {
+        btn.disabled = !canPoll || status.inProgress;
+        btn.classList.toggle(
+          'hidden',
+          !(hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')),
+        );
+      }
+      if (mobileBtn) {
+        mobileBtn.disabled = !canPoll || status.inProgress;
+        mobileBtn.classList.toggle(
+          'hidden',
+          !(hasPermission('PAYMENTS_ADMIN') || hasPermission('PAYMENTS_REVIEW')),
+        );
+      }
     }
   } catch (ex) {
     whenEl.textContent = '–';
@@ -8618,6 +8641,8 @@ async function loadQontoStatus() {
     if (okIcon) okIcon.hidden = true;
     if (newItems) newItems.textContent = '–';
     if (lastSyncEl) lastSyncEl.textContent = t('payments.lastSyncUnknown');
+    const mobileMeta = $('#payments-mobile-sync-meta');
+    if (mobileMeta) mobileMeta.textContent = t('payments.lastSyncUnknown');
   }
 }
 
@@ -8675,11 +8700,36 @@ async function loadPaypalStatus() {
   }
 }
 
+function isPaymentsMobileLayout() {
+  return window.matchMedia('(max-width: 1023px)').matches;
+}
+
+function syncPaymentsMobileChrome() {
+  const onPayments = activeTab === 'payments';
+  document.body.classList.toggle('payments-mobile-active', onPayments && isPaymentsMobileLayout());
+  $$('#payments-mobile-bottom-nav [data-payments-view]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.paymentsView === paymentsView);
+  });
+  const meta = $('#payments-mobile-sync-meta');
+  const lastSync = $('#payments-last-sync');
+  if (meta && lastSync) meta.textContent = lastSync.textContent || '';
+}
+
+function updatePaymentsMobileQueueBadge(count) {
+  const badge = $('#payments-mobile-nav-badge');
+  if (!badge) return;
+  const n = Number(count) || 0;
+  badge.textContent = String(n);
+  badge.hidden = n <= 0;
+}
+
 $('#qonto-poll-btn')?.addEventListener('click', async () => {
   if (!hasPermission('PAYMENTS_ADMIN') && !hasPermission('PAYMENTS_REVIEW')) return;
   const btn = $('#qonto-poll-btn');
+  const mobileBtn = $('#qonto-poll-btn-mobile');
   const result = $('#qonto-poll-result');
   if (btn) btn.disabled = true;
+  if (mobileBtn) mobileBtn.disabled = true;
   if (result) result.textContent = t('payments.qontoPolling');
   try {
     const res = await api('/payments/qonto-poll', { method: 'POST', body: '{}' });
@@ -8708,13 +8758,29 @@ function activatePaymentsView(view) {
           ? 'history'
           : 'reconcile';
   paymentsView = next;
-  $$('.payments-subnav-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.paymentsView === next);
+  $$('#tab-payments .payments-subnav-btn[data-payments-view]').forEach((btn) => {
+    const active = btn.dataset.paymentsView === next;
+    btn.classList.toggle('active', active);
+    if (active && typeof btn.scrollIntoView === 'function') {
+      try {
+        btn.scrollIntoView({
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
+      } catch {
+        btn.scrollIntoView();
+      }
+    }
+  });
+  $$('#payments-mobile-bottom-nav [data-payments-view]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.paymentsView === next);
   });
   $('#payments-view-reconcile')?.classList.toggle('hidden', next !== 'reconcile');
   $('#payments-view-history')?.classList.toggle('hidden', next !== 'history');
   $('#payments-view-plans')?.classList.toggle('hidden', next !== 'plans');
   $('#payments-view-portal')?.classList.toggle('hidden', next !== 'portal');
+  syncPaymentsMobileChrome();
   if (activeTab === 'payments') {
     try {
       const url = new URL(window.location.href);
@@ -9348,6 +9414,9 @@ async function loadPayments() {
   if (paymentsView === 'portal') {
     return loadPortalPaymentRules().catch((ex) => notify.error(ex.message));
   }
+  if (paymentsView === 'plans') {
+    return loadPaymentPlans().catch((ex) => notify.error(ex.message));
+  }
   if (paymentsView === 'history') {
     return loadPaymentsHistory();
   }
@@ -9394,6 +9463,7 @@ async function loadPaymentsReconcile() {
       countEl.textContent = String(filtered.length);
       countEl.hidden = filtered.length === 0;
     }
+    updatePaymentsMobileQueueBadge(filtered.length);
 
     const data = paginateClient(filtered, 'payments', (p) => [
       p.createdAt,
@@ -10133,10 +10203,40 @@ async function loadPaymentsHistory() {
       const actions = (retryBtn || undoBtn)
         ? `<div class="payment-history-actions">${retryBtn}${undoBtn}</div>`
         : '';
+      const sourceLabel = paymentHistorySourceLabel(p.source);
+      const sourceCls =
+        String(p.source || '').toUpperCase() === 'PAYPAL'
+          ? 'is-paypal'
+          : String(p.source || '').toUpperCase() === 'QONTO'
+            ? 'is-qonto'
+            : '';
+      p.__mobileCard = `
+        <article class="payments-history-card" data-payment-id="${p.id}">
+          <div class="payments-history-card-top">
+            <span class="payment-history-received">${esc(formatDateTime(p.createdAt))}</span>
+            <div class="payment-history-status-cell">
+              ${paymentHistoryStatusBadge(p.status)}
+              ${paymentApplyModeHint(p)}
+              ${allocations.length > 1 ? `<span class="badge auto">${t('payments.splitBadge')}</span>` : ''}
+            </div>
+          </div>
+          <div class="payment-history-amount">${esc(formatMoney(p.amount, p.currency))}</div>
+          <div class="payments-history-card-meta">
+            <span class="payment-source-pill ${sourceCls}">${esc(sourceLabel)}</span>
+            <span class="payment-history-payer-name">${esc(p.payerName || '–')}</span>
+            ${p.reference ? `<span class="payment-history-payer-ref">${esc(p.reference)}</span>` : ''}
+          </div>
+          ${reservationLabel !== '<span class="payment-history-empty">–</span>' ? `<div class="payments-history-card-booking">${reservationLabel}</div>` : ''}
+          ${p.error ? `<div class="payments-history-card-error">${esc(p.error)}</div>` : ''}
+          <div class="payments-history-card-foot">
+            <span class="payment-history-reviewed-by">${esc(p.reviewedBy || '–')}</span>
+            ${actions}
+          </div>
+        </article>`;
       return `
       <tr>
         <td data-label="${esc(t('payments.time'))}"><span class="payment-history-received">${esc(formatDateTime(p.createdAt))}</span></td>
-        <td data-label="${esc(t('payments.source'))}">${esc(paymentHistorySourceLabel(p.source))}</td>
+        <td data-label="${esc(t('payments.source'))}">${esc(sourceLabel)}</td>
         <td data-label="${esc(t('payments.amount'))}" class="cell-money payment-history-amount">${esc(formatMoney(p.amount, p.currency))}</td>
         <td data-label="${esc(t('payments.payer'))}">
           <div class="payment-history-payer">
@@ -10174,6 +10274,12 @@ async function loadPaymentsHistory() {
         </tr></thead>
         <tbody>${rows || `<tr><td colspan="7"><div class="payment-history-empty-state">${t('payments.historyNone')}</div></td></tr>`}</tbody>
       </table>`;
+    const mobileList = $('#payments-history-mobile-list');
+    if (mobileList) {
+      mobileList.innerHTML = data.items.length
+        ? data.items.map((p) => p.__mobileCard).join('')
+        : `<div class="payment-history-empty-state">${t('payments.historyNone')}</div>`;
+    }
     renderTableInfo('#payments-history-info', data, data.maxTotal);
     renderPagination('#payments-history-pagination', data, 'paymentsHistory', loadPaymentsHistory);
 
@@ -15299,6 +15405,7 @@ function ensureCheck24Ui() {
   });
   window.addEventListener('resize', () => {
     if (activeTab === 'check24') syncCheck24MobileChrome();
+    if (activeTab === 'payments') syncPaymentsMobileChrome();
   });
 }
 

@@ -62,8 +62,61 @@
         </tr>`;
       })
       .join('');
+
+    const mobileCards = planList
+      .map((plan) => {
+        const res = plan.reservation || {};
+        const paid = Number(plan.paidTowardPlan) || 0;
+        const installment = Number(plan.installmentAmount) || 0;
+        const approxTotal =
+          installment > 0 && paid > 0
+            ? Math.max(paid, installment * Math.ceil(paid / installment + 0.001))
+            : installment * 4 || paid;
+        const pct = approxTotal > 0 ? Math.min(100, Math.round((paid / approxTotal) * 100)) : 0;
+        const nextDueIn = plan.nextDueAt
+          ? (() => {
+              const days = Math.ceil((new Date(plan.nextDueAt) - Date.now()) / 86400000);
+              if (!Number.isFinite(days)) return '';
+              return days >= 0
+                ? t('payments.plansNextDueIn', { days: String(days) })
+                : t('payments.plansOverdueDays', { days: String(Math.abs(days)) });
+            })()
+          : '';
+        return `
+        <article class="payment-plan-mobile-card">
+          <div class="payment-plan-mobile-head">
+            <div>
+              <strong>#${esc(String(res.hostawayId ?? ''))} ${esc(res.guestName || '')}</strong>
+              <p>${esc(res.listingName || '–')}</p>
+            </div>
+            <span class="payment-plan-active-pill">${esc(t('payments.plansActiveBadge'))}</span>
+          </div>
+          <div class="payment-plan-mobile-chips">
+            <span>${esc(freqLabel(plan.frequency))}</span>
+            ${nextDueIn ? `<span>${esc(nextDueIn)}</span>` : ''}
+          </div>
+          <div class="payment-plan-mobile-grid">
+            <div><span>${esc(t('payments.plansInstallment'))}</span><strong>${esc(formatMoney(plan.installmentAmount, plan.currency))}</strong></div>
+            <div><span>${esc(t('payments.plansFrequency'))}</span><strong>${esc(freqLabel(plan.frequency))}</strong></div>
+            <div><span>${esc(t('payments.plansNextDue'))}</span><strong>${esc(formatMoney(plan.nextDueAmount, plan.currency))}</strong></div>
+            <div><span>${esc(t('payments.plansNextDueAt'))}</span><strong>${plan.nextDueAt ? esc(formatDate(plan.nextDueAt)) : '–'}</strong></div>
+          </div>
+          <div class="payment-plan-mobile-progress">
+            <div class="payment-plan-mobile-progress-top">
+              <span>${esc(t('payments.plansPaidToward'))}</span>
+              <strong>${esc(formatMoney(plan.paidTowardPlan, plan.currency))}</strong>
+            </div>
+            <div class="payment-plan-mobile-bar"><span style="width:${pct}%"></span></div>
+          </div>
+          <button type="button" class="btn primary payment-plan-edit-btn" data-hostaway-id="${esc(String(res.hostawayId))}">
+            ${t('payments.plansEdit')}
+          </button>
+        </article>`;
+      })
+      .join('');
+
     list.innerHTML = `
-      <div class="table-wrap">
+      <div class="table-wrap payment-plans-desktop-list">
         <table>
           <thead><tr>
             <th>${t('payments.plansColReservation')}</th>
@@ -78,7 +131,8 @@
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>`;
+      </div>
+      <div class="payment-plans-mobile-list">${mobileCards}</div>`;
     $$('.payment-plan-edit-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idInput = $('#payment-plan-hostaway-id');
