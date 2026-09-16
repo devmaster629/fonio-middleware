@@ -15404,7 +15404,20 @@ function ensureCheck24Ui() {
     }
   });
   window.addEventListener('resize', () => {
-    if (activeTab === 'check24') syncCheck24MobileChrome();
+    if (activeTab === 'check24') {
+      const wasMobile = $('#check24-flow')?.classList.contains('is-mobile-compact');
+      syncCheck24MobileChrome();
+      const nowMobile = isCheck24MobileLayout();
+      if (wasMobile !== nowMobile) {
+        const status = check24Cache.status;
+        const connected =
+          Boolean(status?.enabled) &&
+          Boolean(status?.configured) &&
+          Boolean(status?.ping?.ok);
+        renderCheck24Header(status, connected);
+        renderCheck24Pipeline(connected);
+      }
+    }
     if (activeTab === 'payments') syncPaymentsMobileChrome();
   });
 }
