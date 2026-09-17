@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GuestCheckinReleaseService } from '../automation/guest-checkin-release.service';
 import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
 import {
   hashPhoneForStorage,
@@ -30,6 +31,8 @@ export class Check24BookingService {
     private readonly check24Sync: Check24SyncService,
     @Inject(forwardRef(() => GuestPaymentAutomationService))
     private readonly guestPayments: GuestPaymentAutomationService,
+    @Inject(forwardRef(() => GuestCheckinReleaseService))
+    private readonly checkinRelease: GuestCheckinReleaseService,
   ) {}
 
   async handleWebhookNotification(notification: Check24WebhookNotification) {
@@ -226,11 +229,47 @@ export class Check24BookingService {
             err instanceof Error ? err.message : err
           }`,
         );
-        return { ok: false, reason: 'error' };
+        return {
+          ok: false as const,
+          reason: 'error',
+          guestPortalUrl: undefined as string | undefined,
+          deadlineAt: undefined as Date | undefined,
+        };
       });
     if (paymentResult.ok) {
       this.logger.log(
         `CHECK24 guest payment request sent for Hostaway ${created.id}`,
+      );
+    }
+
+    const welcome = await this.checkinRelease
+      .sendImportWelcome({
+        reservationHostawayId: created.id,
+        bookingRef: booking.bookingId,
+        guestPortalUrl: paymentResult.guestPortalUrl ?? null,
+        deadlineAt: paymentResult.deadlineAt ?? null,
+        amount:
+          paymentResult.ok && booking.totalPrice != null
+            ? Number(booking.totalPrice)
+            : null,
+        currency: booking.currencyCode ?? 'EUR',
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `CHECK24 welcome message failed for Hostaway ${created.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+        return {
+          sent: false,
+          emailSent: false,
+          whatsappSent: false,
+          reason: 'error',
+        };
+      });
+    if (welcome.sent) {
+      this.logger.log(
+        `CHECK24 welcome sent for Hostaway ${created.id} (email=${welcome.emailSent}, whatsapp=${welcome.whatsappSent})`,
       );
     }
 

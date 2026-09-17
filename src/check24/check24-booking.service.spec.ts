@@ -36,6 +36,13 @@ describe('Check24BookingService cancellations', () => {
   const guestPayments = {
     requestPaymentOnImport: jest.fn().mockResolvedValue({ ok: false }),
   };
+  const checkinRelease = {
+    sendImportWelcome: jest.fn().mockResolvedValue({
+      sent: false,
+      emailSent: false,
+      whatsappSent: false,
+    }),
+  };
   const check24Sync = {
     refreshAndPushAvailability: jest.fn().mockResolvedValue({ pushed: true }),
   };
@@ -48,6 +55,7 @@ describe('Check24BookingService cancellations', () => {
     hostawaySync as never,
     check24Sync as never,
     guestPayments as never,
+    checkinRelease as never,
   );
 
   const canceledBooking: Check24Booking = {

@@ -284,6 +284,8 @@ model Reservation {
   autoCanceledAt         DateTime?
   /// When we sent Anreise / check-in info after deposit/payment was received.
   checkinInfoSentAt      DateTime?
+  /// When we sent the CHECK24 (or similar) welcome email/WhatsApp on import.
+  welcomeMessageSentAt   DateTime?
   guestRequests      GuestRequest[]
   notifiedCharges    NotifiedGuestCharge[]
   externalPayments   ExternalPayment[]

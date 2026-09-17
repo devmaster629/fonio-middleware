@@ -192,7 +192,7 @@ export class HostawayClient {
   async sendConversationMessage(
     conversationId: number,
     body: string,
-    communicationType: 'channel' | 'email' = 'channel',
+    communicationType: 'channel' | 'email' | 'sms' | 'whatsapp' = 'channel',
   ): Promise<number> {
     const { data } = await this.http.post<
       HostawaySingleResponse<{ id: number }>

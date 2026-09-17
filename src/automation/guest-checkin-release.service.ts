@@ -78,6 +78,165 @@ export class GuestCheckinReleaseService {
   /**
    * After a payment is booked: attach deferred contact, then send Anreiseinfo once.
    */
+  /**
+   * After CHECK24 import: send welcome via email + WhatsApp (not Anreise).
+   * Temporarily attaches local contact on Hostaway so delivery works, then
+   * strips it again so pre-payment Anreise automations stay blocked.
+   */
+  async sendImportWelcome(params: {
+    reservationHostawayId: number;
+    bookingRef?: string | null;
+    guestPortalUrl?: string | null;
+    deadlineAt?: Date | null;
+    amount?: number | null;
+    currency?: string | null;
+  }): Promise<{
+    sent: boolean;
+    emailSent: boolean;
+    whatsappSent: boolean;
+    reason?: string;
+  }> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { hostawayId: params.reservationHostawayId },
+      include: { listing: true },
+    });
+    if (!reservation) {
+      return {
+        sent: false,
+        emailSent: false,
+        whatsappSent: false,
+        reason: 'reservation_not_found',
+      };
+    }
+    if (reservation.welcomeMessageSentAt) {
+      return {
+        sent: false,
+        emailSent: false,
+        whatsappSent: false,
+        reason: 'already_sent',
+      };
+    }
+
+    const guestEmail = reservation.guestEmail?.trim() || undefined;
+    const guestPhone = reservation.guestPhone?.trim() || undefined;
+    if (!guestEmail && !guestPhone) {
+      return {
+        sent: false,
+        emailSent: false,
+        whatsappSent: false,
+        reason: 'no_local_contact',
+      };
+    }
+
+    const conversationId = await this.conversations.resolveConversationId(
+      reservation.hostawayId,
+    );
+    if (!conversationId) {
+      return {
+        sent: false,
+        emailSent: false,
+        whatsappSent: false,
+        reason: 'no_conversation',
+      };
+    }
+
+    const body = this.messaging.buildGuestWelcomeBody({
+      guestName: reservation.guestName,
+      bookingRef: params.bookingRef,
+      listingName: reservation.listing?.name,
+      checkIn: reservation.arrivalDate
+        ? reservation.arrivalDate.toISOString().slice(0, 10)
+        : null,
+      checkOut: reservation.departureDate
+        ? reservation.departureDate.toISOString().slice(0, 10)
+        : null,
+      guestPortalUrl: params.guestPortalUrl,
+      deadlineAt: params.deadlineAt,
+      amount: params.amount,
+      currency: params.currency,
+    });
+
+    await this.attachStoredGuestContactAfterPayment(reservation.hostawayId);
+
+    let emailSent = false;
+    let whatsappSent = false;
+    try {
+      if (guestEmail) {
+        try {
+          await this.messaging.sendGuestWelcomeMessage({
+            conversationId,
+            body,
+            communicationType: 'email',
+          });
+          emailSent = true;
+        } catch (err) {
+          this.logger.warn(
+            `Welcome email failed for ${reservation.hostawayId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      }
+      if (guestPhone) {
+        try {
+          await this.messaging.sendGuestWelcomeMessage({
+            conversationId,
+            body,
+            communicationType: 'whatsapp',
+          });
+          whatsappSent = true;
+        } catch (err) {
+          this.logger.warn(
+            `Welcome WhatsApp failed for ${reservation.hostawayId}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      }
+    } finally {
+      await this.stripHostawayGuestContact(reservation.hostawayId);
+    }
+
+    if (!emailSent && !whatsappSent) {
+      return {
+        sent: false,
+        emailSent: false,
+        whatsappSent: false,
+        reason: 'send_failed',
+      };
+    }
+
+    await this.prisma.reservation.update({
+      where: { id: reservation.id },
+      data: { welcomeMessageSentAt: new Date() },
+    });
+    this.logger.log(
+      `Welcome sent for reservation ${reservation.hostawayId} (email=${emailSent}, whatsapp=${whatsappSent})`,
+    );
+    return { sent: true, emailSent, whatsappSent };
+  }
+
+  /** Remove guest contact from Hostaway again after welcome (Anreise stays gated). */
+  async stripHostawayGuestContact(
+    reservationHostawayId: number,
+  ): Promise<void> {
+    try {
+      await this.hostaway.updateReservation(reservationHostawayId, {
+        guestEmail: '',
+        phone: '',
+      });
+      this.logger.log(
+        `Stripped Hostaway guest contact from reservation ${reservationHostawayId} after welcome`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to strip Hostaway guest contact for ${reservationHostawayId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
   async releaseAfterPayment(reservationHostawayId: number): Promise<{
     sent: boolean;
     reason?: string;

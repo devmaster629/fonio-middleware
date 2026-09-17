@@ -104,6 +104,12 @@ Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBo
 
 CHECK24 imports create the Hostaway reservation **without** guest email/phone on Hostaway, and **do not** attach contact until the first qualifying payment is applied. Contact is stored locally only so Hostaway “at reservation” email/WhatsApp automations have no recipient. Buchungsportal / external booking number are set on **create** when possible (avoids a follow-up update that can re-trigger automations). After payment, the middleware pushes contact to Hostaway and then sends Anreise / check-in templates.
 
+### Welcome message on import (not Anreise)
+
+Immediately after import the middleware also sends a **guest welcome** via Hostaway **email** and **WhatsApp** (when email/phone exist locally). The welcome confirms the booking and includes the payment link when available — it does **not** include address/PIN/Anreise. Contact is attached only for the send, then stripped from Hostaway again so Anreise automations stay blocked until payment.
+
+WhatsApp delivery requires Hostaway WhatsApp to be enabled on the account; free-form first messages may fail if Hostaway requires an approved template (email is the reliable path via the CHECK24 `fwd-…@bos.fewo.check24.de` relay).
+
 **Still required in Hostaway:** set Inbox automations that send pre-check-in on “reservation” to also require **Payment status = paid** (or disable them for the CHECK24 channel / Buchungsportal=CHECK24). Channel-only rules that do not need email can still fire — those must be payment-gated in Hostaway. Guest portal must not show door codes / exact address until paid.
 
 ## Cancellation → availability

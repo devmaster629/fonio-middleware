@@ -57,4 +57,52 @@ describe('HostawayMessagingService', () => {
       'channel',
     );
   });
+
+  it('builds CHECK24 welcome body without Anreise details', () => {
+    const body = service.buildGuestWelcomeBody({
+      guestName: 'Max Mustermann',
+      bookingRef: '128967787',
+      listingName: 'Test Listing',
+      checkIn: '2026-10-10',
+      checkOut: '2026-10-12',
+      guestPortalUrl: 'https://guest.example/pay',
+      amount: 381,
+      currency: 'EUR',
+    });
+    expect(body).toContain('vielen Dank für Ihre Buchung');
+    expect(body).toContain('128967787');
+    expect(body).toContain('https://guest.example/pay');
+    expect(body).toContain('erst nach Zahlungseingang');
+    expect(body).not.toMatch(/Ihr Zugangscode lautet/i);
+  });
+
+  it('sends welcome via email and whatsapp', async () => {
+    hostaway.sendConversationMessage
+      .mockResolvedValueOnce(11)
+      .mockResolvedValueOnce(12);
+    const emailId = await service.sendGuestWelcomeMessage({
+      conversationId: 9,
+      body: 'hello',
+      communicationType: 'email',
+    });
+    const waId = await service.sendGuestWelcomeMessage({
+      conversationId: 9,
+      body: 'hello',
+      communicationType: 'whatsapp',
+    });
+    expect(emailId).toBe(11);
+    expect(waId).toBe(12);
+    expect(hostaway.sendConversationMessage).toHaveBeenNthCalledWith(
+      1,
+      9,
+      'hello',
+      'email',
+    );
+    expect(hostaway.sendConversationMessage).toHaveBeenNthCalledWith(
+      2,
+      9,
+      'hello',
+      'whatsapp',
+    );
+  });
 });

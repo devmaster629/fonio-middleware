@@ -97,6 +97,84 @@ export class HostawayMessagingService {
     return messageId;
   }
 
+  /** Guest-facing welcome after a new CHECK24 (or similar) import — not Anreise. */
+  buildGuestWelcomeBody(params: {
+    guestName?: string | null;
+    bookingRef?: string | null;
+    listingName?: string | null;
+    checkIn?: string | null;
+    checkOut?: string | null;
+    guestPortalUrl?: string | null;
+    deadlineAt?: Date | null;
+    amount?: number | null;
+    currency?: string | null;
+  }): string {
+    const name = (params.guestName || '').trim() || 'Gäste';
+    const lines = [
+      `Guten Tag ${name},`,
+      '',
+      'vielen Dank für Ihre Buchung. Wir haben Ihre Reservierung erhalten.',
+    ];
+    if (params.bookingRef) {
+      lines.push(`Buchungsreferenz: ${params.bookingRef}`);
+    }
+    if (params.listingName) {
+      lines.push(`Unterkunft: ${params.listingName}`);
+    }
+    if (params.checkIn && params.checkOut) {
+      lines.push(`Zeitraum: ${params.checkIn} – ${params.checkOut}`);
+    }
+    lines.push(
+      '',
+      'Wichtig: Anreiseinformationen (Adresse, Zugangscode) senden wir Ihnen erst nach Zahlungseingang.',
+    );
+    if (params.guestPortalUrl) {
+      const currency = params.currency ?? 'EUR';
+      const amountLabel =
+        params.amount != null && params.amount > 0
+          ? new Intl.NumberFormat('de-DE', {
+              style: 'currency',
+              currency,
+            }).format(params.amount)
+          : null;
+      lines.push('', 'Zahlungsaufforderung:');
+      if (amountLabel) {
+        lines.push(`Offener Betrag: ${amountLabel}`);
+      }
+      if (params.deadlineAt) {
+        const deadlineLabel = new Intl.DateTimeFormat('de-DE', {
+          timeZone: 'Europe/Berlin',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }).format(params.deadlineAt);
+        lines.push(`Zahlungsfrist: ${deadlineLabel}`);
+      }
+      lines.push(
+        'Bitte zahlen Sie bequem online über unser Gästeportal:',
+        params.guestPortalUrl,
+      );
+    }
+    lines.push('', 'Bei Fragen melden Sie sich gerne.', '', 'Ihr brainions Team');
+    return lines.join('\n');
+  }
+
+  async sendGuestWelcomeMessage(params: {
+    conversationId: number;
+    body: string;
+    communicationType: 'email' | 'whatsapp';
+  }): Promise<number> {
+    const messageId = await this.hostaway.sendConversationMessage(
+      params.conversationId,
+      params.body,
+      params.communicationType,
+    );
+    this.logger.log(
+      `Sent guest welcome via ${params.communicationType} to conversation ${params.conversationId} (message ${messageId})`,
+    );
+    return messageId;
+  }
+
   async forwardRequestToInbox(params: {
     conversationId: number;
     guestRequestId: string;
