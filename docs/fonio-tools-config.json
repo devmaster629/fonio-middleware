@@ -144,21 +144,22 @@
         "guests": 2,
         "guestFirstName": "Max",
         "guestLastName": "Mustermann",
-        "guestEmail": "max@example.com",
+        "guestEmail": "max.mustermann@gmail.com",
         "phone": "+491701234567",
         "note": "Telefonische Anfrage über fonio"
       },
       "notes": [
         "listingId aus Verfügbarkeitsantwort (listingId Feld)",
         "Nur aufrufen wenn available=true für diese Unterkunft",
-        "Nur wenn Gast ausdrücklich buchen / Anfrage stellen möchte",
-        "Zuerst Kontaktdaten: Vorname, Nachname, E-Mail, Telefon",
+        "Nur wenn Gast ausdrücklich buchen / Anfrage stellen möchte — NICHT allein wegen Verfügbarkeit",
+        "Zuerst echte Kontaktdaten: Vorname, Nachname, E-Mail, Telefon (keine Platzhalter erfinden)",
         "Nur wenn bookingOfferEnabled in Admin aktiviert",
         "Keine Preise am Telefon nennen",
         "Erstellt Hostaway-Inquiry + Anzahlungsaufforderung — Bestätigung erst nach Zahlung",
-        "guestMessage aus API-Antwort dem Gast vorlesen; nie behaupten Buchung sei schon bestätigt"
+        "guestMessage aus API-Antwort dem Gast vorlesen; nie behaupten Buchung sei schon bestätigt",
+        "Bei offerCreated=false: guestMessage vorlesen und an Mitarbeiter weiterleiten — keine Bestätigung vortäuschen"
       ],
-      "whenToUse": "Gast möchte ausdrücklich buchen und gewünschte Unterkunft ist verfügbar"
+      "whenToUse": "Gast möchte ausdrücklich buchen, Kontaktdaten sind erfasst, und gewünschte Unterkunft ist verfügbar"
     }
   ],
   "inboundWebhook": {

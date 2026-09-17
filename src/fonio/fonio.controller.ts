@@ -599,6 +599,7 @@ export class FonioController {
           checkIn: result.checkIn,
           checkOut: result.checkOut,
           status: result.status,
+          depositRequested: result.depositRequested,
         },
         extra: {
           listingId: result.listingId,

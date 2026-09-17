@@ -101,13 +101,15 @@ POST /api/v1/fonio/booking-offer
 
 Required body: `listingId`, `checkIn`, `checkOut`, `guests`, `guestFirstName`, `guestLastName`, `guestEmail`, `phone`.
 
-Creates a Hostaway **inquiry** (not a confirmed booking) on channel `BOOKING_OFFER_CHANNEL_ID` (default 2000), then requests a **deposit** via the Direct portal payment rule (guest payment link). The inquiry is promoted to confirmed (`new`) only after the deposit payment is applied.
+Creates a Hostaway **inquiry** (not a confirmed booking) on channel `BOOKING_OFFER_CHANNEL_ID` (default 2000), then **must** successfully request a **deposit** via the Direct portal payment rule (guest payment link). If Hostaway ignores `inquiry` status or the deposit request fails, the middleware **cancels** the reservation and returns `offerCreated: false` — it never leaves an unpaid confirmed booking. The inquiry is promoted to confirmed (`new`) only after a qualifying deposit payment is applied.
 
-Fonio must collect contact details first and tell the guest: offer + deposit request; confirmation only after payment. Do not quote prices on the phone.
+Fonio must collect real contact details first and tell the guest: offer + deposit request; confirmation only after payment. Do not quote prices on the phone. The API response intentionally omits `totalPrice`.
 
 Enable/disable in **Admin → Rules & verification → Automatic booking offer (fonio)**.  
 Configure deposit % / guest link under **Admin → Payments → Portal settings → Direct**.  
 `BOOKING_OFFER_ENABLED=false` in `.env` only applies as fallback when no admin config exists yet.
+
+**Copy the updated prompts/tools from `docs/fonio-prompt-*.txt` and `docs/fonio-tools-config.json` into the fonio dashboard** so the voice agent does not call booking-offer merely because dates are available.
 
 ## Example call flow
 

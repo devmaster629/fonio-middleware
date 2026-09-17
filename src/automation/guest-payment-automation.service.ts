@@ -104,7 +104,12 @@ export class GuestPaymentAutomationService {
         hostawayId: true,
         status: true,
         hostNote: true,
+        guestEmail: true,
+        totalPrice: true,
+        isPaid: true,
+        paymentPhase: true,
         guestPaymentRequestSentAt: true,
+        notifiedCharges: { select: { amount: true } },
       },
     });
     if (!reservation) return { confirmed: false, reason: 'missing' };
@@ -114,6 +119,11 @@ export class GuestPaymentAutomationService {
     const status = String(reservation.status || '').toLowerCase();
     if (!status.startsWith('inquiry')) {
       return { confirmed: false, reason: 'not_inquiry' };
+    }
+
+    // Only promote after a real deposit (or full pay) — never on a tiny / token payment.
+    if (!(await this.hasFonioDepositPaid(reservation))) {
+      return { confirmed: false, reason: 'deposit_incomplete' };
     }
 
     try {
@@ -135,6 +145,37 @@ export class GuestPaymentAutomationService {
       );
       return { confirmed: false, reason: message };
     }
+  }
+
+  private async hasFonioDepositPaid(reservation: {
+    hostNote?: string | null;
+    guestEmail?: string | null;
+    totalPrice?: unknown;
+    isPaid?: boolean | null;
+    paymentPhase?: string | null;
+    notifiedCharges: { amount: unknown }[];
+  }): Promise<boolean> {
+    if (reservation.isPaid === true) return true;
+    if ((reservation.paymentPhase ?? '').toLowerCase() === 'deposit_paid') {
+      return true;
+    }
+    const total = Number(reservation.totalPrice) || 0;
+    const paid = reservation.notifiedCharges.reduce(
+      (sum, c) => sum + (Number(c.amount) || 0),
+      0,
+    );
+    if (paid <= 0.5) return false;
+
+    const rules = await this.portalRules.list();
+    const rule = matchPortalRule(null, rules, {
+      hostNote: reservation.hostNote,
+      guestEmail: reservation.guestEmail,
+    });
+    let needed = rule ? depositAmount(total, rule) : 0;
+    if (needed <= 1) needed = Math.round(total * 0.3 * 100) / 100;
+    if (needed <= 1) return paid > 0.5;
+    // Allow small rounding differences (90% of configured deposit).
+    return paid + 0.01 >= needed * 0.9;
   }
 
   isFonioOfferReservation(reservation: {

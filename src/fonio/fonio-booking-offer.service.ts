@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GuestPaymentAutomationService } from '../automation/guest-payment-automation.service';
@@ -12,6 +13,12 @@ import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FonioAvailabilityService } from './fonio-availability.service';
 import { BookingOfferDto } from './dto/booking-offer.dto';
+
+const GUEST_MESSAGE_OK =
+  'Vielen Dank — Ihre Anfrage ist aufgenommen. Sie erhalten von uns ein Angebot mit Bitte um Anzahlung. Eine verbindliche Buchungsbestätigung erfolgt erst nach Zahlungseingang der Anzahlung.';
+
+const GUEST_MESSAGE_FAIL =
+  'Ihre Kontaktdaten habe ich notiert. Ein Mitarbeiter meldet sich zeitnah mit einem Angebot — eine verbindliche Buchung liegt noch nicht vor.';
 
 @Injectable()
 export class FonioBookingOfferService {
@@ -28,14 +35,24 @@ export class FonioBookingOfferService {
 
   async createOffer(dto: BookingOfferDto) {
     if (!(await this.isBookingOfferEnabled())) {
-      throw new BadRequestException('Automatic booking offers are disabled');
+      throw new BadRequestException({
+        offerCreated: false,
+        message: 'Automatic booking offers are disabled',
+        guestMessage: GUEST_MESSAGE_FAIL,
+      });
     }
+
+    this.assertRealContact(dto);
 
     const listing = await this.prisma.listing.findUnique({
       where: { hostawayId: dto.listingId },
     });
     if (!listing || !listing.isBookable) {
-      throw new NotFoundException('Listing not found or not bookable');
+      throw new NotFoundException({
+        offerCreated: false,
+        message: 'Listing not found or not bookable',
+        guestMessage: GUEST_MESSAGE_FAIL,
+      });
     }
 
     const search = await this.availability.search({
@@ -55,6 +72,8 @@ export class FonioBookingOfferService {
         offerCreated: false,
         message: 'Selected listing is not available for these dates',
         availableCount: search.availableCount,
+        guestMessage:
+          'Für diese Unterkunft und Daten ist aktuell nichts frei. Gerne prüfen wir andere Daten oder Orte.',
       });
     }
 
@@ -95,72 +114,75 @@ export class FonioBookingOfferService {
     };
 
     const created = await this.hostaway.createReservation(payload);
-    await this.sync.syncSingleReservation(created.id).catch((err) => {
-      this.logger.warn(
-        `Offer created in Hostaway (${created.id}) but local sync failed: ${err instanceof Error ? err.message : err}`,
-      );
-    });
+    const reservationId = created.id;
 
-    // If Hostaway ignored status:inquiry and created a confirmed booking, force inquiry.
-    const createdStatus = String(created.status || '').toLowerCase();
-    if (createdStatus && !createdStatus.startsWith('inquiry')) {
-      this.logger.warn(
-        `Fonio offer ${created.id} created as status=${created.status}; forcing inquiry`,
+    try {
+      await this.syncLocalReservation(reservationId);
+      await this.ensureInquiryStatus(reservationId);
+
+      const paymentResult = await this.guestPayments.requestDepositAfterFonioOffer(
+        reservationId,
+        {
+          hostNote,
+          guestEmail: dto.guestEmail.trim(),
+        },
       );
-      try {
-        await this.hostaway.updateReservation(created.id, { status: 'inquiry' });
-        await this.prisma.reservation
-          .updateMany({
-            where: { hostawayId: created.id },
-            data: { status: 'inquiry' },
-          })
-          .catch(() => undefined);
-        created.status = 'inquiry';
-      } catch (err) {
+
+      if (!paymentResult.ok) {
         this.logger.error(
-          `Failed to force inquiry on Fonio offer ${created.id}: ${
-            err instanceof Error ? err.message : err
-          }`,
+          `Fonio offer ${reservationId}: deposit request failed (${paymentResult.reason}) — rolling back`,
         );
+        await this.rollbackOffer(reservationId);
+        throw new ServiceUnavailableException({
+          offerCreated: false,
+          depositRequested: false,
+          depositRequestReason: paymentResult.reason,
+          message:
+            'Booking inquiry was not kept because the deposit request could not be sent',
+          guestMessage: GUEST_MESSAGE_FAIL,
+        });
       }
-    }
 
-    const paymentResult = await this.guestPayments
-      .requestDepositAfterFonioOffer(created.id, {
-        hostNote,
-        guestEmail: dto.guestEmail.trim(),
-      })
-      .catch((err) => {
-        this.logger.warn(
-          `Fonio deposit request failed for ${created.id}: ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-        return { ok: false, reason: 'error' as const };
+      this.logger.log(
+        `Fonio inquiry ${reservationId} created with deposit request for ${listing.name}`,
+      );
+
+      // Do not return totalPrice to fonio — the model must not quote prices on the phone.
+      return {
+        offerCreated: true,
+        reservationId,
+        listingId: dto.listingId,
+        listingName: listing.name,
+        checkIn: dto.checkIn,
+        checkOut: dto.checkOut,
+        guests: dto.guests,
+        currency: 'EUR',
+        status: 'inquiry',
+        depositRequested: true,
+        message:
+          'Booking inquiry created in Hostaway (not confirmed). Deposit request sent; confirmation only after payment.',
+        guestMessage: GUEST_MESSAGE_OK,
+      };
+    } catch (err) {
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException ||
+        err instanceof ServiceUnavailableException
+      ) {
+        throw err;
+      }
+      this.logger.error(
+        `Fonio offer ${reservationId} failed after create: ${
+          err instanceof Error ? err.message : err
+        } — rolling back`,
+      );
+      await this.rollbackOffer(reservationId);
+      throw new ServiceUnavailableException({
+        offerCreated: false,
+        message: 'Booking offer could not be completed safely',
+        guestMessage: GUEST_MESSAGE_FAIL,
       });
-
-    if (paymentResult.ok) {
-      this.logger.log(`Fonio deposit request sent for inquiry ${created.id}`);
     }
-
-    return {
-      offerCreated: true,
-      reservationId: created.id,
-      listingId: dto.listingId,
-      listingName: listing.name,
-      checkIn: dto.checkIn,
-      checkOut: dto.checkOut,
-      guests: dto.guests,
-      totalPrice: price.totalPrice,
-      currency: 'EUR',
-      status: 'inquiry',
-      depositRequested: paymentResult.ok === true,
-      depositRequestReason: paymentResult.ok ? undefined : paymentResult.reason,
-      message:
-        'Booking inquiry created in Hostaway (not confirmed). Deposit request sent when possible; confirmation only after payment.',
-      guestMessage:
-        'Vielen Dank — Ihre Anfrage ist aufgenommen. Sie erhalten von uns ein Angebot mit Bitte um Anzahlung. Eine verbindliche Buchungsbestätigung erfolgt erst nach Zahlungseingang der Anzahlung.',
-    };
   }
 
   async isBookingOfferEnabled(): Promise<boolean> {
@@ -170,6 +192,123 @@ export class FonioBookingOfferService {
     });
     if (config) return config.bookingOfferEnabled;
     return this.config.get('BOOKING_OFFER_ENABLED') !== 'false';
+  }
+
+  /** Reject empty / placeholder contact so Hostaway never gets a fake confirmed booking. */
+  private assertRealContact(dto: BookingOfferDto) {
+    const first = dto.guestFirstName.trim();
+    const last = dto.guestLastName.trim();
+    const email = dto.guestEmail.trim().toLowerCase();
+    const phoneDigits = dto.phone.replace(/\D/g, '');
+
+    if (first.length < 2 || last.length < 2) {
+      throw new BadRequestException({
+        offerCreated: false,
+        message: 'Guest first and last name are required',
+        guestMessage:
+          'Für ein Angebot brauche ich bitte noch Ihren Vor- und Nachnamen.',
+      });
+    }
+    if (phoneDigits.length < 8) {
+      throw new BadRequestException({
+        offerCreated: false,
+        message: 'A valid phone number is required',
+        guestMessage:
+          'Für ein Angebot brauche ich bitte noch eine gültige Telefonnummer.',
+      });
+    }
+    if (
+      /@(example\.com|test\.com|email\.com|localhost)$/i.test(email) ||
+      /^(test|gast|guest|unknown|n\/a|na)([.+]|$)/i.test(email.split('@')[0] ?? '')
+    ) {
+      throw new BadRequestException({
+        offerCreated: false,
+        message: 'A real guest email is required',
+        guestMessage:
+          'Für ein Angebot brauche ich bitte noch Ihre E-Mail-Adresse.',
+      });
+    }
+  }
+
+  private async syncLocalReservation(reservationId: number) {
+    await this.sync.syncSingleReservation(reservationId);
+    const local = await this.prisma.reservation.findUnique({
+      where: { hostawayId: reservationId },
+      select: { id: true },
+    });
+    if (!local) {
+      throw new Error(`Local sync missing for Hostaway reservation ${reservationId}`);
+    }
+  }
+
+  /**
+   * Fail closed: Hostaway must keep the reservation as inquiry.
+   * If it created a confirmed booking, force inquiry; if that fails, cancel.
+   */
+  private async ensureInquiryStatus(reservationId: number) {
+    const live = await this.hostaway.getReservation(reservationId);
+    let status = String(live?.status || '').toLowerCase();
+
+    if (status.startsWith('inquiry')) {
+      await this.prisma.reservation
+        .updateMany({
+          where: { hostawayId: reservationId },
+          data: { status: live.status || 'inquiry' },
+        })
+        .catch(() => undefined);
+      return;
+    }
+
+    this.logger.warn(
+      `Fonio offer ${reservationId} created as status=${live?.status}; forcing inquiry`,
+    );
+
+    try {
+      await this.hostaway.updateReservation(reservationId, { status: 'inquiry' });
+      const again = await this.hostaway.getReservation(reservationId);
+      status = String(again?.status || '').toLowerCase();
+      if (!status.startsWith('inquiry')) {
+        throw new Error(`Hostaway still reports status=${again?.status}`);
+      }
+      await this.prisma.reservation
+        .updateMany({
+          where: { hostawayId: reservationId },
+          data: { status: again.status || 'inquiry' },
+        })
+        .catch(() => undefined);
+    } catch (err) {
+      this.logger.error(
+        `Failed to force inquiry on Fonio offer ${reservationId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      await this.rollbackOffer(reservationId);
+      throw new ServiceUnavailableException({
+        offerCreated: false,
+        message:
+          'Hostaway did not accept inquiry status; reservation was cancelled to avoid an unpaid confirmed booking',
+        guestMessage: GUEST_MESSAGE_FAIL,
+      });
+    }
+  }
+
+  private async rollbackOffer(reservationId: number) {
+    try {
+      await this.hostaway.cancelReservation(reservationId);
+      await this.prisma.reservation
+        .updateMany({
+          where: { hostawayId: reservationId },
+          data: { status: 'cancelled' },
+        })
+        .catch(() => undefined);
+      this.logger.warn(`Rolled back Fonio offer reservation ${reservationId}`);
+    } catch (err) {
+      this.logger.error(
+        `CRITICAL: could not cancel Fonio offer ${reservationId} after failure: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
   }
 
   private toFinanceField(component: HostawayPriceComponent) {
