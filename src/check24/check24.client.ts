@@ -173,6 +173,18 @@ export class Check24Client {
     return data;
   }
 
+  async getBookingWebhook(): Promise<unknown | null> {
+    try {
+      const { data } = await this.http.get('/bookings/webhook');
+      return data ?? null;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
   async deleteBookingWebhook(): Promise<unknown> {
     const { data } = await this.http.delete('/bookings/webhook');
     return data;

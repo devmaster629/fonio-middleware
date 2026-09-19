@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>brainions Vermietung - Admin</title>
   <link rel="icon" type="image/png" href="/admin/logo.png" />
-  <link rel="stylesheet" href="/admin/styles.css?v=20260916x" />
+  <link rel="stylesheet" href="/admin/styles.css?v=20260918b" />
 </head>
 <body>
   <div id="login-screen" class="screen">
@@ -1693,9 +1693,12 @@
                 <span class="check24-settings-icon" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 </span>
-                <span>
-                  <strong data-i18n="check24.registerWebhook">Turn on booking alerts</strong>
-                  <small data-i18n="check24.registerWebhookHelp">Get notified about new bookings from CHECK24.</small>
+                <span class="check24-webhook-copy">
+                  <span class="check24-webhook-title-row">
+                    <strong id="check24-webhook-title" data-i18n="check24.registerWebhook">Turn on booking alerts</strong>
+                    <span id="check24-webhook-state" class="check24-webhook-state is-off">Off</span>
+                  </span>
+                  <small id="check24-webhook-help" data-i18n="check24.registerWebhookHelp">Registers a CHECK24 webhook so new/changed bookings are pushed into this middleware (and Hostaway) automatically.</small>
                 </span>
               </button>
               <div class="check24-advanced-field">
@@ -2201,10 +2204,10 @@
     </div>
   </div>
 
-  <script src="/admin/i18n.js?v=20260916x"></script>
+  <script src="/admin/i18n.js?v=20260918b"></script>
   <script src="/admin/nav-icons.js?v=20260903b"></script>
   <script src="/admin/notifications.js?v=20260716"></script>
-  <script src="/admin/app.js?v=20260916x"></script>
-  <script src="/admin/payment-plans.js?v=20260916x"></script>
+  <script src="/admin/app.js?v=20260918b"></script>
+  <script src="/admin/payment-plans.js?v=20260918b"></script>
 </body>
 </html>

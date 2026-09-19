@@ -18926,6 +18926,50 @@ tr.is-archived-row td {
   line-height: 1.35;
 }
 
+.check24-webhook-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.check24-webhook-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.check24-webhook-state {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.check24-webhook-state.is-on {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.check24-webhook-state.is-off {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.check24-webhook-state.is-unknown {
+  color: #fde68a;
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.check24-advanced-action.is-alerts-on {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
 .check24-advanced-field {
   display: flex;
   flex-direction: column;

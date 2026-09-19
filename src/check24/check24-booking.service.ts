@@ -11,6 +11,7 @@ import { HostawaySyncService } from '../hostaway/hostaway-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Check24Client } from './check24.client';
 import { Check24SyncService } from './check24-sync.service';
+import { Check24SyncSettingsService } from './check24-sync-settings.service';
 import {
   Check24Booking,
   Check24CancelBookingPayload,
@@ -29,6 +30,7 @@ export class Check24BookingService {
     private readonly hostaway: HostawayClient,
     private readonly hostawaySync: HostawaySyncService,
     private readonly check24Sync: Check24SyncService,
+    private readonly syncSettings: Check24SyncSettingsService,
     @Inject(forwardRef(() => GuestPaymentAutomationService))
     private readonly guestPayments: GuestPaymentAutomationService,
     @Inject(forwardRef(() => GuestCheckinReleaseService))
@@ -421,15 +423,59 @@ export class Check24BookingService {
     }
   }
 
-  async registerWebhook(publicBaseUrl?: string) {
+  expectedWebhookUrl(publicBaseUrl?: string): string {
     const base = (
       publicBaseUrl ??
       this.config.get<string>('PRODUCTION_URL') ??
       this.config.get<string>('APP_URL') ??
       'https://vermietung.brainions.digital'
     ).replace(/\/$/, '');
+    return `${base}/webhooks/check24/bookings`;
+  }
 
-    const url = `${base}/webhooks/check24/bookings`;
+  async getWebhookStatus(publicBaseUrl?: string) {
+    const expectedUrl = this.expectedWebhookUrl(publicBaseUrl);
+    const [settings, last] = await Promise.all([
+      this.syncSettings.getOrCreate(),
+      this.prisma.apiLog.findFirst({
+        where: { source: 'check24_webhook' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, action: true },
+      }),
+    ]);
+
+    let registeredUrl: string | null = null;
+    let lookup: 'ok' | 'missing' | 'error' | 'skipped' = 'skipped';
+    let lookupError: string | undefined;
+    if (this.check24.isConfigured()) {
+      try {
+        const remote = await this.check24.getBookingWebhook();
+        registeredUrl = this.extractWebhookUrl(remote);
+        lookup = remote ? 'ok' : 'missing';
+      } catch (err) {
+        lookup = 'error';
+        lookupError = this.check24.describeError(err);
+      }
+    }
+
+    return {
+      enabled: Boolean(settings.bookingAlertsEnabled),
+      registeredAt: settings.bookingAlertsRegisteredAt?.toISOString() ?? null,
+      lookup,
+      lookupError,
+      expectedUrl,
+      registeredUrl,
+      matches: Boolean(
+        registeredUrl &&
+          registeredUrl.replace(/\/$/, '') === expectedUrl.replace(/\/$/, ''),
+      ),
+      lastReceivedAt: last?.createdAt?.toISOString() ?? null,
+      lastReceivedAction: last?.action ?? null,
+    };
+  }
+
+  async registerWebhook(publicBaseUrl?: string) {
+    const url = this.expectedWebhookUrl(publicBaseUrl);
     const username = this.config.get<string>('CHECK24_WEBHOOK_USERNAME');
     const password = this.config.get<string>('CHECK24_WEBHOOK_PASSWORD');
 
@@ -441,7 +487,59 @@ export class Check24BookingService {
     };
 
     const result = await this.check24.registerBookingWebhook(registration);
-    return { url, result };
+    await this.syncSettings.update({
+      bookingAlertsEnabled: true,
+      bookingAlertsRegisteredAt: new Date(),
+    });
+    return { enabled: true, url, result };
+  }
+
+  async unregisterWebhook() {
+    let remoteDeleted = false;
+    let remoteError: string | undefined;
+    try {
+      await this.check24.deleteBookingWebhook();
+      remoteDeleted = true;
+    } catch (err) {
+      // CHECK24 staging often returns 400 when no webhook exists / delete unsupported.
+      // Always clear local On/Off so the UI toggle still works.
+      remoteError = this.check24.describeError(err);
+      this.logger.warn(`CHECK24 webhook delete failed (continuing local Off): ${remoteError}`);
+    }
+    await this.syncSettings.update({
+      bookingAlertsEnabled: false,
+      bookingAlertsRegisteredAt: null,
+    });
+    return {
+      enabled: false,
+      remoteDeleted,
+      ...(remoteError ? { remoteError } : {}),
+    };
+  }
+
+  private extractWebhookUrl(payload: unknown): string | null {
+    if (!payload) return null;
+    if (typeof payload === 'string') {
+      const text = payload.trim();
+      return text.startsWith('http') ? text : null;
+    }
+    if (typeof payload !== 'object') return null;
+    const rec = payload as Record<string, unknown>;
+    const nested =
+      rec.webhook && typeof rec.webhook === 'object'
+        ? (rec.webhook as Record<string, unknown>)
+        : rec;
+    const candidates = [
+      nested.url,
+      nested.webhookUrl,
+      nested.callbackUrl,
+      rec.url,
+      rec.webhookUrl,
+    ];
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
   }
 
   async listLocalBookings(limit = 50) {

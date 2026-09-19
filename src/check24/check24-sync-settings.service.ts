@@ -39,6 +39,8 @@ export class Check24SyncSettingsService {
     autoSyncEnabled?: boolean;
     autoSyncContent?: boolean;
     intervalMinutes?: number;
+    bookingAlertsEnabled?: boolean;
+    bookingAlertsRegisteredAt?: Date | null;
   }) {
     await this.getOrCreate();
     return this.prisma.check24SyncSettings.update({

@@ -54,6 +54,7 @@ describe('Check24BookingService cancellations', () => {
     hostaway as never,
     hostawaySync as never,
     check24Sync as never,
+    { getOrCreate: jest.fn(), update: jest.fn() } as never,
     guestPayments as never,
     checkinRelease as never,
   );

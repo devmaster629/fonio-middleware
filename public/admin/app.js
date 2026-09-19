@@ -15914,6 +15914,44 @@ function renderCheck24BookingsTable() {
   );
 }
 
+function renderCheck24WebhookStatus(status) {
+  const btn = $('#check24-webhook-btn');
+  const title = $('#check24-webhook-title');
+  const help = $('#check24-webhook-help');
+  const stateEl = $('#check24-webhook-state');
+  if (!btn || !title || !help || !stateEl) return;
+
+  const webhook = status?.webhook || {};
+  const enabled = webhook.enabled;
+  const state =
+    enabled === true ? 'on' : enabled === false ? 'off' : 'unknown';
+  stateEl.className = `check24-webhook-state is-${state}`;
+  stateEl.textContent =
+    state === 'on'
+      ? t('check24.alertsOn')
+      : state === 'off'
+        ? t('check24.alertsOff')
+        : t('check24.alertsUnknown');
+  btn.classList.toggle('is-alerts-on', state === 'on');
+  title.textContent =
+    state === 'on' ? t('check24.alertsOnTitle') : t('check24.alertsOffTitle');
+
+  const lastTs = check24FmtTs(webhook.lastReceivedAt);
+  const lastLine = lastTs
+    ? t('check24.alertsLastReceived', {
+        time: lastTs,
+        action: String(webhook.lastReceivedAction || 'booking').replace(/^booking:/, ''),
+      })
+    : t('check24.alertsNeverReceived');
+  const baseHelp =
+    state === 'on'
+      ? t('check24.alertsOnHelp')
+      : state === 'off'
+        ? t('check24.alertsOffHelp')
+        : t('check24.alertsUnknownHelp');
+  help.textContent = `${baseHelp} ${lastLine}`;
+}
+
 async function loadCheck24(opts = {}) {
   ensureCheck24Ui();
   const [status, mappings, bookings] = await Promise.all([
@@ -16046,6 +16084,7 @@ async function loadCheck24(opts = {}) {
     autoHint.innerHTML = `${fonioSvgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>', 14)} <span>${esc(parts.join(' · '))}</span>`;
   }
 
+  renderCheck24WebhookStatus(status);
   applyRoleUi();
 }
 
@@ -16121,13 +16160,31 @@ $('#check24-sync-btn')?.addEventListener('click', async () => {
 
 $('#check24-webhook-btn')?.addEventListener('click', async () => {
   const el = $('#check24-action-result');
+  const currentlyOn = Boolean(check24Cache?.status?.webhook?.enabled);
   try {
-    const data = await api('/check24/webhooks/bookings/register', {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
-    el.textContent = t('check24.webhookOk', { url: data.url || '' });
-    notify.success(t('check24.webhookOk', { url: data.url || '' }));
+    if (currentlyOn) {
+      const data = await api('/check24/webhooks/bookings/unregister', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      el.textContent = t('check24.webhookOff');
+      notify.success(t('check24.webhookOff'));
+      if (check24Cache?.status?.webhook) {
+        check24Cache.status.webhook.enabled = false;
+      }
+      void data;
+    } else {
+      const data = await api('/check24/webhooks/bookings/register', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      el.textContent = t('check24.webhookOk', { url: data.url || '' });
+      notify.success(t('check24.webhookOk', { url: data.url || '' }));
+      if (check24Cache?.status?.webhook) {
+        check24Cache.status.webhook.enabled = true;
+      }
+    }
+    await loadCheck24();
   } catch (ex) {
     el.textContent = ex.message;
     notify.error(ex.message);

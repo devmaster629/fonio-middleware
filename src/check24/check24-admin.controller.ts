@@ -38,11 +38,12 @@ export class Check24AdminController {
   @Permissions(AdminPermission.DASHBOARD_VIEW)
   @ApiOperation({ summary: 'CHECK24 integration status + ping' })
   async status() {
-    const [status, settings] = await Promise.all([
+    const [status, settings, webhook] = await Promise.all([
       this.sync.status(),
       this.syncSettings.getOrCreate(),
+      this.bookings.getWebhookStatus(),
     ]);
-    return { ...status, settings };
+    return { ...status, settings, webhook };
   }
 
   @Get('sync/settings')
@@ -144,6 +145,13 @@ export class Check24AdminController {
   @ApiOperation({ summary: 'Register CHECK24 booking webhook pointing at this app' })
   registerWebhook(@Body() body?: { url?: string }) {
     return this.bookings.registerWebhook(body?.url);
+  }
+
+  @Post('webhooks/bookings/unregister')
+  @Permissions(AdminPermission.WEBHOOKS_MANAGE)
+  @ApiOperation({ summary: 'Remove CHECK24 booking webhook registration' })
+  unregisterWebhook() {
+    return this.bookings.unregisterWebhook();
   }
 
   @Post('bookings/poll')

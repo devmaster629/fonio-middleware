@@ -487,6 +487,9 @@ model Check24SyncSettings {
   autoSyncContent  Boolean   @default(false)
   intervalMinutes  Int       @default(30)
   lastAutoSyncAt   DateTime?
+  /// Local mirror of CHECK24 booking webhook registration (UI On/Off).
+  bookingAlertsEnabled Boolean @default(false)
+  bookingAlertsRegisteredAt DateTime?
   updatedAt        DateTime  @updatedAt
 }
 
