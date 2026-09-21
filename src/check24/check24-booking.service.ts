@@ -597,6 +597,14 @@ export class Check24BookingService {
     existing: { hostawayReservationId: number | null } | null,
   ) {
     const hostawayReservationId = existing?.hostawayReservationId ?? null;
+    const forceOpenStay = {
+      dateFrom: booking.dateFrom,
+      dateTo: booking.dateTo,
+      excludeHostawayReservationIds: hostawayReservationId
+        ? [hostawayReservationId]
+        : undefined,
+    };
+
     if (!hostawayReservationId) {
       await this.prisma.check24Booking.update({
         where: { check24BookingId: booking.bookingId },
@@ -609,7 +617,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
-        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
+        forceOpenStay,
       );
       return {
         processed: true,
@@ -638,7 +646,7 @@ export class Check24BookingService {
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
-        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
+        forceOpenStay,
       );
       return {
         processed: true,
@@ -660,14 +668,10 @@ export class Check24BookingService {
         },
       });
       await this.hostaway.cancelReservation(hostawayReservationId);
-      try {
-        await this.prisma.reservation.updateMany({
-          where: { hostawayId: hostawayReservationId },
-          data: { status: 'cancelled' },
-        });
-      } catch {
-        /* best effort — sync below is the source of truth */
-      }
+      await this.prisma.reservation.updateMany({
+        where: { hostawayId: hostawayReservationId },
+        data: { status: 'cancelled' },
+      });
       await this.hostawaySync.syncSingleReservation(hostawayReservationId).catch((err) => {
         this.logger.warn(
           `CHECK24 booking ${booking.bookingId} cancelled Hostaway ${hostawayReservationId} but local sync failed: ${
@@ -675,11 +679,26 @@ export class Check24BookingService {
           }`,
         );
       });
+      // Hostaway often keeps channel stays as `modified` after PUT status=cancelled.
+      // Re-assert local cancelled so calendar sync / force-open treat the stay as gone.
+      await this.prisma.reservation.updateMany({
+        where: { hostawayId: hostawayReservationId },
+        data: { status: 'cancelled' },
+      });
+      const after = await this.prisma.reservation.findUnique({
+        where: { hostawayId: hostawayReservationId },
+        select: { status: true },
+      });
+      if (!this.isHostawayCancelled(after?.status)) {
+        this.logger.warn(
+          `CHECK24 booking ${booking.bookingId}: Hostaway ${hostawayReservationId} still status=${after?.status} after cancel — force-opening CHECK24 dates anyway`,
+        );
+      }
 
       await this.pushAvailabilityForProperty(
         booking.propertyId,
         booking.bookingId,
-        { dateFrom: booking.dateFrom, dateTo: booking.dateTo },
+        forceOpenStay,
       );
 
       return {
@@ -693,13 +712,24 @@ export class Check24BookingService {
       this.logger.warn(
         `CHECK24 booking ${booking.bookingId} cancel in Hostaway ${hostawayReservationId} failed: ${message}`,
       );
+      // Still mark local cancelled + reopen CHECK24 — guest cancel on CHECK24 is source of truth.
+      await this.prisma.reservation.updateMany({
+        where: { hostawayId: hostawayReservationId },
+        data: { status: 'cancelled' },
+      });
       await this.prisma.check24Booking.update({
         where: { check24BookingId: booking.bookingId },
         data: {
+          processedAt: new Date(),
           lastError: `Hostaway cancel failed: ${message}`.slice(0, 1000),
           status: booking.status,
         },
       });
+      await this.pushAvailabilityForProperty(
+        booking.propertyId,
+        booking.bookingId,
+        forceOpenStay,
+      );
       return {
         processed: false,
         action: 'cancel_failed',
@@ -717,7 +747,11 @@ export class Check24BookingService {
   private async pushAvailabilityForProperty(
     check24PropertyId: string,
     check24BookingId: string,
-    forceOpenStay?: { dateFrom?: string; dateTo?: string } | null,
+    forceOpenStay?: {
+      dateFrom?: string;
+      dateTo?: string;
+      excludeHostawayReservationIds?: number[];
+    } | null,
   ) {
     const mapping = await this.prisma.check24PropertyMapping.findUnique({
       where: { check24PropertyId },
@@ -741,12 +775,18 @@ export class Check24BookingService {
     listingId: string,
     hostawayListingId: number,
     check24BookingId: string,
-    forceOpenStay?: { dateFrom?: string; dateTo?: string } | null,
+    forceOpenStay?: {
+      dateFrom?: string;
+      dateTo?: string;
+      excludeHostawayReservationIds?: number[];
+    } | null,
   ) {
     const result = await this.check24Sync
       .refreshAndPushAvailability(listingId, hostawayListingId, {
         forceOpenFrom: forceOpenStay?.dateFrom,
         forceOpenTo: forceOpenStay?.dateTo,
+        excludeHostawayReservationIds:
+          forceOpenStay?.excludeHostawayReservationIds,
       })
       .catch((err) => {
         this.logger.warn(
@@ -765,7 +805,11 @@ export class Check24BookingService {
 
   private async stayDatesForHostawayReservation(
     hostawayReservationId: number,
-  ): Promise<{ dateFrom?: string; dateTo?: string } | null> {
+  ): Promise<{
+    dateFrom?: string;
+    dateTo?: string;
+    excludeHostawayReservationIds?: number[];
+  } | null> {
     const reservation = await this.prisma.reservation.findUnique({
       where: { hostawayId: hostawayReservationId },
       select: { arrivalDate: true, departureDate: true },
@@ -774,6 +818,7 @@ export class Check24BookingService {
     return {
       dateFrom: reservation.arrivalDate.toISOString().slice(0, 10),
       dateTo: reservation.departureDate.toISOString().slice(0, 10),
+      excludeHostawayReservationIds: [hostawayReservationId],
     };
   }
 

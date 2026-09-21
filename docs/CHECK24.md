@@ -116,8 +116,8 @@ WhatsApp delivery requires Hostaway WhatsApp to be enabled on the account; free-
 
 After cancel, the middleware:
 
-1. Cancels in Hostaway and marks the local reservation cancelled
-2. Syncs calendar, then **force-opens** cancelled nights `[dateFrom, dateTo)` (upserts missing days; skips nights still covered by another active booking)
+1. Cancels in Hostaway and marks the local reservation cancelled (re-asserted after sync — Hostaway often keeps channel stays as `modified`)
+2. Syncs calendar, then **force-opens** cancelled nights `[dateFrom, dateTo)` (upserts missing days; skips nights still covered by another active booking, but **always ignores** the cancelled CHECK24 reservation itself so sticky Hostaway status cannot keep dates blocked)
 3. Pushes availability to CHECK24
 4. Retries at ~45s, 5m, and 15m (`CHECK24_CANCEL_AVAILABILITY_RETRY_MS`)
 5. On every later ARI sync for **24h** (`CHECK24_CANCEL_FORCE_OPEN_HOURS`), re-applies that reopen so Hostaway calendar lag cannot leave CHECK24 closed

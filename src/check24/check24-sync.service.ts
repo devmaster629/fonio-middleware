@@ -334,6 +334,8 @@ export class Check24SyncService {
     options?: {
       forceOpenFrom?: string;
       forceOpenTo?: string;
+      /** Reservations that must not block force-open (e.g. the stay just cancelled). */
+      excludeHostawayReservationIds?: number[];
       /** When true, do not schedule another delayed push (used by the follow-up itself). */
       skipFollowUp?: boolean;
     },
@@ -371,6 +373,10 @@ export class Check24SyncService {
           listingId,
           options.forceOpenFrom,
           options.forceOpenTo,
+          {
+            excludeHostawayReservationIds:
+              options.excludeHostawayReservationIds,
+          },
         );
         this.logger.log(
           `CHECK24 force-opened ${forced} calendar day(s) for listing ${hostawayListingId} (${options.forceOpenFrom}→${options.forceOpenTo})`,
@@ -392,6 +398,7 @@ export class Check24SyncService {
           hostawayListingId,
           options.forceOpenFrom,
           options.forceOpenTo,
+          options.excludeHostawayReservationIds,
         );
       }
 
@@ -409,42 +416,76 @@ export class Check24SyncService {
    * Mark nights [dateFrom, dateTo) available in the local calendar cache.
    * Upserts missing days (updateMany alone left gaps → CHECK24 kept old closed data).
    * Skips nights covered by another active (non-cancelled) local reservation.
+   *
+   * Also ignores reservations linked to a terminal CHECK24 booking — Hostaway
+   * often keeps status `modified`/`new` after cancel API calls, which previously
+   * made force-open a no-op and left CHECK24 dates blocked.
    */
   async forceOpenCalendarRange(
     listingId: string,
     dateFrom: string,
     dateTo: string,
+    options?: { excludeHostawayReservationIds?: number[] },
   ): Promise<number> {
     const nights = eachNightYmd(dateFrom, dateTo);
     if (nights.length === 0) return 0;
 
     const from = new Date(`${dateFrom}T00:00:00.000Z`);
     const to = new Date(`${dateTo}T00:00:00.000Z`);
-    const blocking = await this.prisma.reservation.findMany({
+    const excludeIds = new Set(
+      (options?.excludeHostawayReservationIds ?? []).filter(
+        (id) => Number.isFinite(id) && id > 0,
+      ),
+    );
+
+    const overlapping = await this.prisma.reservation.findMany({
       where: {
         listingId,
         arrivalDate: { lt: to },
         departureDate: { gt: from },
-        NOT: {
+      },
+      select: {
+        hostawayId: true,
+        arrivalDate: true,
+        departureDate: true,
+        status: true,
+      },
+    });
+
+    const overlappingIds = overlapping.map((r) => r.hostawayId);
+    if (overlappingIds.length > 0) {
+      const terminalCheck24 = await this.prisma.check24Booking.findMany({
+        where: {
+          hostawayReservationId: { in: overlappingIds },
           status: {
-            in: [
-              'cancelled',
-              'canceled',
-              'declined',
-              'expired',
-              'inquiryDenied',
-              'inquiryTimedout',
-              'inquiryNotPossible',
-            ],
+            in: ['cancelled', 'canceled', 'declined', 'failed'],
           },
         },
-      },
-      select: { arrivalDate: true, departureDate: true, status: true },
-    });
-    // Inquiries usually do not block Hostaway calendar; treat confirmed-style only.
-    const blockers = blocking.filter((r) => {
+        select: { hostawayReservationId: true },
+      });
+      for (const row of terminalCheck24) {
+        if (row.hostawayReservationId) {
+          excludeIds.add(row.hostawayReservationId);
+        }
+      }
+    }
+
+    const cancelledStatuses = new Set([
+      'cancelled',
+      'canceled',
+      'declined',
+      'expired',
+      'inquirydenied',
+      'inquirytimedout',
+      'inquirynotpossible',
+    ]);
+
+    const blockers = overlapping.filter((r) => {
+      if (excludeIds.has(r.hostawayId)) return false;
       const s = (r.status || '').toLowerCase();
-      return !s.startsWith('inquiry');
+      if (cancelledStatuses.has(s)) return false;
+      if (s.startsWith('inquiry')) return false;
+      return true;
     });
 
     const blockedNights = new Set<string>();
@@ -512,7 +553,11 @@ export class Check24SyncService {
         },
         OR: [{ processedAt: { gte: since } }, { updatedAt: { gte: since } }],
       },
-      select: { rawPayload: true, check24BookingId: true },
+      select: {
+        rawPayload: true,
+        check24BookingId: true,
+        hostawayReservationId: true,
+      },
       take: 100,
       orderBy: { updatedAt: 'desc' },
     });
@@ -528,7 +573,11 @@ export class Check24SyncService {
       const dateTo =
         typeof raw.dateTo === 'string' ? raw.dateTo.slice(0, 10) : null;
       if (!dateFrom || !dateTo) continue;
-      total += await this.forceOpenCalendarRange(listingId, dateFrom, dateTo);
+      total += await this.forceOpenCalendarRange(listingId, dateFrom, dateTo, {
+        excludeHostawayReservationIds: row.hostawayReservationId
+          ? [row.hostawayReservationId]
+          : undefined,
+      });
     }
     if (total > 0) {
       this.logger.log(
@@ -543,6 +592,7 @@ export class Check24SyncService {
     hostawayListingId: number,
     forceOpenFrom: string,
     forceOpenTo: string,
+    excludeHostawayReservationIds?: number[],
   ) {
     const raw = String(
       this.config.get('CHECK24_CANCEL_AVAILABILITY_RETRY_MS') ??
@@ -558,6 +608,7 @@ export class Check24SyncService {
         void this.refreshAndPushAvailability(listingId, hostawayListingId, {
           forceOpenFrom,
           forceOpenTo,
+          excludeHostawayReservationIds,
           skipFollowUp: true,
         })
           .then((result) => {

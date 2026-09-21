@@ -117,6 +117,7 @@ describe('Check24BookingService cancellations', () => {
       expect.objectContaining({
         forceOpenFrom: '2026-09-01',
         forceOpenTo: '2026-09-03',
+        excludeHostawayReservationIds: [62144308],
       }),
     );
     expect(result).toMatchObject({
@@ -141,6 +142,7 @@ describe('Check24BookingService cancellations', () => {
       expect.objectContaining({
         forceOpenFrom: '2026-09-01',
         forceOpenTo: '2026-09-03',
+        excludeHostawayReservationIds: [62144308],
       }),
     );
     expect(result).toMatchObject({
@@ -168,6 +170,15 @@ describe('Check24BookingService cancellations', () => {
         data: expect.objectContaining({
           lastError: expect.stringContaining('Hostaway cancel failed'),
         }),
+      }),
+    );
+    expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
+      'listing-1',
+      172749,
+      expect.objectContaining({
+        forceOpenFrom: '2026-09-01',
+        forceOpenTo: '2026-09-03',
+        excludeHostawayReservationIds: [62144308],
       }),
     );
   });
