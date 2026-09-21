@@ -667,7 +667,9 @@ export class Check24BookingService {
           status: booking.status,
         },
       });
-      await this.hostaway.cancelReservation(hostawayReservationId);
+      await this.hostaway.cancelReservation(hostawayReservationId, {
+        cancelledBy: 'guest',
+      });
       await this.prisma.reservation.updateMany({
         where: { hostawayId: hostawayReservationId },
         data: { status: 'cancelled' },

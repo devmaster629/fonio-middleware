@@ -548,7 +548,9 @@ export class GuestPaymentAutomationService {
     reason: string,
   ): Promise<boolean> {
     try {
-      await this.hostaway.cancelReservation(hostawayId);
+      await this.hostaway.cancelReservation(hostawayId, {
+        cancelledBy: 'host',
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(

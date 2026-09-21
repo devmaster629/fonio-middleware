@@ -95,7 +95,7 @@ Optional Basic auth via `CHECK24_WEBHOOK_*`.
 
 | Direction | Behaviour |
 |-----------|-----------|
-| Guest cancels on CHECK24 | Webhook/poll → cancel Hostaway reservation → **always** push availability (reopen dates) |
+| Guest cancels on CHECK24 | Webhook/poll → cancel Hostaway via `PUT /reservations/{id}/statuses/cancelled` (`cancelledBy=guest`) → **always** push availability (reopen dates) |
 | Provider cancels in Hostaway (UI / unpaid auto-cancel) | `POST /bookings/{id}/cancel` with `cancelledBy=Provider` → push availability |
 
 Cancel payload requires `cancelledBy` + `cancelReason` (see Supply API `CancelBooking` schema).

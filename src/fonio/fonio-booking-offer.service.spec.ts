@@ -104,7 +104,9 @@ describe('FonioBookingOfferService', () => {
     await expect(service.createOffer(dto as never)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    expect(cancelReservation).toHaveBeenCalledWith(999);
+    expect(cancelReservation).toHaveBeenCalledWith(999, {
+      cancelledBy: 'host',
+    });
     expect(hostaway.updateReservation).toHaveBeenCalledWith(999, {
       status: 'inquiry',
     });
@@ -123,7 +125,9 @@ describe('FonioBookingOfferService', () => {
     await expect(service.createOffer(dto as never)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    expect(cancelReservation).toHaveBeenCalledWith(999);
+    expect(cancelReservation).toHaveBeenCalledWith(999, {
+      cancelledBy: 'host',
+    });
   });
 
   it('rejects placeholder contact before creating a reservation', async () => {

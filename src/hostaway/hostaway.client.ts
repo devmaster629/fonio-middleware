@@ -313,8 +313,28 @@ export class HostawayClient {
     });
   }
 
-  async cancelReservation(reservationId: number): Promise<HostawayReservation> {
-    return this.updateReservation(reservationId, { status: 'cancelled' });
+  /**
+   * Cancel via Hostaway's dedicated status endpoint.
+   * PUT /reservations/{id} with `{ status: 'cancelled' }` is a no-op for many
+   * channel/manual stays (Hostaway keeps `modified` / "Payment due") and leaves
+   * the calendar blocked — always use /statuses/cancelled.
+   */
+  async cancelReservation(
+    reservationId: number,
+    options?: { cancelledBy?: 'guest' | 'host' },
+  ): Promise<HostawayReservation> {
+    const cancelledBy = options?.cancelledBy ?? 'host';
+    const { data } = await this.http.put<
+      HostawaySingleResponse<HostawayReservation>
+    >(`/reservations/${reservationId}/statuses/cancelled`, { cancelledBy });
+    const result = data.result;
+    const status = (result?.status ?? '').toLowerCase();
+    if (status && status !== 'cancelled' && status !== 'canceled') {
+      throw new Error(
+        `Hostaway cancel of ${reservationId} returned status=${result?.status} (expected cancelled)`,
+      );
+    }
+    return result;
   }
 
   async getGuestCharges(reservationId: number): Promise<HostawayGuestCharge[]> {

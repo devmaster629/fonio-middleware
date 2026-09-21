@@ -294,7 +294,9 @@ export class FonioBookingOfferService {
 
   private async rollbackOffer(reservationId: number) {
     try {
-      await this.hostaway.cancelReservation(reservationId);
+      await this.hostaway.cancelReservation(reservationId, {
+        cancelledBy: 'host',
+      });
       await this.prisma.reservation
         .updateMany({
           where: { hostawayId: reservationId },

@@ -109,7 +109,9 @@ describe('Check24BookingService cancellations', () => {
 
     const result = await service.processBooking(canceledBooking);
 
-    expect(hostaway.cancelReservation).toHaveBeenCalledWith(62144308);
+    expect(hostaway.cancelReservation).toHaveBeenCalledWith(62144308, {
+      cancelledBy: 'guest',
+    });
     expect(hostawaySync.syncSingleReservation).toHaveBeenCalledWith(62144308);
     expect(check24Sync.refreshAndPushAvailability).toHaveBeenCalledWith(
       'listing-1',
