@@ -15463,6 +15463,13 @@ function renderCheck24BookingCards(bookings, { showChevron = true } = {}) {
         typeof b.totalPrice === 'number'
           ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
           : '—';
+      const check24Label = b.check24BookingId
+        ? t('check24.bookingCheck24', { id: b.check24BookingId })
+        : t('check24.bookingCheck24Missing');
+      const hostawayLabel =
+        b.hostawayReservationId != null
+          ? t('check24.bookingHostaway', { id: String(b.hostawayReservationId) })
+          : t('check24.bookingHostawayMissing');
       return `
         <article class="check24-m-booking-card">
           <div class="check24-m-booking-top">
@@ -15474,6 +15481,8 @@ function renderCheck24BookingCards(bookings, { showChevron = true } = {}) {
               <strong>${esc(b.guestName || '—')}</strong>
               <span>${esc(b.listingName || t('check24.bookingNoProperty'))}</span>
               <span class="check24-m-booking-dates">${fonioSvgIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', 12)} ${esc(stay)}</span>
+              <span class="check24-m-booking-ids">${esc(check24Label)}</span>
+              <span class="check24-m-booking-ids">${esc(hostawayLabel)}</span>
             </div>
             ${showChevron ? '<span class="check24-m-chevron" aria-hidden="true">›</span>' : ''}
           </div>
@@ -15709,6 +15718,8 @@ function renderCheck24BookingsRows(bookings, { limit = null } = {}) {
         <thead>
           <tr>
             <th>${esc(t('check24.col.status'))}</th>
+            <th>${esc(t('check24.col.check24BookingId'))}</th>
+            <th>${esc(t('check24.col.hostawayBookingId'))}</th>
             <th>${esc(t('check24.bookingGuest'))}</th>
             <th>${esc(t('check24.bookingProperty'))}</th>
             <th>${esc(t('check24.col.stay'))}</th>
@@ -15725,8 +15736,19 @@ function renderCheck24BookingsRows(bookings, { limit = null } = {}) {
                 typeof b.totalPrice === 'number'
                   ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
                   : '—';
+              const check24Label = b.check24BookingId
+                ? t('check24.bookingCheck24', { id: b.check24BookingId })
+                : t('check24.bookingCheck24Missing');
+              const hostawayLabel =
+                b.hostawayReservationId != null
+                  ? t('check24.bookingHostaway', {
+                      id: String(b.hostawayReservationId),
+                    })
+                  : t('check24.bookingHostawayMissing');
               return `<tr>
                 <td><span class="check24-booking-pill ${meta.cls}">${esc(meta.label)}</span></td>
+                <td><code>${esc(check24Label)}</code></td>
+                <td><code>${esc(hostawayLabel)}</code></td>
                 <td>${esc(b.guestName || '—')}</td>
                 <td>${esc(b.listingName || t('check24.bookingNoProperty'))}</td>
                 <td>${esc(stay)}</td>

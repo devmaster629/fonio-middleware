@@ -24966,6 +24966,13 @@ body.rules-filter-sheet-open {
     font-size: 0.92rem;
   }
 
+  #tab-check24 .check24-m-booking-ids {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+  }
+
   #tab-check24 .check24-m-booking-copy > span {
     color: #94a3b8;
     font-size: 0.78rem;
