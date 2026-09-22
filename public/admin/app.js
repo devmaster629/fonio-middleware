@@ -15713,8 +15713,8 @@ function renderCheck24BookingsRows(bookings, { limit = null } = {}) {
     return `<div class="check24-empty">${esc(t('check24.bookingsNone'))}</div>`;
   }
   return `
-    <div class="table-wrap">
-      <table class="check24-data-table">
+    <div class="table-wrap check24-bookings-table-wrap">
+      <table class="check24-data-table check24-bookings-data-table">
         <thead>
           <tr>
             <th>${esc(t('check24.col.status'))}</th>
@@ -15736,23 +15736,21 @@ function renderCheck24BookingsRows(bookings, { limit = null } = {}) {
                 typeof b.totalPrice === 'number'
                   ? `${b.totalPrice.toFixed(2)} ${b.currencyCode || 'EUR'}`
                   : '—';
-              const check24Label = b.check24BookingId
-                ? t('check24.bookingCheck24', { id: b.check24BookingId })
-                : t('check24.bookingCheck24Missing');
-              const hostawayLabel =
+              const check24Id = b.check24BookingId
+                ? esc(b.check24BookingId)
+                : '—';
+              const hostawayId =
                 b.hostawayReservationId != null
-                  ? t('check24.bookingHostaway', {
-                      id: String(b.hostawayReservationId),
-                    })
-                  : t('check24.bookingHostawayMissing');
+                  ? esc(String(b.hostawayReservationId))
+                  : '—';
               return `<tr>
-                <td><span class="check24-booking-pill ${meta.cls}">${esc(meta.label)}</span></td>
-                <td><code>${esc(check24Label)}</code></td>
-                <td><code>${esc(hostawayLabel)}</code></td>
-                <td>${esc(b.guestName || '—')}</td>
-                <td>${esc(b.listingName || t('check24.bookingNoProperty'))}</td>
-                <td>${esc(stay)}</td>
-                <td>${esc(amount)}</td>
+                <td data-col="status"><span class="check24-booking-pill ${meta.cls}">${esc(meta.label)}</span></td>
+                <td data-col="check24-id"><code>${check24Id}</code></td>
+                <td data-col="hostaway-id"><code>${hostawayId}</code></td>
+                <td data-col="guest">${esc(b.guestName || '—')}</td>
+                <td data-col="property">${esc(b.listingName || t('check24.bookingNoProperty'))}</td>
+                <td data-col="stay">${esc(stay)}</td>
+                <td data-col="amount">${esc(amount)}</td>
               </tr>`;
             })
             .join('')}

@@ -18210,6 +18210,72 @@ body.fonio-activity-drawer-open {
   table-layout: fixed;
 }
 
+/* Bookings tables: auto layout so property/stay aren't crushed */
+.check24-bookings-data-table {
+  table-layout: auto;
+  min-width: 44rem;
+}
+
+.check24-bookings-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.check24-bookings-data-table th,
+.check24-bookings-data-table td {
+  width: auto;
+  max-width: none;
+}
+
+.check24-bookings-data-table td[data-col='status'] {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.check24-bookings-data-table td[data-col='check24-id'],
+.check24-bookings-data-table td[data-col='hostaway-id'] {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.check24-bookings-data-table td[data-col='check24-id'] code,
+.check24-bookings-data-table td[data-col='hostaway-id'] code {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.check24-bookings-data-table td[data-col='guest'] {
+  min-width: 8rem;
+  white-space: nowrap;
+}
+
+.check24-bookings-data-table td[data-col='property'] {
+  min-width: 10rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.35;
+}
+
+.check24-bookings-data-table td[data-col='stay'],
+.check24-bookings-data-table td[data-col='amount'] {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.check24-recent-card .check24-bookings-table-wrap {
+  margin: 0 -0.15rem;
+}
+
+/* Mobile booking cards: keep IDs under guest */
+.check24-m-booking-ids {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
 .check24-data-table th {
   text-align: left;
   font-size: 0.75rem;
