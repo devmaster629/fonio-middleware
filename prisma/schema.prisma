@@ -261,6 +261,8 @@ model Reservation {
   isPaid             Boolean?
   channelName        String?
   channelId          Int?
+  /// Channel / portal booking code (Hostaway confirmationCode, channelReservationId, or custom Externe Buchungsnummer)
+  externalBookingRef String?
   hostNote           String?
   guestNote          String?
   comment            String?
@@ -299,6 +301,7 @@ model Reservation {
   @@index([emailHash])
   @@index([arrivalDate, departureDate])
   @@index([unpaidReminderSentAt, arrivalDate])
+  @@index([externalBookingRef])
 }
 
 /// Per-reservation installment ledger for long-term stays.

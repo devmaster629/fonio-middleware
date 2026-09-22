@@ -100,6 +100,18 @@ export interface HostawayReservation {
   isPaid?: boolean | number | null;
   channelName?: string | null;
   channelId?: number | null;
+  /** Airbnb / portal confirmation code when provided by Hostaway */
+  confirmationCode?: string | null;
+  /** Channel-side reservation id (e.g. portal booking number) */
+  channelReservationId?: string | number | null;
+  /** Free-text provider / source */
+  source?: string | null;
+  customFieldValues?: Array<{
+    customFieldId?: number;
+    value?: string | number | null;
+    name?: string | null;
+    varName?: string | null;
+  }> | null;
   hostNote?: string | null;
   guestNote?: string | null;
   comment?: string | null;

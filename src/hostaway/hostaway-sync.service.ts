@@ -13,6 +13,7 @@ import {
   HostawayListing,
   HostawayReservation,
 } from './hostaway.types';
+import { extractExternalBookingRef } from './external-booking-ref.util';
 import { EXCLUDED_LISTING_IDS } from './listing-hierarchy.config';
 import { ListingHierarchyService } from './listing-hierarchy.service';
 import {
@@ -537,6 +538,7 @@ export class HostawaySyncService implements OnModuleInit {
         typeof remote.channelId === 'number' && Number.isFinite(remote.channelId)
           ? remote.channelId
           : null,
+      externalBookingRef: extractExternalBookingRef(remote),
       hostNote: remote.hostNote?.trim() || null,
       guestNote: remote.guestNote?.trim() || null,
       comment: remote.comment?.trim() || null,
@@ -556,6 +558,9 @@ export class HostawaySyncService implements OnModuleInit {
     if (!remotePhone) {
       delete update.guestPhone;
       delete update.phoneHash;
+    }
+    if (!base.externalBookingRef) {
+      delete update.externalBookingRef;
     }
 
     return {

@@ -151,7 +151,9 @@ export class HostawayClient {
   }): Promise<HostawayReservation[]> {
     const { data } = await this.http.get<
       HostawayListResponse<HostawayReservation>
-    >('/reservations', { params });
+    >('/reservations', {
+      params: { ...params, includeResources: 1 },
+    });
     return data.result ?? [];
   }
 
@@ -174,7 +176,9 @@ export class HostawayClient {
   async getReservation(id: number): Promise<HostawayReservation> {
     const { data } = await this.http.get<
       HostawaySingleResponse<HostawayReservation>
-    >(`/reservations/${id}`);
+    >(`/reservations/${id}`, {
+      params: { includeResources: 1 },
+    });
     return data.result;
   }
 

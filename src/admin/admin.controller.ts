@@ -1262,6 +1262,10 @@ export class AdminController {
         { guestName: { contains: term, mode: 'insensitive' } },
         { guestEmail: { contains: term, mode: 'insensitive' } },
         { guestPhone: { contains: term, mode: 'insensitive' } },
+        { externalBookingRef: { contains: term, mode: 'insensitive' } },
+        { hostNote: { contains: term, mode: 'insensitive' } },
+        { guestNote: { contains: term, mode: 'insensitive' } },
+        { comment: { contains: term, mode: 'insensitive' } },
         { listing: { name: { contains: term, mode: 'insensitive' } } },
         { listing: { listingGroup: { name: { contains: term, mode: 'insensitive' } } } },
         ...(Number.isFinite(id)

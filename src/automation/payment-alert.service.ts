@@ -374,6 +374,8 @@ export class PaymentAlertService {
 
       const rule = matchPortalRule(reservation.channelName, portalRulesList, {
         hostNote: reservation.hostNote,
+        guestNote: reservation.guestNote,
+        comment: reservation.comment,
         guestEmail: reservation.guestEmail,
       });
       if (!rule) continue;

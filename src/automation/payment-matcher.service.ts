@@ -14,11 +14,20 @@ import {
   isOtaPaymentChannel,
 } from './automation.types';
 import { detectCombinedDepositHint } from './payment-split-hint.util';
+import {
+  DEFAULT_PORTAL_PAYMENT_RULES,
+  matchPortalRule,
+  type PortalPaymentRuleLike,
+} from './portal-payment-rules.util';
+import { PortalPaymentRulesService } from './portal-payment-rules.service';
 
 @Injectable()
 export class PaymentMatcherService {
+  private fallbackPortalRules: PortalPaymentRuleLike[] | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly portalRules: PortalPaymentRulesService,
     private readonly config?: ConfigService,
   ) {}
 
@@ -48,31 +57,59 @@ export class PaymentMatcherService {
       };
     }
 
+    const portalRules = await this.loadPortalRules();
     const reservations = await this.loadCandidateReservations();
     const referenceText = this.combineReferenceText(payment);
     const reservationIdsInReference = this.extractReservationIds(referenceText);
 
     const candidates = reservations
       .map((reservation) =>
-        this.scoreReservation(reservation, payment, referenceText, reservationIdsInReference),
+        this.scoreReservation(
+          reservation,
+          payment,
+          referenceText,
+          reservationIdsInReference,
+          portalRules,
+        ),
       )
       .filter((candidate) => {
         if (candidate.score <= 0) return false;
-        // Guest bank/PayPal payments are never assigned to portal-collected stays
-        // (Booking.com, Airbnb, …). Exception: reservation # is in the bank reference.
+
+        const strongLink =
+          reservationIdsInReference.includes(candidate.hostawayId) ||
+          (candidate.reasons || []).some((r) =>
+            /external booking (ref|reference)/i.test(r),
+          );
+
+        // Fully paid stays must not appear from weak amount guesses.
         if (
-          isOtaPaymentChannel(candidate.channelName) &&
-          !reservationIdsInReference.includes(candidate.hostawayId)
+          candidate.balanceDue != null &&
+          candidate.balanceDue <= 0.01 &&
+          (candidate.totalPrice ?? 0) > 0 &&
+          !strongLink
         ) {
+          return false;
+        }
+
+        // Soft amount-only noise (no guest/id/ref evidence).
+        const reasons = (candidate.reasons || []).join(' ').toLowerCase();
+        const onlySoftAmount =
+          candidate.score <= 10 &&
+          /soft amount guess/.test(reasons) &&
+          !/guest|email|reservation #|external booking/i.test(reasons);
+        if (onlySoftAmount) return false;
+
+        // Guest bank/PayPal payments are never assigned to portal-collected stays
+        // unless Hostaway # or external portal ref is in the bank reference.
+        if (candidate.portalCollected && !strongLink) {
           return false;
         }
         return true;
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        // Prefer direct / non-OTA when scores are equal
-        const aOta = isOtaPaymentChannel(a.channelName) ? 1 : 0;
-        const bOta = isOtaPaymentChannel(b.channelName) ? 1 : 0;
+        const aOta = a.portalCollected ? 1 : 0;
+        const bOta = b.portalCollected ? 1 : 0;
         return aOta - bOta;
       });
 
@@ -88,14 +125,18 @@ export class PaymentMatcherService {
     const best = candidates[0];
     const second = candidates[1];
     const hasStrongIdMatch = reservationIdsInReference.includes(best.hostawayId);
+    const hasStrongExternalRef = (best.reasons || []).some((r) =>
+      /external booking (ref|reference)/i.test(r),
+    );
     const hasStrongPlanMatch = this.hasStrongInstallmentPlanMatch(best);
+    const hasStrongLink = hasStrongIdMatch || hasStrongExternalRef;
 
     // Enabled installment plan whose next due equals the payment amount is
     // enough to disambiguate among same-guest Restzahlung candidates.
     if (
       second &&
       best.score - second.score < PAYMENT_AMBIGUITY_SCORE_GAP &&
-      !hasStrongIdMatch &&
+      !hasStrongLink &&
       !hasStrongPlanMatch
     ) {
       return {
@@ -125,7 +166,7 @@ export class PaymentMatcherService {
       payment.amount,
       candidates.slice(0, 5),
     );
-    if (combinedHint && !hasStrongIdMatch && !hasStrongPlanMatch) {
+    if (combinedHint && !hasStrongLink && !hasStrongPlanMatch) {
       return {
         decision: PaymentMatchDecision.AMBIGUOUS,
         candidates: candidates.slice(0, 5),
@@ -134,12 +175,28 @@ export class PaymentMatcherService {
       };
     }
 
-    if (this.canAutoApply(best, second, hasStrongIdMatch, hasStrongPlanMatch)) {
+    if (
+      this.canAutoApply(
+        best,
+        second,
+        hasStrongLink,
+        hasStrongPlanMatch,
+      )
+    ) {
       return {
         decision: PaymentMatchDecision.UNAMBIGUOUS,
         candidates: [best],
         best,
         reason: best.reasons.join('; '),
+      };
+    }
+
+    // Low-confidence amount-only style matches: do not preselect a candidate.
+    if (best.score < 40 && !hasStrongLink && !hasStrongPlanMatch) {
+      return {
+        decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
+        candidates: [],
+        reason: this.explainPartialMatch(best, payment),
       };
     }
 
@@ -292,9 +349,78 @@ export class PaymentMatcherService {
     return missing;
   }
 
+  private async loadPortalRules(): Promise<PortalPaymentRuleLike[]> {
+    try {
+      const rows = await this.portalRules.list();
+      if (rows?.length) return rows;
+    } catch {
+      /* fall through to defaults */
+    }
+    if (!this.fallbackPortalRules) {
+      this.fallbackPortalRules = DEFAULT_PORTAL_PAYMENT_RULES.map((r) => ({
+        ...r,
+        channelMatchersJson: JSON.stringify(r.channelMatchers),
+      }));
+    }
+    return this.fallbackPortalRules;
+  }
+
+  private isPortalCollectedStay(
+    reservation: {
+      channelName: string | null;
+      hostNote: string | null;
+      guestNote: string | null;
+      comment: string | null;
+      externalBookingRef?: string | null;
+    },
+    portalRules: PortalPaymentRuleLike[],
+  ): boolean {
+    if (isOtaPaymentChannel(reservation.channelName)) return true;
+    const rule = matchPortalRule(reservation.channelName, portalRules, {
+      hostNote: reservation.hostNote,
+      guestNote: reservation.guestNote,
+      comment: reservation.comment,
+      externalBookingRef: reservation.externalBookingRef,
+    });
+    if (!rule || rule.isFallback) return false;
+    return (
+      Number(rule.portalAssumedPaidPercent) >= 100 ||
+      rule.treatAsPaidUntilDaysAfterDeparture != null
+    );
+  }
+
+  private isPayoutStylePortal(
+    reservation: {
+      channelName: string | null;
+      hostNote: string | null;
+      guestNote: string | null;
+      comment: string | null;
+      externalBookingRef?: string | null;
+    },
+    portalRules: PortalPaymentRuleLike[],
+  ): boolean {
+    const rule = matchPortalRule(reservation.channelName, portalRules, {
+      hostNote: reservation.hostNote,
+      guestNote: reservation.guestNote,
+      comment: reservation.comment,
+      externalBookingRef: reservation.externalBookingRef,
+    });
+    return rule?.treatAsPaidUntilDaysAfterDeparture != null;
+  }
+
+  private externalRefAppearsInText(
+    externalBookingRef: string | null | undefined,
+    referenceText: string,
+  ): boolean {
+    const ref = String(externalBookingRef || '').trim().toLowerCase();
+    if (ref.length < 4) return false;
+    return referenceText.includes(ref);
+  }
+
   private async loadCandidateReservations() {
     const lookback = new Date();
-    lookback.setDate(lookback.getDate() - 30);
+    // Portal payouts (HomeToGo, …) often arrive days/weeks after checkout.
+    lookback.setDate(lookback.getDate() - 180);
     // Include far-ahead prepaid stays (payments often arrive 1–2+ years early).
     const lookahead = new Date();
     lookahead.setDate(lookahead.getDate() + 730);
@@ -332,6 +458,7 @@ export class PaymentMatcherService {
       hostNote: string | null;
       guestNote: string | null;
       comment: string | null;
+      externalBookingRef?: string | null;
       listing: {
         name: string;
         aliases: string[];
@@ -351,13 +478,22 @@ export class PaymentMatcherService {
     payment: NormalizedExternalPayment,
     referenceText: string,
     reservationIdsInReference: number[],
+    portalRules: PortalPaymentRuleLike[],
   ): PaymentMatchCandidate {
     const reasons: string[] = [];
     let score = 0;
+    const portalCollected = this.isPortalCollectedStay(reservation, portalRules);
+    const payoutStyle = this.isPayoutStylePortal(reservation, portalRules);
+    const externalBookingRef = reservation.externalBookingRef?.trim() || null;
 
     if (reservationIdsInReference.includes(reservation.hostawayId)) {
       score += 55;
       reasons.push(`Reservation #${reservation.hostawayId} in reference`);
+    }
+
+    if (this.externalRefAppearsInText(externalBookingRef, referenceText)) {
+      score += 55;
+      reasons.push(`External booking ref ${externalBookingRef} in reference`);
     }
 
     if (payment.payerEmail && reservation.guestEmail) {
@@ -419,6 +555,7 @@ export class PaymentMatcherService {
       reservation,
       payment,
       referenceText,
+      payoutStyle,
     );
     if (balanceScore.score > 0) {
       score += balanceScore.score;
@@ -478,6 +615,8 @@ export class PaymentMatcherService {
       departureDate: reservation.departureDate.toISOString().slice(0, 10),
       channelName: reservation.channelName ?? null,
       hostNote: hostNote ? hostNote.slice(0, 280) : null,
+      externalBookingRef,
+      portalCollected,
       totalPrice,
       balanceDue,
       paymentPlan: plan
@@ -535,6 +674,7 @@ export class PaymentMatcherService {
     },
     payment?: NormalizedExternalPayment,
     referenceText = '',
+    payoutStyle = false,
   ): { score: number; reason: string } {
     const plan =
       reservation.paymentPlan?.enabled === true ? reservation.paymentPlan : null;
@@ -576,6 +716,17 @@ export class PaymentMatcherService {
         score: 35 + boost,
         reason: `Amount equals outstanding balance (${balanceDue.toFixed(2)})`,
       };
+    }
+
+    // Portal bank payouts (HomeToGo, …) are net of commission vs booking total.
+    if (payoutStyle && !partiallyPaid && amount > 0) {
+      const ratio = amount / total;
+      if (ratio >= 0.7 && ratio <= 1.01) {
+        return {
+          score: 42,
+          reason: `Amount matches net portal settlement (${(ratio * 100).toFixed(0)}% of total after commission)`,
+        };
+      }
     }
 
     // Restzahlung / Teilzahlung + guest: prefer open-balance fits over 30% total guesses.
@@ -637,39 +788,7 @@ export class PaymentMatcherService {
       };
     }
 
-    // Soft review-only signals: keep ~30%/deposit alternatives visible in Needs review
-    // without letting them outrank guest-name + balance matches (~25–40+).
-    if (
-      this.amountsMatch(amount, total * 0.7) ||
-      this.amountsMatch(amount, total * 0.5) ||
-      this.amountsMatch(amount, total * 0.3)
-    ) {
-      return {
-        score: 8,
-        reason: 'Soft amount guess: ~30/50/70% of booking total',
-      };
-    }
-    if (this.looksLikeDepositShare(amount, total)) {
-      return {
-        score: 6,
-        reason: 'Soft amount guess: within deposit/installment range of total',
-      };
-    }
-    if (partiallyPaid && this.amountsMatch(amount, total)) {
-      return {
-        score: 7,
-        reason: `Soft amount guess: close to reservation total (${total.toFixed(2)})`,
-      };
-    }
-    if (balanceDue > 0 && amount > 0 && amount <= balanceDue + 1) {
-      const ratio = amount / balanceDue;
-      if (ratio >= 0.1 && ratio <= 0.95) {
-        return {
-          score: 5,
-          reason: 'Soft amount guess: fits within outstanding balance',
-        };
-      }
-    }
+    // No soft amount-only guesses — those produce unrelated suggestions at ~6% confidence.
     return { score: 0, reason: '' };
   }
 

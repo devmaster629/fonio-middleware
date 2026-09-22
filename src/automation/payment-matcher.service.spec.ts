@@ -1,5 +1,6 @@
 import { PaymentMatcherService } from './payment-matcher.service';
 import { NormalizedExternalPayment } from './automation.types';
+import { DEFAULT_PORTAL_PAYMENT_RULES } from './portal-payment-rules.util';
 
 describe('PaymentMatcherService', () => {
   const prisma = {
@@ -7,7 +8,15 @@ describe('PaymentMatcherService', () => {
       findMany: jest.fn(),
     },
   };
-  const service = new PaymentMatcherService(prisma as never);
+  const portalRules = {
+    list: jest.fn().mockResolvedValue(
+      DEFAULT_PORTAL_PAYMENT_RULES.map((r) => ({
+        ...r,
+        channelMatchersJson: JSON.stringify(r.channelMatchers),
+      })),
+    ),
+  };
+  const service = new PaymentMatcherService(prisma as never, portalRules as never);
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -484,8 +493,8 @@ describe('PaymentMatcherService', () => {
 
     expect(daysAhead).toBeGreaterThan(700);
     expect(daysAhead).toBeLessThan(740);
-    expect(daysBack).toBeGreaterThan(25);
-    expect(daysBack).toBeLessThan(35);
+    expect(daysBack).toBeGreaterThan(160);
+    expect(daysBack).toBeLessThan(200);
     expect(args.take).toBe(2000);
   });
 

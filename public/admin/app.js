@@ -7794,20 +7794,30 @@ function isActiveStayReservation(r) {
   if (Number.isNaN(dep.getTime())) return true;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return dep >= today;
+  // Include recently departed stays: portal payouts (e.g. HomeToGo) often
+  // arrive after checkout, and staff still need to find those bookings.
+  const ACTIVE_STAY_LOOKBACK_DAYS = 180;
+  const oldest = new Date(today);
+  oldest.setDate(oldest.getDate() - ACTIVE_STAY_LOOKBACK_DAYS);
+  return dep >= oldest;
 }
 
 function filterReservationSearchItems(items, channelFilter, stayFilter) {
   return (items || []).filter((r) => {
     if (stayFilter === 'active' && !isActiveStayReservation(r)) return false;
     if (channelFilter && channelFilter !== 'all') {
-      const pretty = prettyChannel(r.channelName || '').toLowerCase();
+      const ch = String(r.channelName || '');
+      const pretty = prettyChannel(ch).toLowerCase();
       if (channelFilter === 'direct') {
         return pretty === prettyChannel('direct').toLowerCase()
-          || /direct|bookingengine|website|manual|partner/i.test(String(r.channelName || ''));
+          || /direct|bookingengine|website|manual|partner/i.test(ch);
       }
-      if (channelFilter === 'airbnb') return /airbnb/i.test(String(r.channelName || ''));
-      if (channelFilter === 'booking') return /booking/i.test(String(r.channelName || '')) && !/bookingengine/i.test(String(r.channelName || ''));
+      if (channelFilter === 'airbnb') return /airbnb/i.test(ch);
+      if (channelFilter === 'booking') return /booking/i.test(ch) && !/bookingengine/i.test(ch);
+      if (channelFilter === 'hometogo') {
+        const hay = `${ch} ${r.guestNote || ''} ${r.hostNote || ''} ${r.comment || ''} ${r.externalBookingRef || ''}`;
+        return /hometogo|home\s*to\s*go/i.test(hay);
+      }
     }
     return true;
   });
@@ -8178,12 +8188,17 @@ function renderReservationSearchPanel(wrap) {
   const currency = stack?.dataset.currency || 'EUR';
   const filtered = filterReservationSearchItems(state.items, channelFilter, stayFilter);
   const visible = filtered;
+  const hiddenByFilter = (state.items || []).length > 0 && filtered.length === 0;
 
   if (countEl) {
     countEl.textContent = t('payments.searchMatchCount', { count: filtered.length });
   }
   if (!visible.length) {
-    resultsEl.innerHTML = `<div class="payment-res-search-empty">${esc(t('payments.searchNoResults'))}</div>`;
+    resultsEl.innerHTML = `<div class="payment-res-search-empty">${esc(
+      hiddenByFilter
+        ? t('payments.searchHiddenByFilter')
+        : t('payments.searchNoResults'),
+    )}</div>`;
   } else {
     resultsEl.innerHTML = visible
       .map((r) => buildReservationSearchResultButton(r, currency))
@@ -8281,9 +8296,10 @@ function bindReservationSearchInputs() {
               <option value="direct">${esc(t('payments.channelDirect'))}</option>
               <option value="airbnb">Airbnb</option>
               <option value="booking">Booking.com</option>
+              <option value="hometogo">HomeToGo</option>
             </select>
             <select class="payment-res-filter payment-res-filter-stay" aria-label="${esc(t('payments.searchFilterStay'))}">
-              <option value="active">${esc(t('payments.searchActiveStays'))}</option>
+              <option value="active" selected>${esc(t('payments.searchActiveStays'))}</option>
               <option value="all">${esc(t('payments.searchAllStays'))}</option>
             </select>
           </div>
@@ -9332,10 +9348,15 @@ async function loadPaymentsReconcile() {
       candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
       candidates[0];
     const canReview = hasPermission('PAYMENTS_REVIEW');
+    const decision = String(p.matchDecision || '').toUpperCase();
+    const canPreselect =
+      !!reservation?.hostawayId ||
+      decision === 'UNAMBIGUOUS' ||
+      (bestCandidate && Number(bestCandidate.score) >= 55);
     const defaultOpenId =
       reservation?.hostawayId ||
-      bestCandidate?.hostawayId ||
-      (candidates[0] && candidates[0].hostawayId);
+      (canPreselect ? bestCandidate?.hostawayId : null) ||
+      null;
     const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
     const hint = p.combinedDepositHint;
     const hintHtml = hint
@@ -9427,9 +9448,14 @@ async function loadPaymentsReconcile() {
       });
     });
     const optionsHtml = buildAssignOptionsHtml(p);
+    const decision = String(p.matchDecision || '').toUpperCase();
+    const topCandidate = Array.isArray(p.matchCandidates) ? p.matchCandidates[0] : null;
+    const canPreselectCandidate =
+      decision === 'UNAMBIGUOUS' ||
+      (topCandidate && Number(topCandidate.score) >= 55);
     const defaultId =
       p.matchedReservation?.hostawayId ||
-      (Array.isArray(p.matchCandidates) && p.matchCandidates[0]?.hostawayId) ||
+      (canPreselectCandidate ? topCandidate?.hostawayId : undefined) ||
       undefined;
     initPaymentSplitRows(p.id, p.amount, optionsHtml, [
       { reservationHostawayId: defaultId, amount: p.amount },

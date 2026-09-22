@@ -30,6 +30,10 @@ export interface PaymentMatchCandidate {
   channelName: string | null;
   /** Host notes (Gastgebernotiz), truncated for UI */
   hostNote: string | null;
+  /** Channel / portal booking code when known */
+  externalBookingRef?: string | null;
+  /** Resolved as portal-collected (notes/channel), not guest-payable Direct */
+  portalCollected?: boolean;
   /** Reservation total (booking amount), if known */
   totalPrice: number | null;
   /** Outstanding balance after notified charges, if known */
@@ -103,6 +107,8 @@ export function isOtaPaymentChannel(
     c.includes('vrbo') ||
     c.includes('homeaway') ||
     c.includes('expedia') ||
-    c.includes('agoda')
+    c.includes('agoda') ||
+    c.includes('hometogo') ||
+    c.includes('home to go')
   );
 }

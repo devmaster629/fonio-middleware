@@ -169,6 +169,7 @@ export class GuestPaymentAutomationService {
     const rules = await this.portalRules.list();
     const rule = matchPortalRule(null, rules, {
       hostNote: reservation.hostNote,
+      guestNote: (reservation as { guestNote?: string | null }).guestNote,
       guestEmail: reservation.guestEmail,
     });
     let needed = rule ? depositAmount(total, rule) : 0;
@@ -265,6 +266,8 @@ export class GuestPaymentAutomationService {
     for (const reservation of candidates) {
       const rule = matchPortalRule(reservation.channelName, rules, {
         hostNote: reservation.hostNote,
+        guestNote: reservation.guestNote,
+        comment: reservation.comment,
         guestEmail: reservation.guestEmail,
       });
       if (!rule?.enabled) continue;

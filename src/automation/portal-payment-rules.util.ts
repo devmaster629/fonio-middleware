@@ -50,14 +50,25 @@ export function parseChannelMatchers(json: string): string[] {
 
 export type PortalMatchHints = {
   hostNote?: string | null;
+  guestNote?: string | null;
+  comment?: string | null;
   guestEmail?: string | null;
+  /** Channel / portal booking code (HomeToGo, CHECK24, …) */
+  externalBookingRef?: string | null;
 };
 
 function buildMatchHaystack(
   channelName: string | null | undefined,
   hints?: PortalMatchHints,
 ): string {
-  return [channelName ?? '', hints?.hostNote ?? '', hints?.guestEmail ?? '']
+  return [
+    channelName ?? '',
+    hints?.hostNote ?? '',
+    hints?.guestNote ?? '',
+    hints?.comment ?? '',
+    hints?.guestEmail ?? '',
+    hints?.externalBookingRef ?? '',
+  ]
     .join(' ')
     .toLowerCase();
 }
@@ -138,7 +149,7 @@ export function evaluatePortalBalance(params: {
       (total * clampPercent(rule.portalAssumedPaidPercent)) / 100,
     );
     const hostRequired = roundMoney(
-      (total * clampPercent(rule.hostDuePercent || 100)) / 100,
+      (total * clampPercent(rule.hostDuePercent ?? 100)) / 100,
     );
 
     if (daysSinceDeparture < 0) {
@@ -164,6 +175,22 @@ export function evaluatePortalBalance(params: {
         shouldOfficeRemind: false,
         shouldRequestInbox: false,
         reason: 'payout_unverified_after_checkout',
+      };
+    }
+
+    // Portal bank payouts are often net of commission (e.g. HomeToGo).
+    // Treat a credit in the typical net range as full settlement.
+    const netFloor = roundMoney(total * 0.7);
+    if (matchedPaid + 1 >= netFloor && matchedPaid <= total + 1) {
+      return {
+        ...base,
+        outstanding: 0,
+        hostRequired,
+        assumedPortalPaid,
+        paidUnverified: false,
+        shouldOfficeRemind: false,
+        shouldRequestInbox: false,
+        reason: 'portal_net_settlement_received',
       };
     }
 

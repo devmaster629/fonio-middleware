@@ -112,6 +112,26 @@ describe('portal-payment-rules.util', () => {
     expect(rule.portalKey).toBe('check24');
   });
 
+  it('matches HomeToGo via guest note even when channel is Direct', () => {
+    const rule = matchPortalRule('Direct', rules, {
+      guestNote: 'Über Home to Go',
+    })!;
+    expect(rule.portalKey).toBe('hometogo');
+  });
+
+  it('treats HomeToGo net bank payout (commission deducted) as settled', () => {
+    const rule = matchPortalRule('HomeToGo', rules)!;
+    const settled = evaluatePortalBalance({
+      totalPrice: 463,
+      matchedPaid: 395.36,
+      daysUntilArrival: -20,
+      daysSinceDeparture: 15,
+      rule,
+    });
+    expect(settled.outstanding).toBe(0);
+    expect(settled.reason).toBe('portal_net_settlement_received');
+  });
+
   it('parses channel matchers', () => {
     expect(parseChannelMatchers('["Booking.com"," Travanto "]')).toEqual([
       'booking.com',
