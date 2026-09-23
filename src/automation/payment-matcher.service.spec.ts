@@ -723,4 +723,60 @@ describe('PaymentMatcherService', () => {
     expect(result.best?.hostawayId).toBe(35902633);
     expect(result.best?.reasons.join(' ')).toMatch(/next installment due/i);
   });
+
+  it('matches HomeToGo bank payout to Direct stay with HomeToGo guest note (net of commission)', async () => {
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        id: 'res-htg',
+        hostawayId: 60970823,
+        guestName: 'Nicolai Kisikof',
+        guestEmail: null,
+        arrivalDate: new Date('2026-09-18'),
+        departureDate: new Date('2026-09-20'),
+        listing: { name: 'Wiesenblick', aliases: [] },
+        totalPrice: 463,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: 'Über Home to Go',
+        comment: null,
+        externalBookingRef: '64885-172749-2000-1914738831',
+        notifiedCharges: [],
+        paymentPlan: null,
+      },
+      {
+        id: 'res-paid',
+        hostawayId: 63539068,
+        guestName: 'Pia Geißler',
+        guestEmail: null,
+        arrivalDate: new Date('2026-08-26'),
+        departureDate: new Date('2026-08-30'),
+        listing: { name: 'Other', aliases: [] },
+        totalPrice: 500,
+        channelName: 'direct',
+        hostNote: null,
+        guestNote: null,
+        comment: null,
+        externalBookingRef: null,
+        notifiedCharges: [{ amount: 500 }],
+        paymentPlan: null,
+      },
+    ]);
+
+    const payment: NormalizedExternalPayment = {
+      source: 'QONTO',
+      externalId: 'qonto-htg-1',
+      amount: 395.36,
+      currency: 'EUR',
+      occurredAt: new Date('2026-09-21T10:00:00.000Z'),
+      payerName: 'HomeToGo',
+      reference: 'HomeToGo 18LLT0FVVF | HomeToGo GmbH | income',
+      rawPayload: {},
+    };
+
+    const result = await service.match(payment);
+    expect(result.decision).toBe('UNAMBIGUOUS');
+    expect(result.best?.hostawayId).toBe(60970823);
+    expect(result.candidates.some((c) => c.hostawayId === 63539068)).toBe(false);
+    expect(result.best?.reasons.join(' ')).toMatch(/net portal settlement|portal payout aligns/i);
+  });
 });

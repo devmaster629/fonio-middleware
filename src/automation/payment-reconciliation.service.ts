@@ -25,6 +25,10 @@ import { PaymentAlertService } from './payment-alert.service';
 import { PaymentApplyService } from './payment-apply.service';
 import { PaymentMatcherService } from './payment-matcher.service';
 import { PaymentPlanService } from './payment-plan.service';
+import {
+  extractPortalBookingCodes,
+  isPortalStyleBookingCode,
+} from '../hostaway/external-booking-ref.util';
 
 @Injectable()
 export class PaymentReconciliationService {
@@ -171,6 +175,10 @@ export class PaymentReconciliationService {
             },
           },
         });
+        await this.persistPortalBookingCodeFromPayment(
+          match.best.reservationId,
+          payment,
+        );
         return { id: updated.id, status: updated.status };
       } catch (error) {
         const message = this.formatApplyError(error);
@@ -249,14 +257,25 @@ export class PaymentReconciliationService {
       data: {
         status,
         matchDecision: match.decision,
-        matchScore: match.best?.score,
+        matchScore: match.best?.score ?? null,
         matchReason: match.reason,
         matchCandidates: match.candidates as unknown as Prisma.InputJsonValue,
-        matchedReservationId: match.best?.reservationId,
+        // Only bind a reservation when auto-match is unambiguous; suggestions stay in matchCandidates.
+        matchedReservationId:
+          match.decision === PaymentMatchDecision.UNAMBIGUOUS
+            ? (match.best?.reservationId ?? null)
+            : null,
         // Keep prior apply error unless this rematch is no longer a booking case.
         ...(status === ExternalPaymentStatus.SKIPPED ? { error: null } : {}),
       },
     });
+
+    if (match.best?.reservationId) {
+      await this.persistPortalBookingCodeFromPayment(
+        match.best.reservationId,
+        payment,
+      );
+    }
 
     if (wasNew && status === ExternalPaymentStatus.PENDING_REVIEW) {
       try {
@@ -787,5 +806,39 @@ export class PaymentReconciliationService {
     }
 
     return { undone: paymentIds.length, paymentIds };
+  }
+
+  /**
+   * When a portal bank payout matches a stay, copy the portal booking code from
+   * the payment reference onto the reservation so later searches find it.
+   */
+  private async persistPortalBookingCodeFromPayment(
+    reservationId: string,
+    payment: { reference?: string | null; payerName?: string | null },
+  ): Promise<void> {
+    const codes = extractPortalBookingCodes(
+      `${payment.reference ?? ''} ${payment.payerName ?? ''}`,
+    );
+    if (!codes.length) return;
+
+    try {
+      const existing = await this.prisma.reservation.findUnique({
+        where: { id: reservationId },
+        select: { externalBookingRef: true },
+      });
+      const current = existing?.externalBookingRef?.trim() || '';
+      if (current && isPortalStyleBookingCode(current)) return;
+
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { externalBookingRef: codes[0] },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'persist booking code failed';
+      this.logger.warn(
+        `Could not persist portal booking code on reservation ${reservationId}: ${message}`,
+      );
+    }
   }
 }

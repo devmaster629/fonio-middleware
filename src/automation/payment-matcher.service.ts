@@ -20,6 +20,7 @@ import {
   type PortalPaymentRuleLike,
 } from './portal-payment-rules.util';
 import { PortalPaymentRulesService } from './portal-payment-rules.service';
+import { extractPortalBookingCodes } from '../hostaway/external-booking-ref.util';
 
 @Injectable()
 export class PaymentMatcherService {
@@ -61,6 +62,8 @@ export class PaymentMatcherService {
     const reservations = await this.loadCandidateReservations();
     const referenceText = this.combineReferenceText(payment);
     const reservationIdsInReference = this.extractReservationIds(referenceText);
+    const portalCodesInReference = extractPortalBookingCodes(referenceText);
+    const portalSettlement = this.detectPortalSettlementPayment(payment);
 
     const candidates = reservations
       .map((reservation) =>
@@ -69,6 +72,7 @@ export class PaymentMatcherService {
           payment,
           referenceText,
           reservationIdsInReference,
+          portalCodesInReference,
           portalRules,
         ),
       )
@@ -78,7 +82,7 @@ export class PaymentMatcherService {
         const strongLink =
           reservationIdsInReference.includes(candidate.hostawayId) ||
           (candidate.reasons || []).some((r) =>
-            /external booking (ref|reference)/i.test(r),
+            /external booking (ref|reference|code)/i.test(r),
           );
 
         // Fully paid stays must not appear from weak amount guesses.
@@ -99,9 +103,11 @@ export class PaymentMatcherService {
           !/guest|email|reservation #|external booking/i.test(reasons);
         if (onlySoftAmount) return false;
 
-        // Guest bank/PayPal payments are never assigned to portal-collected stays
-        // unless Hostaway # or external portal ref is in the bank reference.
-        if (candidate.portalCollected && !strongLink) {
+        if (portalSettlement) {
+          // HomeToGo / portal bank payouts: only portal-collected stays (or strong ref link).
+          if (!candidate.portalCollected && !strongLink) return false;
+        } else if (candidate.portalCollected && !strongLink) {
+          // Guest bank/PayPal: never assign to portal-collected stays without a strong link.
           return false;
         }
         return true;
@@ -110,7 +116,8 @@ export class PaymentMatcherService {
         if (b.score !== a.score) return b.score - a.score;
         const aOta = a.portalCollected ? 1 : 0;
         const bOta = b.portalCollected ? 1 : 0;
-        return aOta - bOta;
+        // For portal settlements prefer portal stays; for guest payments prefer direct.
+        return portalSettlement ? bOta - aOta : aOta - bOta;
       });
 
     if (candidates.length === 0) {
@@ -126,7 +133,7 @@ export class PaymentMatcherService {
     const second = candidates[1];
     const hasStrongIdMatch = reservationIdsInReference.includes(best.hostawayId);
     const hasStrongExternalRef = (best.reasons || []).some((r) =>
-      /external booking (ref|reference)/i.test(r),
+      /external booking (ref|reference|code)/i.test(r),
     );
     const hasStrongPlanMatch = this.hasStrongInstallmentPlanMatch(best);
     const hasStrongLink = hasStrongIdMatch || hasStrongExternalRef;
@@ -241,11 +248,19 @@ export class PaymentMatcherService {
       reasons.includes('equals next installment due') ||
       reasons.includes('deposit/installment') ||
       reasons.includes('appears in reservation notes') ||
-      reasons.includes('payment amount aligns');
+      reasons.includes('payment amount aligns') ||
+      reasons.includes('net portal settlement');
+    const strongPortalSettlement =
+      reasons.includes('portal payout aligns') &&
+      reasons.includes('net portal settlement');
     // Restzahlung/Teilzahlung + guest boosts ranking for review, but partial
     // open-balance fits alone are not enough to auto-apply.
     const clearlyUnique =
       !second || best.score - second.score >= PAYMENT_AMBIGUITY_SCORE_GAP;
+
+    if (clearlyUnique && strongPortalSettlement && best.score >= 55) {
+      return true;
+    }
 
     // Unique guest + clear amount evidence (deposit in notes, balance, total, …)
     return clearlyUnique && strongGuest && strongAmount && best.score >= 55;
@@ -347,6 +362,21 @@ export class PaymentMatcherService {
     }
 
     return missing;
+  }
+
+  private detectPortalSettlementPayment(
+    payment: NormalizedExternalPayment,
+  ): boolean {
+    const hay = `${payment.payerName ?? ''} ${payment.reference ?? ''}`.toLowerCase();
+    if (!hay.trim()) return false;
+    const patterns = (
+      this.config?.get<string>('PAYMENT_PORTAL_SETTLEMENT_SENDERS') ??
+      'hometogo,home to go,check24,booking.com,bookingcom,vrbo,homeaway,expedia,agoda,interhome,travanto,atraveo'
+    )
+      .split(',')
+      .map((p) => p.trim().toLowerCase())
+      .filter(Boolean);
+    return patterns.some((p) => hay.includes(p));
   }
 
   private async loadPortalRules(): Promise<PortalPaymentRuleLike[]> {
@@ -478,6 +508,7 @@ export class PaymentMatcherService {
     payment: NormalizedExternalPayment,
     referenceText: string,
     reservationIdsInReference: number[],
+    portalCodesInReference: string[],
     portalRules: PortalPaymentRuleLike[],
   ): PaymentMatchCandidate {
     const reasons: string[] = [];
@@ -485,15 +516,46 @@ export class PaymentMatcherService {
     const portalCollected = this.isPortalCollectedStay(reservation, portalRules);
     const payoutStyle = this.isPayoutStylePortal(reservation, portalRules);
     const externalBookingRef = reservation.externalBookingRef?.trim() || null;
+    const noteHaystack = [
+      reservation.hostNote,
+      reservation.guestNote,
+      reservation.comment,
+      externalBookingRef,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
 
     if (reservationIdsInReference.includes(reservation.hostawayId)) {
       score += 55;
       reasons.push(`Reservation #${reservation.hostawayId} in reference`);
     }
 
-    if (this.externalRefAppearsInText(externalBookingRef, referenceText)) {
+    for (const code of portalCodesInReference) {
+      const needle = code.toLowerCase();
+      if (externalBookingRef && externalBookingRef.toLowerCase() === needle) {
+        score += 55;
+        reasons.push(`External booking code ${code} matches reservation ref`);
+        break;
+      }
+      if (noteHaystack.includes(needle)) {
+        score += 55;
+        reasons.push(`External booking code ${code} found in reservation notes`);
+        break;
+      }
+    }
+
+    if (
+      this.externalRefAppearsInText(externalBookingRef, referenceText) &&
+      !reasons.some((r) => /external booking code/i.test(r))
+    ) {
       score += 55;
       reasons.push(`External booking ref ${externalBookingRef} in reference`);
+    }
+
+    if (this.detectPortalSettlementPayment(payment) && portalCollected) {
+      score += 20;
+      reasons.push('Portal payout aligns with portal-collected stay');
     }
 
     if (payment.payerEmail && reservation.guestEmail) {
@@ -534,7 +596,8 @@ export class PaymentMatcherService {
       })
     ) {
       // Listing-only is weak evidence; require guest/email context for full weight.
-      const listingPoints = guestMatched || reasons.some((r) => r.includes('email')) ? 15 : 6;
+      const listingPoints =
+        guestMatched || reasons.some((r) => r.includes('email')) ? 15 : 6;
       score += listingPoints;
       reasons.push('Listing name appears in reference');
     }
@@ -555,7 +618,7 @@ export class PaymentMatcherService {
       reservation,
       payment,
       referenceText,
-      payoutStyle,
+      payoutStyle || this.detectPortalSettlementPayment(payment),
     );
     if (balanceScore.score > 0) {
       score += balanceScore.score;

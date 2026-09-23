@@ -9343,7 +9343,9 @@ async function loadPaymentsReconcile() {
     ].join(' '));
   const rows = data.items.map((p) => {
     const reservation = p.matchedReservation;
-    const candidates = Array.isArray(p.matchCandidates) ? p.matchCandidates : [];
+    const candidates = Array.isArray(p.matchCandidates)
+      ? p.matchCandidates.filter((c) => Number(c?.score) >= 40)
+      : [];
     const bestCandidate =
       candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
       candidates[0];
@@ -9449,7 +9451,9 @@ async function loadPaymentsReconcile() {
     });
     const optionsHtml = buildAssignOptionsHtml(p);
     const decision = String(p.matchDecision || '').toUpperCase();
-    const topCandidate = Array.isArray(p.matchCandidates) ? p.matchCandidates[0] : null;
+    const topCandidate = Array.isArray(p.matchCandidates)
+      ? p.matchCandidates.find((c) => Number(c?.score) >= 40) || null
+      : null;
     const canPreselectCandidate =
       decision === 'UNAMBIGUOUS' ||
       (topCandidate && Number(topCandidate.score) >= 55);

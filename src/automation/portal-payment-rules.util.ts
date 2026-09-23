@@ -148,9 +148,12 @@ export function evaluatePortalBalance(params: {
     const assumedPortalPaid = roundMoney(
       (total * clampPercent(rule.portalAssumedPaidPercent)) / 100,
     );
-    const hostRequired = roundMoney(
-      (total * clampPercent(rule.hostDuePercent ?? 100)) / 100,
-    );
+    // UI "0% our share" means guests owe nothing — still expect bank payout ≈ booking total.
+    const hostDuePct =
+      rule.hostDuePercent === 0 || rule.hostDuePercent == null
+        ? 100
+        : rule.hostDuePercent;
+    const hostRequired = roundMoney((total * clampPercent(hostDuePct)) / 100);
 
     if (daysSinceDeparture < 0) {
       return {
@@ -194,7 +197,9 @@ export function evaluatePortalBalance(params: {
       };
     }
 
-    const outstanding = roundMoney(hostRequired - matchedPaid);
+    const outstanding = roundMoney(
+      Math.max(0, hostRequired - matchedPaid),
+    );
     if (outstanding <= 1) {
       return {
         ...base,
