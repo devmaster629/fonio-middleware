@@ -25,6 +25,8 @@ const webhookFilters = { range: '24h', event: 'all', result: 'all' };
 const SYNC_INTERVAL_OPTIONS = [5, 15, 30, 60, 120, 360, 720, 1440];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 10;
+/** Preselect / show suggested bookings when match score is strictly above this. */
+const PAYMENT_SUGGEST_MIN_SCORE = 10;
 const tableState = {
   listings: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'name', sortDir: 'asc', city: '', groupId: '', status: '', bookable: '' },
   groups: { page: 1, pageSize: DEFAULT_PAGE_SIZE, search: '', sortBy: 'name', sortDir: 'asc', city: '', mode: '', chip: 'all' },
@@ -549,6 +551,7 @@ function showApp() {
   updateMobilePageTitle(activeTab);
   updateMobileBottomNav(activeTab);
   refreshActiveTab();
+  refreshPaymentsReviewQueueBadge();
 }
 
 function refreshActiveTab() {
@@ -8031,7 +8034,17 @@ function renderMatchCellForSelections(payment, selections) {
 
 function renderSuggestedReservationsForSelections(payment, selections) {
   if (!selections.length) {
-    return renderSuggestedReservation(null, null, payment.currency, payment);
+    // Keep the top matcher suggestion visible until the reviewer picks a booking.
+    const candidates = Array.isArray(payment?.matchCandidates)
+      ? payment.matchCandidates.filter((c) => Number(c?.score) > PAYMENT_SUGGEST_MIN_SCORE)
+      : [];
+    const best = candidates[0] || null;
+    return renderSuggestedReservation(
+      payment?.matchedReservation || null,
+      best,
+      payment.currency,
+      payment,
+    );
   }
   return `<div class="payment-suggestion-stack">
     ${selections
@@ -8581,11 +8594,30 @@ function syncPaymentsMobileChrome() {
 }
 
 function updatePaymentsMobileQueueBadge(count) {
-  const badge = $('#payments-mobile-nav-badge');
-  if (!badge) return;
   const n = Number(count) || 0;
-  badge.textContent = String(n);
-  badge.hidden = n <= 0;
+  const label = n > 99 ? '99+' : String(n);
+  ['#payments-mobile-nav-badge', '#mobile-nav-payments-badge'].forEach((sel) => {
+    const badge = $(sel);
+    if (!badge) return;
+    badge.textContent = label;
+    badge.hidden = n <= 0;
+    badge.setAttribute('aria-label', label);
+  });
+}
+
+/** Keep the main mobile Payments badge in sync even when not on the Payments tab. */
+async function refreshPaymentsReviewQueueBadge() {
+  if (!hasPermission('PAYMENTS_REVIEW') && !hasPermission('PAYMENTS_ADMIN')) {
+    updatePaymentsMobileQueueBadge(0);
+    return;
+  }
+  try {
+    const response = await api('/payments/review-queue');
+    const paymentList = Array.isArray(response) ? response : (response.items || []);
+    updatePaymentsMobileQueueBadge(paymentList.length);
+  } catch {
+    /* leave existing badge */
+  }
 }
 
 $('#qonto-poll-btn')?.addEventListener('click', async () => {
@@ -9344,22 +9376,15 @@ async function loadPaymentsReconcile() {
   const rows = data.items.map((p) => {
     const reservation = p.matchedReservation;
     const candidates = Array.isArray(p.matchCandidates)
-      ? p.matchCandidates.filter((c) => Number(c?.score) >= 40)
+      ? p.matchCandidates.filter((c) => Number(c?.score) > PAYMENT_SUGGEST_MIN_SCORE)
       : [];
     const bestCandidate =
       candidates.find((c) => Number(c.hostawayId) === Number(reservation?.hostawayId)) ||
       candidates[0];
     const canReview = hasPermission('PAYMENTS_REVIEW');
-    const decision = String(p.matchDecision || '').toUpperCase();
-    const canPreselect =
-      !!reservation?.hostawayId ||
-      decision === 'UNAMBIGUOUS' ||
-      (bestCandidate && Number(bestCandidate.score) >= 55);
-    const defaultOpenId =
-      reservation?.hostawayId ||
-      (canPreselect ? bestCandidate?.hostawayId : null) ||
-      null;
-    const openHostawayBtn = renderOpenInHostawayButton(defaultOpenId);
+    // Default Suggested booking = booking highlighted in Match (best score > threshold).
+    const defaultMatchId = reservation?.hostawayId || bestCandidate?.hostawayId || null;
+    const openHostawayBtn = renderOpenInHostawayButton(defaultMatchId);
     const hint = p.combinedDepositHint;
     const hintHtml = hint
       ? `<div class="payment-split-hint" data-payment-id="${p.id}">
@@ -9371,22 +9396,13 @@ async function loadPaymentsReconcile() {
           <button type="button" class="payment-split-hint-link payment-apply-split-hint" data-payment-id="${p.id}">${t('payments.combinedDepositLearnMore')}</button>
         </div>`
       : '';
-    const suggestionHtml =
-      candidates.length > 1
-        ? `<div class="payment-suggestion-stack">${candidates
-            .slice(0, 3)
-            .map((c) =>
-              renderSuggestedReservation(
-                Number(reservation?.hostawayId) === Number(c.hostawayId)
-                  ? reservation
-                  : null,
-                c,
-                p.currency,
-                p,
-              ),
-            )
-            .join('')}</div>`
-        : renderSuggestedReservation(reservation, bestCandidate, p.currency, p);
+    // Suggested booking column defaults to the Match selection (best candidate).
+    const suggestionHtml = renderSuggestedReservation(
+      reservation,
+      bestCandidate,
+      p.currency,
+      p,
+    );
     const initialAmount = Number(p.amount) || 0;
     const actionsCell = canReview
       ? `<td class="payment-actions-cell">
@@ -9449,20 +9465,18 @@ async function loadPaymentsReconcile() {
         },
       });
     });
-    const optionsHtml = buildAssignOptionsHtml(p);
-    const decision = String(p.matchDecision || '').toUpperCase();
-    const topCandidate = Array.isArray(p.matchCandidates)
-      ? p.matchCandidates.find((c) => Number(c?.score) >= 40) || null
-      : null;
-    const canPreselectCandidate =
-      decision === 'UNAMBIGUOUS' ||
-      (topCandidate && Number(topCandidate.score) >= 55);
-    const defaultId =
-      p.matchedReservation?.hostawayId ||
-      (canPreselectCandidate ? topCandidate?.hostawayId : undefined) ||
-      undefined;
+    const candidates = Array.isArray(p.matchCandidates)
+      ? p.matchCandidates.filter((c) => Number(c?.score) > PAYMENT_SUGGEST_MIN_SCORE)
+      : [];
+    const bestCandidate =
+      candidates.find(
+        (c) => Number(c.hostawayId) === Number(p.matchedReservation?.hostawayId),
+      ) || candidates[0];
+    const defaultMatchId =
+      p.matchedReservation?.hostawayId || bestCandidate?.hostawayId || undefined;
+    const optionsHtml = buildAssignOptionsHtml(p, defaultMatchId);
     initPaymentSplitRows(p.id, p.amount, optionsHtml, [
-      { reservationHostawayId: defaultId, amount: p.amount },
+      { reservationHostawayId: defaultMatchId, amount: p.amount },
     ]);
   });
 

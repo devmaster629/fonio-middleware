@@ -3,8 +3,13 @@ import { Client } from 'ssh2';
 import { execSync } from 'child_process';
 import { unlinkSync } from 'fs';
 import { join } from 'path';
+import dotenv from 'dotenv';
 
-const VPS_PASS = process.env.VPS_PASSWORD;
+dotenv.config();
+
+const VPS_HOST = String(process.env.VPS_HOST || process.env.VPS_IP_ADDRESS || '85.214.41.33').trim();
+const VPS_USER = String(process.env.VPS_USER || process.env.VPS_USERNAME || 'root').trim();
+const VPS_PASS = String(process.env.VPS_PASSWORD || '').trim();
 const APP_DIR = '/root/fonio-middleware';
 const ARCHIVE = join(process.cwd(), 'full-upload.tgz');
 
@@ -82,8 +87,8 @@ docker compose -f docker-compose.prod.yml logs api --tail 40`,
     }
   })
   .connect({
-    host: '85.214.41.33',
-    username: 'root',
+    host: VPS_HOST,
+    username: VPS_USER,
     password: VPS_PASS,
     readyTimeout: 30000,
     algorithms: { serverHostKey: ['ssh-rsa', 'ssh-ed25519', 'ecdsa-sha2-nistp256'] },

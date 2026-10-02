@@ -60,6 +60,8 @@ export interface PaymentMatchResult {
 
 export const PAYMENT_AUTO_MATCH_MIN_SCORE = 85;
 export const PAYMENT_AMBIGUITY_SCORE_GAP = 10;
+/** Keep / preselect review suggestions when score is strictly above this. */
+export const PAYMENT_SUGGEST_MIN_SCORE = 10;
 
 /** Hostaway inquiry statuses are quotes, not real bookings — exclude from payment matching. */
 export const INQUIRY_RESERVATION_STATUSES = [

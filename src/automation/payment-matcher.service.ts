@@ -8,6 +8,7 @@ import {
   NormalizedExternalPayment,
   PAYMENT_AMBIGUITY_SCORE_GAP,
   PAYMENT_AUTO_MATCH_MIN_SCORE,
+  PAYMENT_SUGGEST_MIN_SCORE,
   PAYMENT_EXCLUDED_RESERVATION_STATUSES,
   PaymentMatchCandidate,
   PaymentMatchResult,
@@ -198,8 +199,8 @@ export class PaymentMatcherService {
       };
     }
 
-    // Low-confidence amount-only style matches: do not preselect a candidate.
-    if (best.score < 40 && !hasStrongLink && !hasStrongPlanMatch) {
+    // Very low-confidence matches: do not keep candidates for the review UI.
+    if (best.score <= PAYMENT_SUGGEST_MIN_SCORE && !hasStrongLink && !hasStrongPlanMatch) {
       return {
         decision: PaymentMatchDecision.PARTIAL_UNCLEAR,
         candidates: [],
